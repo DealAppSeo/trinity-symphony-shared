@@ -1,0 +1,98 @@
+{
+  "name": "Carmona Collision Demo Automation",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "type": "n8n-nodes-base.webhook",
+      "name": "New Review Detected",
+      "parameters": {
+        "path": "review-webhook",
+        "httpMethod": "POST"
+      },
+      "position": [240, 300]
+    },
+    {
+      "id": "supabase-store",
+      "type": "n8n-nodes-base.supabase",
+      "name": "Store Review Data",
+      "parameters": {
+        "operation": "insert",
+        "table": "video_testimonials",
+        "additionalFields": {
+          "business_name": "={{ $json.business }}",
+          "review_text": "={{ $json.review }}",
+          "platform_source": "={{ $json.source }}",
+          "processing_status": "queued"
+        }
+      },
+      "position": [460, 300]
+    },
+    {
+      "id": "video-trigger",
+      "type": "n8n-nodes-base.httpRequest",
+      "name": "Trigger Video Creation",
+      "parameters": {
+        "method": "POST",
+        "url": "https://hyperdag-platform.vercel.app/api/video/create",
+        "body": {
+          "reviewId": "={{ $json.id }}",
+          "reviewText": "={{ $json.review_text }}",
+          "businessName": "={{ $json.business_name }}"
+        }
+      },
+      "position": [680, 300]
+    },
+    {
+      "id": "cost-tracker",
+      "type": "n8n-nodes-base.supabase",
+      "name": "Log Processing Cost",
+      "parameters": {
+        "operation": "insert",
+        "table": "cost_tracking",
+        "additionalFields": {
+          "operation": "video_creation",
+          "cost_cents": "={{ $json.cost_cents || 0 }}",
+          "details": "={{ $json }}"
+        }
+      },
+      "position": [900, 300]
+    },
+    {
+      "id": "email-campaign",
+      "type": "n8n-nodes-base.emailSend",
+      "name": "Auto Shop Outreach",
+      "parameters": {
+        "fromEmail": "demo@hyperdag.org",
+        "toEmail": "={{ $json.contact_email }}",
+        "subject": "Turn Your Reviews Into Marketing Gold",
+        "text": "Hi {{ $json.shop_name }},\n\nSaw your great reviews! We can turn them into professional video testimonials for under $0.50 each.\n\nDemo: {{ $json.video_url }}\n\nInterested in seeing what we can do for your shop?"
+      },
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [["supabase-store"]]
+    },
+    "supabase-store": {
+      "main": [["video-trigger"]]
+    },
+    "video-trigger": {
+      "main": [["cost-tracker"]]
+    },
+    "cost-tracker": {
+      "main": [["email-campaign"]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "1.0.0"
+}
