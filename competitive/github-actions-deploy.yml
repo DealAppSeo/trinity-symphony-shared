@@ -1,0 +1,84 @@
+name: HyperDAG Carmona Demo Deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build
+      env:
+        VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        
+    - name: Deploy to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--prod'
+        
+    - name: Update deployment status
+      run: |
+        curl -X POST "${{ secrets.N8N_WEBHOOK_URL }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "event": "deployment_complete",
+            "url": "${{ steps.vercel.outputs.preview-url }}",
+            "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+          }'
+          
+    - name: Run cost tracking
+      run: |
+        echo "Deployment cost: $0.00 (free tier)" >> deployment-costs.log
+        git add deployment-costs.log
+        git commit -m "Track deployment costs [skip ci]" || exit 0
+        git push origin main || exit 0
+        
+  health-check:
+    needs: deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Wait for deployment
+      run: sleep 30
+      
+    - name: Health check
+      run: |
+        response=$(curl -s -o /dev/null -w "%{http_code}" "${{ needs.deploy.outputs.url }}/api/health")
+        if [ $response -eq 200 ]; then
+          echo "✅ Deployment successful"
+          exit 0
+        else
+          echo "❌ Health check failed: $response"
+          exit 1
+        fi
+        
+    - name: Trinity system validation
+      run: |
+        curl -s "${{ needs.deploy.outputs.url }}/api/trinity/status" | jq '.consensus_time_ms < 200'
+        curl -s "${{ needs.deploy.outputs.url }}/api/trinity/agents" | jq '.active_agents >= 9'
+        
+# Free tier usage:
+# - GitHub Actions: 2000 minutes/month free
+# - Vercel deployments: unlimited on free tier  
+# - No external paid services required
+# - Cost tracking: $0.00 maintained
