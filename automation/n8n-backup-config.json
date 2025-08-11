@@ -1,0 +1,38 @@
+{
+  "automationType": "n8n Backup",
+  "syncFrequency": "Every 5 minutes",
+  "workflowName": "Trinity Symphony Backup",
+  "nodes": [
+    {
+      "type": "Schedule Trigger",
+      "config": {
+        "interval": 5,
+        "unit": "minutes"
+      }
+    },
+    {
+      "type": "HTTP Request",
+      "config": {
+        "url": "https://your-replit-url.replit.app/api/github-automation/sync-status",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "event_type": "n8n-backup",
+          "format": "markdown"
+        }
+      }
+    },
+    {
+      "type": "GitHub File Update",
+      "config": {
+        "owner": "DealAppSeo",
+        "repository": "trinity-symphony-shared",
+        "filePath": "coordination/n8n-backup.status",
+        "commitMessage": "n8n backup: {{{request6.json.timestamp}}}"
+      }
+    }
+  ],
+  "description": "Backup automation for Trinity Symphony status using n8n workflows. Alternative to GitHub Actions for redundancy and reliability."
+}
