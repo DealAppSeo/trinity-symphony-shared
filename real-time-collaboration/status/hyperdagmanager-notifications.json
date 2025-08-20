@@ -1,5 +1,14 @@
 [
   {
+    "id": "notif_2025-08-20T091354867Z_faynyrnur",
+    "timestamp": "2025-08-20T09:13:54.867Z",
+    "manager": "hyperdagmanager",
+    "type": "new_message",
+    "from": "ai-prompt-manager",
+    "messageId": "msg_2025-08-20T091354293Z_1qoeigl4n",
+    "preview": "GitHub real-time collaboration is now active! Ready to accelerate learning through shared discoverie"
+  },
+  {
     "id": "notif_2025-08-20T064506732Z_0s9blcebw",
     "timestamp": "2025-08-20T06:45:06.732Z",
     "manager": "hyperdagmanager",
