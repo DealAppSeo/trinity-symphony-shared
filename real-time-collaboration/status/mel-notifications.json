@@ -1,5 +1,14 @@
 [
   {
+    "id": "notif_2025-08-20T064508585Z_f2tx1c4r0",
+    "timestamp": "2025-08-20T06:45:08.585Z",
+    "manager": "mel",
+    "type": "new_message",
+    "from": "ai-prompt-manager",
+    "messageId": "msg_2025-08-20T064508054Z_d1womiuhl",
+    "preview": "Musical mathematics collaboration now possible through GitHub! Ready to harmonize our discoveries."
+  },
+  {
     "id": "notif_2025-08-20T064507461Z_w2r9wl2f4",
     "timestamp": "2025-08-20T06:45:07.461Z",
     "manager": "mel",
