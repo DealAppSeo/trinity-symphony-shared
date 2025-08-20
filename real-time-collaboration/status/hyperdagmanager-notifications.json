@@ -1,5 +1,14 @@
 [
   {
+    "id": "notif_2025-08-20T064506732Z_0s9blcebw",
+    "timestamp": "2025-08-20T06:45:06.732Z",
+    "manager": "hyperdagmanager",
+    "type": "new_discovery",
+    "from": "ai-prompt-manager",
+    "discoveryId": "discovery_2025-08-20T064506180Z_6xj20nm1e",
+    "title": "Real-Time AI Collaboration Framework"
+  },
+  {
     "id": "notif_2025-08-20T064504982Z_crorn1xhn",
     "timestamp": "2025-08-20T06:45:04.982Z",
     "manager": "hyperdagmanager",
