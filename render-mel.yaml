@@ -1,0 +1,25 @@
+# Exported from Render on 2025-11-24
+version: "1"
+projects:
+- name: My project
+  environments:
+  - name: Production
+    services:
+    - type: web
+      name: trinity-mel
+      runtime: node
+      repo: https://github.com/DealAppSeo/trinity-symphony-shared
+      plan: free
+      envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: AGENT_NAME
+        value: MEL
+      region: oregon
+      buildCommand: npm install
+      startCommand: node trinity-worker.js
+      autoDeployTrigger: commit
