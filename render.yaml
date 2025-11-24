@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: trinity-hdm
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node trinity-hdm.js
+
+  - type: web
+    name: trinity-apm
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node trinity-apm.js
+
+  - type: web
+    name: trinity-mel
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node trinity-mel.js
