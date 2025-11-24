@@ -1,16 +1,11 @@
 {
   "name": "trinity-symphony-shared",
   "version": "1.0.0",
-  "description": "Trinity Symphony shared documentation and core files",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
+  "type": "module",
   "dependencies": {
-    "express": "^4.18.2"
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "scripts": {
+    "start": "echo 'using render.yaml'"
   }
 }
