@@ -158,15 +158,28 @@ async function completeTask(taskId, result, success = true) {
   }
 }
 
-// Update agent heartbeat
+// Update agent heartbeat - FIXED VERSION
 async function updateHeartbeat() {
   try {
-    // Try to upsert agent status
-    await supabaseQuery('agent_status', 'POST', {
-      agent_name: AGENT_NAME,
-      status: 'active',
-      last_heartbeat: new Date().toISOString()
-    }, '?on_conflict=agent_name');
+    // Check if agent already exists
+    const existing = await supabaseQuery('agent_status', 'GET', null, `?agent_name=eq.${AGENT_NAME}`);
+    
+    if (existing && existing.length > 0) {
+      // Update existing record
+      await supabaseQuery('agent_status', 'PATCH', {
+        status: 'active',
+        last_heartbeat: new Date().toISOString()
+      }, `?agent_name=eq.${AGENT_NAME}`);
+      console.log(`[${AGENT_NAME}] Heartbeat updated`);
+    } else {
+      // Insert new record
+      await supabaseQuery('agent_status', 'POST', {
+        agent_name: AGENT_NAME,
+        status: 'active',
+        last_heartbeat: new Date().toISOString()
+      });
+      console.log(`[${AGENT_NAME}] Agent registered`);
+    }
   } catch (error) {
     // Table might not exist, that's ok
     console.log(`[${AGENT_NAME}] Heartbeat update skipped (table may not exist)`);
