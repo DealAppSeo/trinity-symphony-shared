@@ -2,6 +2,8 @@
  * Trinity Symphony - Unified Autonomous Worker
  * One file that handles HDM, APM, MEL, or GCM based on AGENT_NAME env var
  * Deployed to Render.com free tier
+ * 
+ * 🆕 UPDATED: Nov 25, 2025 - Added gentle platform heartbeats for learning
  */
 
 const http = require('http');
@@ -18,7 +20,8 @@ const AGENT_SPECIALIZATIONS = {
   HDM: ['orchestration', 'infrastructure', 'deployment', 'coordination', 'system'],
   APM: ['prompt', 'optimization', 'cost', 'routing', 'efficiency'],
   MEL: ['research', 'learning', 'analysis', 'documentation', 'knowledge'],
-  GCM: ['code', 'github', 'fix', 'debug', 'implementation']
+  GCM: ['code', 'github', 'fix', 'debug', 'implementation'],
+  VERITAS: ['verification', 'validation', 'testing', 'quality', 'review']
 };
 
 // Polling interval (60 seconds)
@@ -158,6 +161,32 @@ async function completeTask(taskId, result, success = true) {
   }
 }
 
+// ============================================
+// 🆕 NEW ADDITION - GENTLE PLATFORM LEARNING
+// ============================================
+async function logPlatformHeartbeat(taskInfo) {
+  try {
+    await supabaseQuery('platform_heartbeats', 'POST', {
+      agent_name: AGENT_NAME,
+      platform: 'render', // Change to 'replit' or 'lovable' when deploying elsewhere
+      task_id: taskInfo.id,
+      task_title: taskInfo.title,
+      started_at: taskInfo.started_at,
+      completed_at: new Date().toISOString(),
+      duration_seconds: Math.floor((Date.now() - new Date(taskInfo.started_at)) / 1000),
+      success: taskInfo.success,
+      notes: taskInfo.learned || 'Completed successfully'
+    });
+    console.log(`[${AGENT_NAME}] 💓 Heartbeat logged for task ${taskInfo.id}`);
+  } catch (e) {
+    // Fail gracefully - don't break the worker if table doesn't exist yet
+    console.log(`[${AGENT_NAME}] ⚠️ Heartbeat skipped (table may not exist yet)`);
+  }
+}
+// ============================================
+// 🆕 END NEW ADDITION
+// ============================================
+
 // Update agent heartbeat - FIXED VERSION
 async function updateHeartbeat() {
   try {
@@ -222,6 +251,9 @@ async function pollForTasks() {
 
     console.log(`[${AGENT_NAME}] 📋 Claiming task: ${selectedTask.title || selectedTask.id}`);
 
+    // 🆕 Capture start time for heartbeat
+    const taskStartTime = new Date().toISOString();
+
     // Claim the task
     const claimed = await claimTask(selectedTask.id);
     if (!claimed) {
@@ -239,6 +271,20 @@ async function pollForTasks() {
     await completeTask(selectedTask.id, execution.result, execution.success);
     
     console.log(`[${AGENT_NAME}] ✅ Task completed: ${selectedTask.title || selectedTask.id}`);
+
+    // ============================================
+    // 🆕 NEW ADDITION - LOG PLATFORM PERFORMANCE
+    // ============================================
+    await logPlatformHeartbeat({
+      id: selectedTask.id,
+      title: selectedTask.title,
+      started_at: taskStartTime,
+      success: execution.success,
+      learned: execution.success ? execution.result.substring(0, 200) : 'Task failed'
+    });
+    // ============================================
+    // 🆕 END NEW ADDITION
+    // ============================================
 
   } catch (error) {
     console.error(`[${AGENT_NAME}] Polling error:`, error.message);
