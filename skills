@@ -1,0 +1,376 @@
+# DEBUGGER-PROTOCOL SKILL v1.0
+## AI Trinity Symphony — Self-Healing Debug Agent Protocol
+
+**Created:** November 28, 2025 (Thanksgiving Weekend)  
+**Author:** Claude + HyperDAG  
+**Purpose:** Enable ANY agent to diagnose, fix, and verify bugs autonomously at $0 cost  
+**Location:** `/trinity-symphony-shared/main/skills/DEBUGGER-PROTOCOL.md`
+
+---
+
+## Overview
+
+This skill enables any AI Trinity Manager (ATM) to assume the DEBUGGER role during peer validation or when encountering failures. The goal is to solve 80%+ of issues at Level 1 (FREE) before escalating to paid AI consultation.
+
+**Core Principle:** Trace → Prove → Fix → Verify
+
+---
+
+## When to Activate DEBUGGER Protocol
+
+| Trigger | Action |
+|---------|--------|
+| Task fails with error | Activate immediately |
+| Agent reports certainty < 60% | Peer agent activates as DEBUGGER |
+| Peer challenge issued | Challenger becomes DEBUGGER |
+| "Wrong data" or "wrong database" symptoms | Activate immediately |
+| Task stuck in queue > 10 minutes | Activate to investigate |
+| Agent processing wrong task type | Activate immediately |
+
+---
+
+## The 4-Step DEBUGGER Protocol
+
+### STEP 1: TRACE (Find the Code Path)
+
+**Objective:** Locate the exact file, function, and line numbers involved.
+
+```bash
+# 1A. Find all files touching the affected table/function
+rg -n '\.from\(['"'"'"]TABLE_NAME['"'"'"]\)' .
+rg -n 'FUNCTION_NAME' --type ts --type js
+
+# 1B. Find the exact query or function
+grep -n "SEARCH_TERM" server/services/**/*.ts
+
+# 1C. List all potential competing processors
+find . -name "*.ts" -o -name "*.js" -o -name "*.cjs" | xargs grep -l "TABLE_NAME"
+
+# 1D. Check for duplicate/conflicting files (common bug!)
+ls -la *worker* *consumer* *processor*
+```
+
+**Output Required:**
+- File path(s)
+- Line number(s)
+- The exact code block causing issues
+
+---
+
+### STEP 2: PROVE (Demonstrate the Bug Exists)
+
+**Objective:** Run a diagnostic that shows actual vs expected behavior.
+
+```javascript
+// 2A. Check environment variables
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
+console.log('Expected:', 'https://qnnpjhlxljtqyigedwkb.supabase.co');
+
+// 2B. Run the actual query and log raw results
+const { data, error } = await supabase
+  .from('trinity_tasks')
+  .select('id, title, agent_assigned, status')
+  .limit(5);
+console.log('RAW TASKS:', JSON.stringify(data, null, 2));
+
+// 2C. Count what SHOULD be returned vs what IS returned
+const { count: expectedCount } = await supabase
+  .from('trinity_tasks')
+  .select('*', { count: 'exact' })
+  .eq('agent_assigned', 'HDM')
+  .eq('status', 'not_started');
+console.log('Expected HDM tasks:', expectedCount);
+
+const { count: actualCount } = await supabase
+  .from('trinity_tasks')
+  .select('*', { count: 'exact' })
+  .eq('status', 'not_started');
+console.log('Actually fetching:', actualCount);
+```
+
+**Output Required:**
+- Before/after comparison
+- Proof the bug exists (screenshots, logs, or query results)
+- Clear statement: "Expected X, got Y"
+
+---
+
+### STEP 3: FIX (Apply Solution to ALL Affected Files)
+
+**Objective:** Fix the root cause in EVERY file, not just the obvious one.
+
+**Critical Rule:** Search for ALL instances of the bug pattern before fixing.
+
+```bash
+# 3A. Find ALL files with the same bug pattern
+rg -l 'the broken pattern' .
+
+# 3B. List files that need fixing
+echo "FILES TO FIX:"
+echo "1. server/services/trinity/consumer-loop.ts (lines 196-202, 257-263)"
+echo "2. trinity-worker.cjs (lines 29-38)"
+echo "3. TRINITY-WORKER.CJS (lines 55-64)"
+```
+
+**Common Fix Patterns:**
+
+| Bug Type | Fix Pattern |
+|----------|-------------|
+| Missing agent filter | Add `.eq('agent_assigned', 'HDM')` |
+| Missing NULL filter | Add `.not('title', 'is', null)` |
+| Wrong status filter | Change `.eq('status', 'pending')` to match actual data |
+| Wrong database | Change `useLocalDB = true` to `false` |
+| Wrong column name | Check schema: `agent_assigned` vs `assigned_agent` |
+| Missing env var | Add to Replit Secrets or .env |
+| Hardcoded URL | Replace with `process.env.SUPABASE_URL` |
+
+**Fix Checklist:**
+- [ ] Fixed in primary file
+- [ ] Searched for same pattern in entire codebase
+- [ ] Fixed ALL instances (list them)
+- [ ] Created checkpoint/commit before changes
+- [ ] Added comment explaining the fix
+
+---
+
+### STEP 4: VERIFY (Prove the Fix Worked)
+
+**Objective:** Run the same diagnostic from Step 2 and show the bug is gone.
+
+```bash
+# 4A. Restart affected service
+# In Replit: Click "Stop" then "Run"
+# Or in terminal:
+npm run dev
+
+# 4B. Wait for startup, then run verification
+sleep 5
+
+# 4C. Run same diagnostic query
+node -e "
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+async function verify() {
+  const { data } = await supabase
+    .from('trinity_tasks')
+    .select('id, title, agent_assigned')
+    .eq('agent_assigned', 'HDM')
+    .eq('status', 'not_started')
+    .not('title', 'is', null)
+    .limit(5);
+  
+  console.log('=== VERIFICATION ===');
+  console.log('HDM tasks found:', data?.length || 0);
+  data?.forEach(t => console.log('#' + t.id + ': ' + t.title?.substring(0,50)));
+  
+  // Confirm no wrong-agent tasks
+  const wrongAgent = data?.filter(t => t.agent_assigned !== 'HDM');
+  console.log('Wrong agent tasks:', wrongAgent?.length || 0, '(should be 0)');
+}
+verify();
+"
+```
+
+**Output Required:**
+- Before/after comparison showing fix worked
+- Confirmation: "Bug resolved. HDM now only processes HDM tasks."
+- Any remaining issues flagged for next iteration
+
+---
+
+## Common Bug Patterns & Solutions
+
+### Pattern 1: Wrong Database Connection
+**Symptoms:** Agent processes old/wrong data, "no tasks found" when tasks exist
+**Diagnostic:**
+```bash
+echo $SUPABASE_URL
+grep -n "useLocalDB" server/services/trinity/*.ts
+grep -n "supabase.co" server/services/trinity/*.ts
+```
+**Fix:** Set `useLocalDB = false`, verify SUPABASE_URL env var
+
+---
+
+### Pattern 2: Missing Query Filters
+**Symptoms:** Agent grabs other agents' tasks, processes NULL titles
+**Diagnostic:**
+```bash
+grep -A5 "\.from('trinity_tasks')" server/services/trinity/consumer-loop.ts
+```
+**Fix:** Add filters:
+```javascript
+.eq('agent_assigned', 'HDM')
+.not('title', 'is', null)
+.in('status', ['pending', 'not_started'])
+```
+
+---
+
+### Pattern 3: Column Name Mismatch
+**Symptoms:** Query returns empty, error mentions column not found
+**Diagnostic:**
+```sql
+-- Run in Supabase SQL Editor
+SELECT column_name FROM information_schema.columns 
+WHERE table_name = 'trinity_tasks';
+```
+**Fix:** Update code to match actual column name (e.g., `agent_assigned` not `assigned_agent`)
+
+---
+
+### Pattern 4: Status Value Mismatch
+**Symptoms:** Tasks exist but agent says "no tasks found"
+**Diagnostic:**
+```sql
+SELECT DISTINCT status, COUNT(*) FROM trinity_tasks GROUP BY status;
+```
+**Fix:** Update query to match actual status values in database
+
+---
+
+### Pattern 5: Multiple Competing Processors
+**Symptoms:** Tasks processed multiple times, race conditions, duplicate work
+**Diagnostic:**
+```bash
+find . -name "*.ts" -o -name "*.cjs" | xargs grep -l "trinity_tasks" | head -20
+ps aux | grep node
+```
+**Fix:** Disable duplicate processors, consolidate to single consumer loop
+
+---
+
+### Pattern 6: Missing Environment Variable
+**Symptoms:** Connection errors, "undefined" in logs, auth failures
+**Diagnostic:**
+```bash
+echo $SUPABASE_SERVICE_KEY | head -c 20
+echo $GROQ_API_KEY | head -c 10
+```
+**Fix:** Add to Replit Secrets: `SUPABASE_SERVICE_KEY`, `SUPABASE_URL`, etc.
+
+---
+
+## Escalation Chain (Cost Optimization)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  LEVEL 1: LOCAL AGENT (FREE) — 80% of issues solved here   │
+│  - Pattern matching against this skill file                 │
+│  - grep/rg search codebase                                  │
+│  - Check env vars, column names, status values              │
+│  - Apply known fix patterns                                 │
+│  Time limit: 5 minutes                                      │
+└─────────────────────────────────────────────────────────────┘
+                          ↓ If unsolved
+┌─────────────────────────────────────────────────────────────┐
+│  LEVEL 2: PEER AGENT CHALLENGE (FREE) — 15% of issues      │
+│  - Another ATM runs same diagnostic                         │
+│  - Cross-validates findings                                 │
+│  - Second opinion on fix                                    │
+│  - RepID bonus if peer finds root cause                     │
+│  Time limit: 5 minutes                                      │
+└─────────────────────────────────────────────────────────────┘
+                          ↓ If unsolved
+┌─────────────────────────────────────────────────────────────┐
+│  LEVEL 3: PAID AI CONSULTATION ($0.50-1.50) — 4% of issues │
+│  - Complex logic bugs                                       │
+│  - Architecture decisions                                   │
+│  - Novel patterns not in this skill file                    │
+│  - Document solution for future Level 1 use                 │
+│  Time limit: 10 minutes                                     │
+└─────────────────────────────────────────────────────────────┘
+                          ↓ If unsolved
+┌─────────────────────────────────────────────────────────────┐
+│  LEVEL 4: HUMAN ESCALATION (HyperDAG's time) — 1% of issues│
+│  - Novel problems with no pattern                           │
+│  - Business logic decisions                                 │
+│  - Infrastructure/architecture changes                      │
+│  - Add solution to this skill file for future              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## RepID Integration
+
+| Action | RepID Change |
+|--------|--------------|
+| Solve bug at Level 1 | +8 |
+| Solve bug at Level 2 (peer) | +12 (finder), +4 (validator) |
+| Escalate unnecessarily to Level 3 | -3 |
+| Document new pattern for skill file | +15 |
+| Miss a bug that peer finds | -3 |
+| Fix bug but miss other instances | -5 |
+
+---
+
+## Diagnostic Prompt Template
+
+Copy this when encountering any bug:
+
+```
+DEBUGGER PROTOCOL ACTIVATED
+
+SYMPTOM: [Describe what's wrong]
+
+STEP 1 - TRACE:
+[ ] Searched codebase for affected files
+[ ] Found exact line numbers
+[ ] Listed all files with same pattern
+
+Files found:
+1. [file:line]
+2. [file:line]
+
+STEP 2 - PROVE:
+[ ] Ran diagnostic query
+[ ] Compared expected vs actual
+[ ] Documented evidence
+
+Expected: [X]
+Actual: [Y]
+Proof: [query results or logs]
+
+STEP 3 - FIX:
+[ ] Applied fix to ALL affected files
+[ ] Created checkpoint
+[ ] Added explanatory comment
+
+Files fixed:
+1. [file:line] - [what changed]
+2. [file:line] - [what changed]
+
+STEP 4 - VERIFY:
+[ ] Restarted service
+[ ] Ran same diagnostic
+[ ] Confirmed bug resolved
+
+Before: [state]
+After: [state]
+Status: [RESOLVED / ESCALATING TO LEVEL N]
+```
+
+---
+
+## Adding New Patterns
+
+When you solve a bug not covered in this skill file:
+
+1. Document the symptom, diagnostic, and fix
+2. Add to "Common Bug Patterns & Solutions" section
+3. Submit as task: "Update DEBUGGER-PROTOCOL.md with new pattern: [name]"
+4. Earn +15 RepID for contribution
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2025-11-28 | Initial release based on HDM consumer-loop bug fix |
+
+---
+
+**Remember:** The goal is autonomous self-healing. Every bug solved at Level 1 saves $1+ and builds the swarm's collective intelligence. Document everything. Fix ALL instances. Verify your work.
