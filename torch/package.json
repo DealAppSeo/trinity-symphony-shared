@@ -1,0 +1,28 @@
+{
+  "name": "torch-orchestrator",
+  "version": "1.0.0",
+  "description": "TORCH - Trinity Orchestrator: The autonomous execution engine for AI Trinity Symphony",
+  "main": "dist/torch-executor.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/torch-executor.js",
+    "start:dev": "ts-node torch-executor.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@octokit/rest": "^20.0.2",
+    "@supabase/supabase-js": "^2.39.0",
+    "express": "^4.18.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.2",
+    "ts-node": "^10.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
