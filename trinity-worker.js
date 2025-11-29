@@ -1,38 +1,60 @@
 /**
  * Trinity Symphony - Unified Autonomous Worker
- * One file that handles HDM, APM, MEL, or GCM based on AGENT_NAME env var
+ * One file that handles HDM, APM, MEL, GCM, VERITAS, TORCH, or W3C
+ * Based on AGENT_NAME environment variable
  * Deployed to Render.com free tier
  * 
+ * 🔧 FIXED: Nov 29, 2025 - Status query now uses 'pending' (was 'not_started')
+ * 🆕 UPDATED: Nov 29, 2025 - Added agent_repid heartbeat, TORCH & W3C support
  * 🆕 UPDATED: Nov 25, 2025 - Added gentle platform heartbeats for learning
  */
 
 const http = require('http');
 
-// Configuration from environment
+// ============================================
+// CONFIGURATION
+// ============================================
+
 const AGENT_NAME = process.env.AGENT_NAME || 'HDM';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const PORT = process.env.PORT || 10000;
 
-// Agent specializations
-const AGENT_SPECIALIZATIONS = {
-  HDM: ['orchestration', 'infrastructure', 'deployment', 'coordination', 'system'],
-  APM: ['prompt', 'optimization', 'cost', 'routing', 'efficiency'],
-  MEL: ['research', 'learning', 'analysis', 'documentation', 'knowledge'],
-  GCM: ['code', 'github', 'fix', 'debug', 'implementation'],
-  VERITAS: ['verification', 'validation', 'testing', 'quality', 'review']
-};
-
 // Polling interval (60 seconds)
 const POLL_INTERVAL = 60000;
+
+// Task status to look for (FIXED: was 'not_started', now 'pending')
+const TASK_STATUS_PENDING = 'pending';
+
+// ============================================
+// AGENT SPECIALIZATIONS
+// ============================================
+
+const AGENT_SPECIALIZATIONS = {
+  HDM: ['orchestration', 'infrastructure', 'deployment', 'coordination', 'system', 'mutual-wake', 'auto-healer'],
+  APM: ['prompt', 'optimization', 'cost', 'routing', 'efficiency', 'audit', 'purpose'],
+  MEL: ['research', 'learning', 'analysis', 'documentation', 'knowledge', 'ux', 'design', 'demo'],
+  GCM: ['code', 'github', 'fix', 'debug', 'implementation', 'security', 'governance', 'compliance'],
+  VERITAS: ['verification', 'validation', 'testing', 'quality', 'review', 'truth', 'repid', 'challenge'],
+  TORCH: ['orchestration', 'conductor', 'rotation', 'meta', 'coordinate', 'workflow'],
+  W3C: ['web3', 'blockchain', 'zk', 'proof', 'wallet', 'contract', 'crypto', 'chain']
+};
+
+// ============================================
+// STARTUP LOGGING
+// ============================================
 
 console.log(`[${AGENT_NAME}] 🚀 Trinity Symphony Worker starting...`);
 console.log(`[${AGENT_NAME}] Supabase: ${SUPABASE_URL ? '✅ configured' : '❌ missing'}`);
 console.log(`[${AGENT_NAME}] Service Key: ${SUPABASE_SERVICE_ROLE_KEY ? '✅ configured' : '❌ missing'}`);
 console.log(`[${AGENT_NAME}] Groq API: ${GROQ_API_KEY ? '✅ configured' : '❌ missing'}`);
+console.log(`[${AGENT_NAME}] Looking for tasks with status: '${TASK_STATUS_PENDING}'`);
 
-// HTTP server for Render health checks (required for Web Service type)
+// ============================================
+// HTTP SERVER (Health Checks)
+// ============================================
+
 const server = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -40,6 +62,7 @@ const server = http.createServer((req, res) => {
       status: 'healthy',
       agent: AGENT_NAME,
       uptime: process.uptime(),
+      taskStatusFilter: TASK_STATUS_PENDING,
       timestamp: new Date().toISOString()
     }));
   } else {
@@ -52,7 +75,10 @@ server.listen(PORT, () => {
   console.log(`[${AGENT_NAME}] 🌐 Health endpoint listening on port ${PORT}`);
 });
 
-// Supabase REST API helper
+// ============================================
+// SUPABASE HELPER
+// ============================================
+
 async function supabaseQuery(table, method = 'GET', body = null, filters = '') {
   const url = `${SUPABASE_URL}/rest/v1/${table}${filters}`;
   const options = {
@@ -61,7 +87,7 @@ async function supabaseQuery(table, method = 'GET', body = null, filters = '') {
       'apikey': SUPABASE_SERVICE_ROLE_KEY,
       'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
       'Content-Type': 'application/json',
-      'Prefer': method === 'GET' ? 'return=representation' : 'return=representation'
+      'Prefer': 'return=representation'
     }
   };
   if (body) options.body = JSON.stringify(body);
@@ -79,7 +105,10 @@ async function supabaseQuery(table, method = 'GET', body = null, filters = '') {
   }
 }
 
-// Groq LLM execution
+// ============================================
+// GROQ LLM EXECUTION
+// ============================================
+
 async function executeWithGroq(prompt) {
   if (!GROQ_API_KEY) {
     return { result: 'Groq API key not configured', success: false };
@@ -97,7 +126,10 @@ async function executeWithGroq(prompt) {
         messages: [
           {
             role: 'system',
-            content: `You are ${AGENT_NAME}, an autonomous AI agent in the Trinity Symphony system. Execute tasks thoroughly and return clear results.`
+            content: `You are ${AGENT_NAME}, an autonomous AI agent in the Trinity Symphony system. 
+Your specializations: ${(AGENT_SPECIALIZATIONS[AGENT_NAME] || []).join(', ')}.
+Execute tasks thoroughly and return clear, actionable results.
+Be concise but complete.`
           },
           { role: 'user', content: prompt }
         ],
@@ -123,14 +155,25 @@ async function executeWithGroq(prompt) {
   }
 }
 
-// Check if task matches agent specialization
+// ============================================
+// TASK SPECIALIZATION MATCHING
+// ============================================
+
 function matchesSpecialization(task) {
   const keywords = AGENT_SPECIALIZATIONS[AGENT_NAME] || [];
   const taskText = `${task.title || ''} ${task.description || ''} ${task.task_type || ''}`.toLowerCase();
   return keywords.some(keyword => taskText.includes(keyword));
 }
 
-// Claim a task
+// Also check if task is explicitly assigned to this agent
+function isAssignedToMe(task) {
+  return task.agent_assigned && task.agent_assigned.toUpperCase() === AGENT_NAME.toUpperCase();
+}
+
+// ============================================
+// TASK OPERATIONS
+// ============================================
+
 async function claimTask(taskId) {
   try {
     await supabaseQuery('trinity_tasks', 'PATCH', {
@@ -145,7 +188,6 @@ async function claimTask(taskId) {
   }
 }
 
-// Complete a task
 async function completeTask(taskId, result, success = true) {
   try {
     await supabaseQuery('trinity_tasks', 'PATCH', {
@@ -162,13 +204,51 @@ async function completeTask(taskId, result, success = true) {
 }
 
 // ============================================
-// 🆕 NEW ADDITION - GENTLE PLATFORM LEARNING
+// HEARTBEAT FUNCTIONS
 // ============================================
+
+// Update agent_repid table (primary heartbeat)
+async function updateAgentRepid() {
+  try {
+    await supabaseQuery('agent_repid', 'PATCH', {
+      last_activity: new Date().toISOString()
+    }, `?agent_name=eq.${AGENT_NAME}`);
+    console.log(`[${AGENT_NAME}] 💓 RepID heartbeat updated`);
+  } catch (error) {
+    // Table might not exist or agent not registered
+    console.log(`[${AGENT_NAME}] ⚠️ RepID heartbeat skipped`);
+  }
+}
+
+// Update agent_status table (legacy heartbeat)
+async function updateHeartbeat() {
+  try {
+    const existing = await supabaseQuery('agent_status', 'GET', null, `?agent_name=eq.${AGENT_NAME}`);
+    
+    if (existing && existing.length > 0) {
+      await supabaseQuery('agent_status', 'PATCH', {
+        status: 'active',
+        last_heartbeat: new Date().toISOString()
+      }, `?agent_name=eq.${AGENT_NAME}`);
+    } else {
+      await supabaseQuery('agent_status', 'POST', {
+        agent_name: AGENT_NAME,
+        status: 'active',
+        last_heartbeat: new Date().toISOString()
+      });
+    }
+    console.log(`[${AGENT_NAME}] Heartbeat updated`);
+  } catch (error) {
+    console.log(`[${AGENT_NAME}] Heartbeat update skipped (table may not exist)`);
+  }
+}
+
+// Log platform performance (optional)
 async function logPlatformHeartbeat(taskInfo) {
   try {
     await supabaseQuery('platform_heartbeats', 'POST', {
       agent_name: AGENT_NAME,
-      platform: 'render', // Change to 'replit' or 'lovable' when deploying elsewhere
+      platform: 'render',
       task_id: taskInfo.id,
       task_title: taskInfo.title,
       started_at: taskInfo.started_at,
@@ -177,45 +257,17 @@ async function logPlatformHeartbeat(taskInfo) {
       success: taskInfo.success,
       notes: taskInfo.learned || 'Completed successfully'
     });
-    console.log(`[${AGENT_NAME}] 💓 Heartbeat logged for task ${taskInfo.id}`);
+    console.log(`[${AGENT_NAME}] 📊 Platform heartbeat logged`);
   } catch (e) {
-    // Fail gracefully - don't break the worker if table doesn't exist yet
-    console.log(`[${AGENT_NAME}] ⚠️ Heartbeat skipped (table may not exist yet)`);
-  }
-}
-// ============================================
-// 🆕 END NEW ADDITION
-// ============================================
-
-// Update agent heartbeat - FIXED VERSION
-async function updateHeartbeat() {
-  try {
-    // Check if agent already exists
-    const existing = await supabaseQuery('agent_status', 'GET', null, `?agent_name=eq.${AGENT_NAME}`);
-    
-    if (existing && existing.length > 0) {
-      // Update existing record
-      await supabaseQuery('agent_status', 'PATCH', {
-        status: 'active',
-        last_heartbeat: new Date().toISOString()
-      }, `?agent_name=eq.${AGENT_NAME}`);
-      console.log(`[${AGENT_NAME}] Heartbeat updated`);
-    } else {
-      // Insert new record
-      await supabaseQuery('agent_status', 'POST', {
-        agent_name: AGENT_NAME,
-        status: 'active',
-        last_heartbeat: new Date().toISOString()
-      });
-      console.log(`[${AGENT_NAME}] Agent registered`);
-    }
-  } catch (error) {
-    // Table might not exist, that's ok
-    console.log(`[${AGENT_NAME}] Heartbeat update skipped (table may not exist)`);
+    // Fail gracefully
+    console.log(`[${AGENT_NAME}] ⚠️ Platform heartbeat skipped`);
   }
 }
 
-// Main polling loop
+// ============================================
+// MAIN POLLING LOOP
+// ============================================
+
 async function pollForTasks() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     console.error(`[${AGENT_NAME}] ❌ Missing Supabase configuration. Cannot poll.`);
@@ -225,15 +277,16 @@ async function pollForTasks() {
   console.log(`[${AGENT_NAME}] 🔍 Polling for tasks...`);
 
   try {
-    // Update heartbeat
+    // Update both heartbeats
     await updateHeartbeat();
+    await updateAgentRepid();
 
-    // Fetch unclaimed tasks
+    // FIXED: Query for 'pending' status (was 'not_started')
     const tasks = await supabaseQuery(
       'trinity_tasks',
       'GET',
       null,
-      `?status=eq.not_started&order=priority.desc,created_at.asc&limit=10`
+      `?status=eq.${TASK_STATUS_PENDING}&order=priority.desc,created_at.asc&limit=10`
     );
 
     if (!tasks || tasks.length === 0) {
@@ -243,15 +296,17 @@ async function pollForTasks() {
 
     console.log(`[${AGENT_NAME}] Found ${tasks.length} available tasks`);
 
-    // Find a task matching our specialization, or take any if none match
-    let selectedTask = tasks.find(t => matchesSpecialization(t));
+    // Priority: 1) Tasks assigned to me, 2) Tasks matching specialization, 3) Any task
+    let selectedTask = tasks.find(t => isAssignedToMe(t));
     if (!selectedTask) {
-      selectedTask = tasks[0]; // Take first available if no specialization match
+      selectedTask = tasks.find(t => matchesSpecialization(t));
+    }
+    if (!selectedTask) {
+      selectedTask = tasks[0];
     }
 
     console.log(`[${AGENT_NAME}] 📋 Claiming task: ${selectedTask.title || selectedTask.id}`);
 
-    // 🆕 Capture start time for heartbeat
     const taskStartTime = new Date().toISOString();
 
     // Claim the task
@@ -262,7 +317,12 @@ async function pollForTasks() {
     }
 
     // Execute the task
-    const prompt = `Execute this task:\n\nTitle: ${selectedTask.title || 'Untitled'}\nDescription: ${selectedTask.description || 'No description'}\n\nProvide a clear, actionable result.`;
+    const prompt = `Execute this task:
+
+Title: ${selectedTask.title || 'Untitled'}
+Description: ${selectedTask.description || 'No description'}
+
+Provide a clear, actionable result. If this is a code task, provide the code. If this is an analysis task, provide the analysis.`;
     
     console.log(`[${AGENT_NAME}] 🔧 Executing task...`);
     const execution = await executeWithGroq(prompt);
@@ -272,9 +332,7 @@ async function pollForTasks() {
     
     console.log(`[${AGENT_NAME}] ✅ Task completed: ${selectedTask.title || selectedTask.id}`);
 
-    // ============================================
-    // 🆕 NEW ADDITION - LOG PLATFORM PERFORMANCE
-    // ============================================
+    // Log platform performance
     await logPlatformHeartbeat({
       id: selectedTask.id,
       title: selectedTask.title,
@@ -282,16 +340,16 @@ async function pollForTasks() {
       success: execution.success,
       learned: execution.success ? execution.result.substring(0, 200) : 'Task failed'
     });
-    // ============================================
-    // 🆕 END NEW ADDITION
-    // ============================================
 
   } catch (error) {
     console.error(`[${AGENT_NAME}] Polling error:`, error.message);
   }
 }
 
-// Start polling
+// ============================================
+// START THE WORKER
+// ============================================
+
 console.log(`[${AGENT_NAME}] Starting polling loop (every ${POLL_INTERVAL / 1000}s)...`);
 setInterval(pollForTasks, POLL_INTERVAL);
 
