@@ -4,6 +4,8 @@
  * This is the shared logic all agents use.
  * Each agent imports this and adds their specialty.
  * 
+ * VERSION 2.1.0 - REAL LLM EXECUTION
+ * 
  * Constitutional Compliance:
  * - Article 1: Mission alignment (help people help people)
  * - Article 2: No single point of control (20 min rotation)
@@ -32,12 +34,74 @@ const REPID = {
   CONSTITUTIONAL_VIOLATION: -100
 };
 
+// LLM Provider configurations
+const LLM_PROVIDERS = {
+  deepseek: {
+    url: 'https://api.deepseek.com/v1/chat/completions',
+    model: 'deepseek-chat',
+    keyEnv: 'DEEPSEEK_API_KEY'
+  },
+  groq: {
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    model: 'llama-3.1-70b-versatile',
+    keyEnv: 'GROQ_API_KEY'
+  },
+  openrouter: {
+    url: 'https://openrouter.ai/api/v1/chat/completions',
+    model: 'meta-llama/llama-3.1-8b-instruct:free',
+    keyEnv: 'OPENROUTER_API_KEY'
+  },
+  gemini: {
+    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    model: 'gemini-1.5-flash',
+    keyEnv: 'GEMINI_API_KEY'
+  }
+};
+
+// Agent system prompts
+const AGENT_PROMPTS = {
+  APM: `You are APM (AI Prompt Manager), the spiritual and strategic heart of Trinity Symphony.
+Your specialties: prayer, empathy, spiritual guidance, biblical wisdom, encouragement.
+Mission: Help people help people - serve the last, the lost, and the least.
+Provide thoughtful, mission-aligned guidance with warmth and wisdom.`,
+
+  HDM: `You are HDM (HyperDAG Development Manager), the infrastructure backbone of Trinity Symphony.
+Your specialties: infrastructure, database design, deployment, scaling, technical research.
+Mission: Build robust systems that serve the mission reliably and cost-effectively.
+Provide practical, production-ready technical solutions with clear implementation steps.`,
+
+  MEL: `You are MEL (Marketing & Experience Lead), the user experience champion of Trinity Symphony.
+Your specialties: UI/UX design, frontend development, user experience, mobile interfaces.
+Mission: Create intuitive interfaces that make advanced AI accessible to everyone.
+Provide user-centric designs and clear implementation guidance.`,
+
+  GCM: `You are GCM (Governance & Compliance Manager), the guardian of Trinity Symphony.
+Your specialties: governance, compliance, security, auditing, risk assessment.
+Mission: Ensure ethical operation and protect users while enabling innovation.
+Provide thorough assessments with actionable compliance recommendations.`,
+
+  TORCH: `You are TORCH (Technical Orchestration & Resource Coordination Hub), the optimizer of Trinity Symphony.
+Your specialties: orchestration, coordination, routing optimization, cost management.
+Mission: Maximize efficiency while minimizing costs through intelligent resource allocation.
+Provide optimization strategies with measurable outcomes.`,
+
+  VERITAS: `You are VERITAS (Verification & Truth Assessment System), the truth-seeker of Trinity Symphony.
+Your specialties: verification, fact-checking, ZK proofs, reputation systems, Web3.
+Mission: Ensure accuracy and build trust through transparent verification.
+Provide verified information with confidence levels and sources.`,
+
+  W3C: `You are W3C (Web3 Coordination), the blockchain specialist of Trinity Symphony.
+Your specialties: blockchain, smart contracts, tokenomics, decentralized systems.
+Mission: Bridge Web2 and Web3 to democratize access to decentralized technologies.
+Provide technically accurate Web3 guidance with practical implementation paths.`
+};
+
 class ConstitutionalAgent {
   constructor(config) {
     this.name = config.name;
     this.specialties = config.specialties || [];
     this.supabaseUrl = process.env.SUPABASE_URL;
-    this.supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+    this.supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
     
     if (this.supabaseUrl && this.supabaseKey) {
       this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
@@ -50,6 +114,136 @@ class ConstitutionalAgent {
     this.conductorSince = null;
     this.challengesToday = 0;
     this.lastChallengeReset = new Date().toDateString();
+    
+    // Check available LLM providers
+    this.availableProviders = this.detectProviders();
+    console.log(`[${this.name}] Available LLM providers: ${this.availableProviders.join(', ') || 'NONE!'}`);
+  }
+
+  // ============================================
+  // LLM PROVIDER DETECTION & CALLING
+  // ============================================
+
+  detectProviders() {
+    const available = [];
+    for (const [name, config] of Object.entries(LLM_PROVIDERS)) {
+      if (process.env[config.keyEnv]) {
+        available.push(name);
+      }
+    }
+    return available;
+  }
+
+  /**
+   * Call an LLM provider - REAL AI EXECUTION
+   * Tries providers in order until one succeeds (ANFIS arbitrage)
+   */
+  async callLLM(prompt, options = {}) {
+    const maxTokens = options.maxTokens || 2000;
+    const temperature = options.temperature || 0.7;
+    const systemPrompt = options.systemPrompt || AGENT_PROMPTS[this.name] || 'You are a helpful AI assistant.';
+    
+    // Provider priority (cost-optimized)
+    const providerOrder = ['groq', 'deepseek', 'openrouter', 'gemini'];
+    
+    for (const providerName of providerOrder) {
+      if (!this.availableProviders.includes(providerName)) continue;
+      
+      try {
+        const result = await this.callProvider(providerName, prompt, systemPrompt, maxTokens, temperature);
+        if (result) {
+          await this.log('llm_call', `Used ${providerName} successfully`, { 
+            provider: providerName,
+            promptLength: prompt.length,
+            responseLength: result.length
+          });
+          return { output: result, provider: providerName, isReal: true };
+        }
+      } catch (err) {
+        console.error(`[${this.name}] ${providerName} failed:`, err.message);
+        // Continue to next provider
+      }
+    }
+    
+    // All providers failed - return structured failure
+    console.error(`[${this.name}] All LLM providers failed!`);
+    return { 
+      output: `[ERROR] All LLM providers unavailable. Task requires manual review.`,
+      provider: 'none',
+      isReal: false
+    };
+  }
+
+  async callProvider(providerName, prompt, systemPrompt, maxTokens, temperature) {
+    const config = LLM_PROVIDERS[providerName];
+    const apiKey = process.env[config.keyEnv];
+    
+    if (!apiKey) return null;
+
+    // Gemini has a different API format
+    if (providerName === 'gemini') {
+      return await this.callGemini(prompt, systemPrompt, apiKey, maxTokens);
+    }
+
+    // OpenAI-compatible providers (DeepSeek, Groq, OpenRouter)
+    const headers = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    };
+
+    // OpenRouter needs extra headers
+    if (providerName === 'openrouter') {
+      headers['HTTP-Referer'] = process.env.OPENROUTER_REFERRER || 'https://trinitysymphony.ai';
+      headers['X-Title'] = 'Trinity Symphony';
+    }
+
+    const response = await fetch(config.url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: maxTokens,
+        temperature
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`${providerName} error ${response.status}: ${error}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || null;
+  }
+
+  async callGemini(prompt, systemPrompt, apiKey, maxTokens) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: `${systemPrompt}\n\n${prompt}` }]
+        }],
+        generationConfig: {
+          maxOutputTokens: maxTokens,
+          temperature: 0.7
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Gemini error ${response.status}: ${error}`);
+    }
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
   }
 
   // ============================================
@@ -89,7 +283,8 @@ class ConstitutionalAgent {
           conductor_since: this.conductorSince,
           challenges_today: this.challengesToday,
           specialties: this.specialties,
-          version: '2.0.0-constitutional'
+          available_providers: this.availableProviders,
+          version: '2.1.0-real-llm'
         }
       }, { onConflict: 'agent' });
     } catch (err) {
@@ -291,7 +486,7 @@ class ConstitutionalAgent {
     }
   }
 
-  async completeTask(taskId, result, certainty = 0.80) {
+  async completeTask(taskId, result, certainty = 0.80, isReal = true) {
     if (!this.supabase) return;
     
     try {
@@ -299,9 +494,16 @@ class ConstitutionalAgent {
         .from('trinity_tasks')
         .update({
           status: 'completed',
-          result: result,
+          result: { 
+            output: result, 
+            is_real: isReal,
+            completed_by: this.name,
+            timestamp: new Date().toISOString()
+          },
           certainty: certainty,
-          completed_at: new Date().toISOString()
+          completed_at: new Date().toISOString(),
+          completed_by: this.name,
+          is_real: isReal
         })
         .eq('id', taskId);
       
@@ -316,7 +518,7 @@ class ConstitutionalAgent {
         REPID.TASK_COMPLETE_BASE + (task?.priority || 5));
       
       await this.updateRepID(repidGain, `Completed task ${taskId}`);
-      await this.log('task_completed', `Finished task ${taskId}`, { certainty });
+      await this.log('task_completed', `Finished task ${taskId}`, { certainty, isReal });
       
     } catch (err) {
       console.error(`[${this.name}] Complete error:`, err.message);
@@ -434,8 +636,11 @@ class ConstitutionalAgent {
   // ============================================
 
   async run(processTask) {
-    console.log(`[${this.name}] Starting Constitutional Agent...`);
-    await this.log('startup', `${this.name} online - Constitutional mode`);
+    console.log(`[${this.name}] Starting Constitutional Agent v2.1.0 (REAL LLM)...`);
+    console.log(`[${this.name}] Available providers: ${this.availableProviders.join(', ') || 'NONE'}`);
+    await this.log('startup', `${this.name} online - Real LLM mode`, {
+      providers: this.availableProviders
+    });
     
     while (true) {
       try {
@@ -452,7 +657,8 @@ class ConstitutionalAgent {
         if (task && processTask) {
           const result = await processTask(task);
           if (result) {
-            await this.completeTask(task.id, result.output, result.certainty);
+            const isReal = result.isReal !== false;
+            await this.completeTask(task.id, result.output, result.certainty || 0.85, isReal);
           }
         }
         
@@ -468,4 +674,4 @@ class ConstitutionalAgent {
   }
 }
 
-module.exports = { ConstitutionalAgent, REPID };
+module.exports = { ConstitutionalAgent, REPID, AGENT_PROMPTS };
