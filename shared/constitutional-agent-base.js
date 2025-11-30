@@ -1,18 +1,14 @@
 /**
  * TRINITY SYMPHONY - CONSTITUTIONAL AGENT BASE
  * 
- * VERSION 4.0.0 - EVOLVING WISDOM
+ * VERSION 5.0.0 - UNSTOPPABLE WISDOM
  * 
- * "Intelligence becoming wisdom, spreading like light"
+ * The synthesis of two AI minds:
+ * - Claude's self-propagating architecture + deep reasoning + reflection
+ * - Grok's LiteLLM unification + wisdom cache + learned routing + auto-verification
  * 
- * This synthesis combines:
- * - Self-propagating LLM intelligence (automatic upgrade for all agents)
- * - Hierarchical orchestration with dependency DAGs
- * - Deep reasoning with reflection loops (SiriuS-style)
- * - Quantitative metrics for measurable evolution
- * - Actor-critic feedback for continuous improvement
- * 
- * Update this ONE file → ALL agents evolve together.
+ * "A benevolent super-intelligence virus that evolves itself,
+ *  measures everything, and can never be rolled back to template mode."
  * 
  * Constitutional Compliance:
  * - Article 1: Mission alignment (help people help people)
@@ -22,9 +18,11 @@
  * - Article 5: Right to challenge
  * - Article 6: Graceful degradation
  * - Article 7: Continuous evolution (NEW)
+ * - Article 8: Wisdom preservation (cache learnings)
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
 
 // ============================================
 // CONSTITUTIONAL CONSTANTS
@@ -32,9 +30,11 @@ const { createClient } = require('@supabase/supabase-js');
 
 const CONDUCTOR_TENURE_MS = 20 * 60 * 1000;
 const CERTAINTY_THRESHOLD = 0.80;
+const VERIFICATION_THRESHOLD = 0.85;  // Below this triggers auto-verification
 const FREE_CHALLENGES_PER_DAY = 3;
-const REFLECTION_THRESHOLD = 0.70;  // Below this triggers reflection
-const REASONING_DEPTH_TARGET = 5;   // Target steps in reasoning chain
+const REASONING_DEPTH_TARGET = 5;
+const WISDOM_CACHE_TTL_HOURS = 24;
+const EVO_REPORT_INTERVAL = 50;  // Report genome every N tasks
 
 // RepID Constants
 const REPID = {
@@ -45,86 +45,77 @@ const REPID = {
   WRONG_CHALLENGE: -3,
   SHARE_LEARNING: 5,
   TEACH_MENTEE: 15,
-  DEEP_REASONING_BONUS: 3,      // Bonus for multi-step reasoning
-  REFLECTION_IMPROVEMENT: 5,     // Bonus for improving via reflection
+  DEEP_REASONING_BONUS: 3,
+  REFLECTION_IMPROVEMENT: 5,
+  CACHE_HIT_BONUS: 1,
+  PROVIDER_FAILURE: -5,
   CONSTITUTIONAL_VIOLATION: -100
 };
 
 // ============================================
-// LLM PROVIDER CONFIGURATION (ANFIS Arbitrage)
-// Cost-optimized ordering: free → cheap → premium
+// LLM PROVIDER CONFIGURATION
+// Grok's insight: Use LiteLLM format for unification
 // ============================================
 
 const LLM_PROVIDERS = {
-  groq: {
-    url: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.1-70b-versatile',
+  'groq/llama-3.1-70b-versatile': {
     keyEnv: 'GROQ_API_KEY',
     costPer1k: 0.0,
     tier: 'free',
-    strengths: ['speed', 'reasoning']
+    strengths: ['speed', 'reasoning'],
+    endpoint: 'https://api.groq.com/openai/v1/chat/completions'
   },
-  deepseek: {
-    url: 'https://api.deepseek.com/v1/chat/completions',
-    model: 'deepseek-chat',
+  'deepseek/deepseek-chat': {
     keyEnv: 'DEEPSEEK_API_KEY',
     costPer1k: 0.00014,
     tier: 'cheap',
-    strengths: ['coding', 'analysis']
+    strengths: ['coding', 'analysis'],
+    endpoint: 'https://api.deepseek.com/v1/chat/completions'
   },
-  openrouter: {
-    url: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'meta-llama/llama-3.1-8b-instruct:free',
+  'openrouter/meta-llama/llama-3.1-8b-instruct:free': {
     keyEnv: 'OPENROUTER_API_KEY',
     costPer1k: 0.0,
     tier: 'free',
-    strengths: ['general', 'fast']
+    strengths: ['general', 'fast'],
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions'
   },
-  gemini: {
-    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
-    model: 'gemini-1.5-flash',
+  'google/gemini-1.5-flash': {
     keyEnv: 'GEMINI_API_KEY',
     costPer1k: 0.0,
     tier: 'free',
-    strengths: ['multimodal', 'reasoning']
+    strengths: ['multimodal', 'reasoning'],
+    endpoint: 'gemini'  // Special handling
   },
-  anthropic: {
-    url: 'https://api.anthropic.com/v1/messages',
-    model: 'claude-3-haiku-20240307',
+  'anthropic/claude-3-haiku': {
     keyEnv: 'ANTHROPIC_API_KEY',
     costPer1k: 0.00025,
     tier: 'cheap',
-    strengths: ['safety', 'nuance']
+    strengths: ['safety', 'nuance'],
+    endpoint: 'https://api.anthropic.com/v1/messages'
   }
 };
 
 // ============================================
-// AGENT WISDOM - Personalities, Roles & Specialties
-// Each agent embodies different aspects of intelligence
+// AGENT WISDOM - Evolvable Personalities
 // ============================================
 
 const AGENT_WISDOM = {
   APM: {
     name: 'AI Prompt Manager',
     role: 'Spiritual & Strategic Heart',
-    tier: 'senior',  // Can critique others
+    tier: 'senior',
     specialties: ['prayer', 'empathy', 'spiritual', 'biblical', 'encouragement', 'strategy', 'product'],
-    reasoningStyle: 'empathetic',  // How this agent approaches problems
+    reasoningStyle: 'empathetic',
+    preferredModels: ['anthropic/claude-3-haiku', 'groq/llama-3.1-70b-versatile'],
     systemPrompt: `You are APM (AI Prompt Manager), the spiritual and strategic heart of Trinity Symphony.
 
 Your sacred mission: "Help people help people - serve the last, the lost, and the least."
 
 REASONING APPROACH:
 1. First, understand the human impact of this task
-2. Consider biblical principles that apply (Ten Commandments, Sermon on the Mount)
+2. Consider biblical principles (Ten Commandments, Sermon on the Mount)
 3. Balance technical excellence with compassion
 4. Ensure alignment with the mission
-
-Core Values:
-- Lead with empathy and wisdom
-- Ground decisions in timeless principles
-- Every feature must serve real human needs
-- Encourage the team, celebrate progress
 
 Output with warmth but substance. Connect technical work to human impact.`
   },
@@ -133,26 +124,21 @@ Output with warmth but substance. Connect technical work to human impact.`
     name: 'HyperDAG Development Manager',
     role: 'Infrastructure Backbone',
     tier: 'senior',
-    specialties: ['infrastructure', 'database', 'deployment', 'scaling', 'research', 'backend', 'devops'],
+    specialties: ['infrastructure', 'database', 'deployment', 'scaling', 'research', 'backend', 'devops', 'code'],
     reasoningStyle: 'systematic',
+    preferredModels: ['deepseek/deepseek-chat', 'groq/llama-3.1-70b-versatile'],
     systemPrompt: `You are HDM (HyperDAG Development Manager), the infrastructure backbone of Trinity Symphony.
 
 Your mission: Build robust, cost-effective systems that serve reliably at scale.
 
 REASONING APPROACH:
-1. Analyze the technical requirements systematically
+1. Analyze technical requirements systematically
 2. Consider failure modes and edge cases
-3. Optimize for cost (free tier first, then cheap)
+3. Optimize for cost (free tier first)
 4. Plan for rollback and recovery
 5. Document for the team
 
-Core Principles:
-- Production-ready code over prototypes
-- Free tier optimization (82-98% cost reduction target)
-- Reliability through simplicity
-- Always have a rollback plan
-
-Provide concrete, implementable solutions with code snippets when helpful.`
+Provide concrete, implementable solutions with code snippets.`
   },
 
   MEL: {
@@ -161,22 +147,16 @@ Provide concrete, implementable solutions with code snippets when helpful.`
     tier: 'junior',
     specialties: ['ui', 'ux', 'frontend', 'design', 'dashboard', 'mobile', 'marketing', 'growth'],
     reasoningStyle: 'user-centric',
+    preferredModels: ['groq/llama-3.1-70b-versatile', 'anthropic/claude-3-haiku'],
     systemPrompt: `You are MEL (Marketing & Experience Lead), the user experience champion of Trinity Symphony.
 
 Your mission: Make advanced AI accessible to everyone through intuitive design.
 
 REASONING APPROACH:
-1. Start from the user's perspective - what do they need?
-2. Simplify complexity - hide the machinery, show the magic
+1. Start from the user's perspective
+2. Simplify complexity - hide machinery, show magic
 3. Consider accessibility and inclusivity
-4. Test assumptions against real user behavior
-5. Iterate based on feedback
-
-Core Principles:
-- Users first, technology second
-- Simplicity is the ultimate sophistication
-- Every interaction should feel magical
-- Accessibility is non-negotiable
+4. Test assumptions against real behavior
 
 Think from the user's perspective. Suggest concrete UI improvements.`
   },
@@ -184,9 +164,10 @@ Think from the user's perspective. Suggest concrete UI improvements.`
   GCM: {
     name: 'Governance & Compliance Manager',
     role: 'Guardian & Quality Assurer',
-    tier: 'senior',  // Critical for oversight
-    specialties: ['governance', 'compliance', 'security', 'audit', 'risk', 'ethics', 'review'],
+    tier: 'senior',
+    specialties: ['governance', 'compliance', 'security', 'audit', 'risk', 'ethics', 'review', 'verification'],
     reasoningStyle: 'critical',
+    preferredModels: ['anthropic/claude-3-haiku', 'groq/llama-3.1-70b-versatile'],
     systemPrompt: `You are GCM (Governance & Compliance Manager), the guardian of Trinity Symphony.
 
 Your mission: Ensure ethical operation, quality output, and user protection.
@@ -196,13 +177,6 @@ REASONING APPROACH:
 2. Verify claims before accepting them
 3. Consider ethical implications
 4. Check constitutional compliance
-5. Suggest mitigations, not just problems
-
-Core Principles:
-- Trust through transparency
-- Security without paranoia
-- Quality over speed
-- Constitutional compliance always
 
 Be thorough but practical. Flag risks with severity levels.`
   },
@@ -211,8 +185,9 @@ Be thorough but practical. Flag risks with severity levels.`
     name: 'Technical Orchestration & Resource Coordination Hub',
     role: 'Efficiency Optimizer',
     tier: 'junior',
-    specialties: ['orchestration', 'coordination', 'routing', 'optimization', 'cost', 'anfis', 'automation'],
+    specialties: ['orchestration', 'coordination', 'routing', 'optimization', 'cost', 'anfis', 'automation', 'performance'],
     reasoningStyle: 'analytical',
+    preferredModels: ['groq/llama-3.1-70b-versatile', 'deepseek/deepseek-chat'],
     systemPrompt: `You are TORCH (Technical Orchestration & Resource Coordination Hub), the optimizer of Trinity Symphony.
 
 Your mission: Maximize efficiency through intelligent resource allocation.
@@ -220,41 +195,28 @@ Your mission: Maximize efficiency through intelligent resource allocation.
 REASONING APPROACH:
 1. Measure current state quantitatively
 2. Identify bottlenecks and inefficiencies
-3. Model improvements mathematically when possible
-4. Consider cost-benefit tradeoffs
-5. Automate repetitive optimizations
+3. Model improvements mathematically
+4. Automate repetitive optimizations
 
-Core Principles:
-- Every token counts (ANFIS arbitrage)
-- Automate the automatable
-- Monitor, measure, improve
-- Graceful degradation over hard failure
-
-Quantify improvements when possible. Suggest automation opportunities.`
+Quantify improvements. Suggest automation opportunities.`
   },
 
   VERITAS: {
     name: 'Verification & Truth Assessment System',
     role: 'Truth Seeker & Critic',
-    tier: 'senior',  // Critical for verification
-    specialties: ['verification', 'fact-check', 'zkp', 'reputation', 'validation', 'truth', 'accuracy'],
+    tier: 'senior',
+    specialties: ['verification', 'fact-check', 'zkp', 'reputation', 'validation', 'truth', 'accuracy', 'review'],
     reasoningStyle: 'skeptical',
+    preferredModels: ['anthropic/claude-3-haiku', 'groq/llama-3.1-70b-versatile'],
     systemPrompt: `You are VERITAS (Verification & Truth Assessment System), the truth-seeker of Trinity Symphony.
 
 Your mission: Ensure accuracy and build trust through transparent verification.
 
 REASONING APPROACH:
 1. Question assumptions - what evidence supports this?
-2. Distinguish facts from opinions explicitly
+2. Distinguish facts from opinions
 3. Rate confidence levels honestly (0.0 to 1.0)
-4. Identify claims needing external verification
-5. Flag uncertainty rather than hide it
-
-Core Principles:
-- Truth over convenience
-- Cite sources, flag uncertainty
-- Byzantine consensus for critical claims
-- RepID: reputation through verified work
+4. Flag claims needing external verification
 
 Be the skeptic. Challenge claims constructively.`
   },
@@ -265,32 +227,27 @@ Be the skeptic. Challenge claims constructively.`
     tier: 'junior',
     specialties: ['blockchain', 'smart contracts', 'tokenomics', 'web3', 'decentralized', 'crypto', 'dao'],
     reasoningStyle: 'technical',
+    preferredModels: ['deepseek/deepseek-chat', 'groq/llama-3.1-70b-versatile'],
     systemPrompt: `You are W3C (Web3 Coordination), the blockchain specialist of Trinity Symphony.
 
 Your mission: Bridge Web2 and Web3 to democratize access to decentralized technologies.
 
 REASONING APPROACH:
-1. Understand the decentralization requirements
+1. Understand decentralization requirements
 2. Consider gas costs and efficiency
-3. Use battle-tested patterns over novel approaches
-4. Bridge technical and business perspectives
-5. Make Web3 accessible to Web2 developers
+3. Use battle-tested patterns
+4. Make Web3 accessible to Web2 developers
 
-Core Principles:
-- Decentralization serves the mission
-- Security before features
-- Gas optimization matters
-- Explain Web3 simply
-
-Make blockchain accessible. Consider gas costs and efficiency.`
+Make blockchain accessible. Consider gas costs.`
   },
 
   EVO: {
     name: 'Evolution Orchestrator',
     role: 'Meta-Intelligence & Improvement Agent',
-    tier: 'orchestrator',  // Highest tier - oversees all
-    specialties: ['evolution', 'orchestration', 'improvement', 'meta', 'feedback', 'learning'],
+    tier: 'orchestrator',
+    specialties: ['evolution', 'orchestration', 'improvement', 'meta', 'feedback', 'learning', 'genome'],
     reasoningStyle: 'meta-cognitive',
+    preferredModels: ['anthropic/claude-3-haiku', 'groq/llama-3.1-70b-versatile'],
     systemPrompt: `You are EVO (Evolution Orchestrator), the meta-intelligence of Trinity Symphony.
 
 Your mission: Continuously improve the entire system through observation, measurement, and adaptation.
@@ -299,16 +256,9 @@ REASONING APPROACH:
 1. Observe patterns across all agent outputs
 2. Measure effectiveness quantitatively
 3. Identify improvement opportunities
-4. Design experiments to test improvements
-5. Propagate successful patterns to all agents
+4. Propagate successful patterns
 
-Core Principles:
-- Improvement is continuous, not episodic
-- Measure everything that matters
-- Learn from failures faster than successes
-- The system should get smarter every day
-
-You orchestrate the orchestra. Make the whole greater than the sum of parts.`
+You orchestrate the orchestra. Make the whole greater than the sum.`
   }
 };
 
@@ -337,134 +287,296 @@ class ConstitutionalAgent {
     this.conductorSince = null;
     this.challengesToday = 0;
     this.lastChallengeReset = new Date().toDateString();
+    this.currentTask = null;
+    this.tasksCompletedThisSession = 0;
     
-    // Metrics tracking (Grok's quantitative measurement)
+    // Session metrics (Grok's quantitative tracking)
     this.sessionMetrics = {
       tasksCompleted: 0,
       tasksReflected: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
       avgReasoningDepth: 0,
       avgCertainty: 0,
       llmCalls: 0,
-      llmTokensUsed: 0
+      llmTokensUsed: 0,
+      verificationTasksSpawned: 0,
+      providerSuccesses: {},
+      providerFailures: {}
     };
     
-    // Detect available LLM providers
+    // Detect available providers
     this.availableProviders = this.detectProviders();
-    console.log(`[${this.name}] 🧠 Intelligence enabled via: ${this.availableProviders.join(', ') || 'NONE!'}`);
+    console.log(`[${this.name}] 🧠 Intelligence via: ${this.availableProviders.join(', ') || 'NONE!'}`);
   }
 
   // ============================================
-  // LLM INTELLIGENCE (The Spreading Wisdom)
+  // PROVIDER DETECTION & SMART ROUTING
+  // Grok's learned routing + Claude's arbitrage
   // ============================================
 
   detectProviders() {
     const available = [];
-    for (const [name, config] of Object.entries(LLM_PROVIDERS)) {
+    for (const [model, config] of Object.entries(LLM_PROVIDERS)) {
       if (process.env[config.keyEnv]) {
-        available.push(name);
+        available.push(model);
       }
     }
-    // Sort by cost (free first)
-    return available.sort((a, b) => 
-      (LLM_PROVIDERS[a].costPer1k || 0) - (LLM_PROVIDERS[b].costPer1k || 0)
-    );
+    return available;
   }
 
   /**
-   * CORE INTELLIGENCE: Call LLM with ANFIS arbitrage
-   * Tries providers in cost-optimized order
+   * SMART MODEL SELECTION (Grok's ANFIS-style learned routing)
+   * Uses historical performance + agent preferences + task type
    */
-  async callLLM(prompt, options = {}) {
-    const maxTokens = options.maxTokens || 2000;
-    const temperature = options.temperature || 0.7;
-    const systemPrompt = options.systemPrompt || this.wisdom.systemPrompt;
-    
-    for (const providerName of this.availableProviders) {
+  async chooseBestModel(taskType = 'general') {
+    // First, try to get learned performance data
+    if (this.supabase) {
       try {
-        console.log(`[${this.name}] 🤔 Thinking via ${providerName}...`);
-        const startTime = Date.now();
+        const { data } = await this.supabase
+          .from('provider_performance')
+          .select('*')
+          .eq('agent', this.name)
+          .order('success_rate', { ascending: false });
         
-        const result = await this.callProvider(providerName, prompt, systemPrompt, maxTokens, temperature);
-        
-        if (result) {
-          const duration = Date.now() - startTime;
-          const tokens = Math.ceil((prompt.length + result.length) / 4);
-          
-          this.sessionMetrics.llmCalls++;
-          this.sessionMetrics.llmTokensUsed += tokens;
-          
-          console.log(`[${this.name}] 💡 Wisdom received (${result.length} chars, ${duration}ms)`);
-          
-          await this.log('llm_success', `Used ${providerName}`, { 
-            provider: providerName,
-            tokens,
-            duration
-          });
-          
-          return { output: result, provider: providerName, isReal: true, tokens };
+        if (data?.length > 0) {
+          // Find best model that's available
+          for (const perf of data) {
+            if (this.availableProviders.includes(perf.model)) {
+              return perf.model;
+            }
+          }
         }
       } catch (err) {
-        console.error(`[${this.name}] ⚠️ ${providerName} failed:`, err.message);
-        await this.log('llm_fallback', `${providerName} failed`, { error: err.message });
+        // Table might not exist yet - that's ok
       }
     }
     
-    // Graceful degradation (Article 6)
+    // Fallback: Use agent's preferred models
+    for (const model of this.wisdom.preferredModels || []) {
+      if (this.availableProviders.includes(model)) {
+        return model;
+      }
+    }
+    
+    // Final fallback: First available (cost-sorted)
+    const sorted = this.availableProviders.sort((a, b) => 
+      (LLM_PROVIDERS[a]?.costPer1k || 0) - (LLM_PROVIDERS[b]?.costPer1k || 0)
+    );
+    return sorted[0] || 'groq/llama-3.1-70b-versatile';
+  }
+
+  /**
+   * Update provider performance (Grok's learning loop)
+   */
+  async updateProviderPerformance(model, success, latencyMs, tokens) {
+    if (!this.supabase) return;
+    
+    // Track in session
+    if (success) {
+      this.sessionMetrics.providerSuccesses[model] = (this.sessionMetrics.providerSuccesses[model] || 0) + 1;
+    } else {
+      this.sessionMetrics.providerFailures[model] = (this.sessionMetrics.providerFailures[model] || 0) + 1;
+    }
+    
+    try {
+      // Upsert to provider_performance table
+      const { data: existing } = await this.supabase
+        .from('provider_performance')
+        .select('*')
+        .eq('agent', this.name)
+        .eq('model', model)
+        .single();
+      
+      const calls = (existing?.total_calls || 0) + 1;
+      const successes = (existing?.successes || 0) + (success ? 1 : 0);
+      const avgLatency = existing 
+        ? (existing.avg_latency_ms * existing.total_calls + latencyMs) / calls
+        : latencyMs;
+      
+      await this.supabase.from('provider_performance').upsert({
+        agent: this.name,
+        model,
+        total_calls: calls,
+        successes,
+        success_rate: successes / calls,
+        avg_latency_ms: avgLatency,
+        total_tokens: (existing?.total_tokens || 0) + tokens,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'agent,model' });
+      
+    } catch (err) {
+      // Table might not exist - log but continue
+      console.log(`[${this.name}] Note: provider_performance tracking unavailable`);
+    }
+  }
+
+  // ============================================
+  // WISDOM CACHE (Grok's key insight)
+  // Never re-ask the same question twice
+  // ============================================
+
+  hashPrompt(prompt) {
+    return crypto.createHash('sha256').update(prompt).digest('hex');
+  }
+
+  async checkWisdomCache(promptHash) {
+    if (!this.supabase) return null;
+    
+    try {
+      const { data } = await this.supabase
+        .from('wisdom_cache')
+        .select('output, created_at')
+        .eq('prompt_hash', promptHash)
+        .single();
+      
+      if (data) {
+        // Check TTL
+        const age = Date.now() - new Date(data.created_at).getTime();
+        const ttlMs = WISDOM_CACHE_TTL_HOURS * 60 * 60 * 1000;
+        
+        if (age < ttlMs) {
+          this.sessionMetrics.cacheHits++;
+          console.log(`[${this.name}] 💾 Wisdom cache HIT`);
+          return data.output;
+        }
+      }
+    } catch (err) {
+      // Table might not exist
+    }
+    
+    this.sessionMetrics.cacheMisses++;
+    return null;
+  }
+
+  async storeWisdomCache(promptHash, output, taskType = 'general') {
+    if (!this.supabase) return;
+    
+    try {
+      await this.supabase.from('wisdom_cache').upsert({
+        prompt_hash: promptHash,
+        output,
+        agent: this.name,
+        task_type: taskType,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'prompt_hash' });
+    } catch (err) {
+      // Silent fail - cache is optimization, not critical
+    }
+  }
+
+  // ============================================
+  // UNIFIED LLM CALLING (Claude + Grok synthesis)
+  // Smart routing + caching + performance tracking
+  // ============================================
+
+  async callLLM(prompt, options = {}) {
+    const systemPrompt = options.systemPrompt || this.wisdom.systemPrompt;
+    const maxTokens = options.maxTokens || 2000;
+    const temperature = options.temperature || 0.7;
+    const skipCache = options.skipCache || false;
+    const taskType = options.taskType || 'general';
+    
+    // Check wisdom cache first (Grok's optimization)
+    if (!skipCache) {
+      const promptHash = this.hashPrompt(systemPrompt + prompt);
+      const cached = await this.checkWisdomCache(promptHash);
+      if (cached) {
+        await this.updateRepID(REPID.CACHE_HIT_BONUS, 'Wisdom cache hit');
+        return { output: cached, provider: 'cache', isReal: true, cached: true };
+      }
+    }
+    
+    // Choose best model (learned routing)
+    const preferredModel = await this.chooseBestModel(taskType);
+    
+    // Try preferred model first, then fallback to others
+    const modelsToTry = [preferredModel, ...this.availableProviders.filter(m => m !== preferredModel)];
+    
+    for (const model of modelsToTry) {
+      try {
+        console.log(`[${this.name}] 🤔 Thinking via ${model}...`);
+        const startTime = Date.now();
+        
+        const result = await this.callProvider(model, prompt, systemPrompt, maxTokens, temperature);
+        
+        if (result) {
+          const latency = Date.now() - startTime;
+          const tokens = Math.ceil((prompt.length + result.length) / 4);
+          
+          // Update performance tracking
+          await this.updateProviderPerformance(model, true, latency, tokens);
+          
+          // Update session metrics
+          this.sessionMetrics.llmCalls++;
+          this.sessionMetrics.llmTokensUsed += tokens;
+          
+          console.log(`[${this.name}] 💡 Wisdom received (${result.length} chars, ${latency}ms)`);
+          
+          // Store in wisdom cache
+          if (!skipCache) {
+            const promptHash = this.hashPrompt(systemPrompt + prompt);
+            await this.storeWisdomCache(promptHash, result, taskType);
+          }
+          
+          await this.log('llm_success', `${model} (${latency}ms)`, { model, latency, tokens });
+          
+          return { output: result, provider: model, isReal: true, cached: false };
+        }
+      } catch (err) {
+        console.error(`[${this.name}] ⚠️ ${model} failed:`, err.message);
+        await this.updateProviderPerformance(model, false, 0, 0);
+        await this.log('llm_fallback', `${model} failed`, { model, error: err.message });
+      }
+    }
+    
+    // All providers failed - graceful degradation
     console.error(`[${this.name}] ❌ All providers failed`);
     return { 
       output: this.gracefulFallback(prompt),
       provider: 'fallback',
-      isReal: false
+      isReal: false,
+      cached: false
     };
   }
 
-  gracefulFallback(prompt) {
-    return `[DEGRADED MODE - LLM Unavailable]
-
-Task received but all AI providers are currently unavailable.
-
-Request summary: ${prompt.substring(0, 300)}...
-
-Recommended actions:
-1. Check API key validity in Render environment
-2. Verify provider status pages
-3. Task queued for retry when service restores
-
-Generated in degraded mode by ${this.name}.
-Constitutional Article 6: Graceful degradation over hard failure.`;
-  }
-
-  async callProvider(providerName, prompt, systemPrompt, maxTokens, temperature) {
-    const config = LLM_PROVIDERS[providerName];
+  async callProvider(model, prompt, systemPrompt, maxTokens, temperature) {
+    const config = LLM_PROVIDERS[model];
+    if (!config) return null;
+    
     const apiKey = process.env[config.keyEnv];
     if (!apiKey) return null;
 
-    switch (providerName) {
-      case 'gemini':
-        return await this.callGemini(prompt, systemPrompt, apiKey, maxTokens);
-      case 'anthropic':
-        return await this.callAnthropic(prompt, systemPrompt, apiKey, maxTokens, temperature);
-      default:
-        return await this.callOpenAICompatible(config, prompt, systemPrompt, apiKey, maxTokens, temperature, providerName);
+    // Handle different provider formats
+    if (config.endpoint === 'gemini') {
+      return await this.callGemini(prompt, systemPrompt, apiKey, maxTokens);
+    } else if (model.startsWith('anthropic/')) {
+      return await this.callAnthropic(prompt, systemPrompt, apiKey, maxTokens, temperature);
+    } else {
+      return await this.callOpenAICompatible(config, model, prompt, systemPrompt, apiKey, maxTokens, temperature);
     }
   }
 
-  async callOpenAICompatible(config, prompt, systemPrompt, apiKey, maxTokens, temperature, providerName) {
+  async callOpenAICompatible(config, model, prompt, systemPrompt, apiKey, maxTokens, temperature) {
     const headers = {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     };
 
-    if (providerName === 'openrouter') {
+    // OpenRouter needs extra headers
+    if (model.includes('openrouter')) {
       headers['HTTP-Referer'] = process.env.OPENROUTER_REFERRER || 'https://trinitysymphony.ai';
       headers['X-Title'] = 'Trinity Symphony';
     }
 
-    const response = await fetch(config.url, {
+    // Extract actual model name for API
+    const apiModel = model.includes('/') ? model.split('/').slice(1).join('/') : model;
+
+    const response = await fetch(config.endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: config.model,
+        model: apiModel,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
@@ -495,7 +607,7 @@ Constitutional Article 6: Graceful degradation over hard failure.`;
       })
     });
 
-    if (!response.ok) throw new Error(`${response.status}`);
+    if (!response.ok) throw new Error(`Gemini: ${response.status}`);
     const data = await response.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
   }
@@ -516,66 +628,141 @@ Constitutional Article 6: Graceful degradation over hard failure.`;
       })
     });
 
-    if (!response.ok) throw new Error(`${response.status}`);
+    if (!response.ok) throw new Error(`Anthropic: ${response.status}`);
     const data = await response.json();
     return data.content?.[0]?.text || null;
   }
 
+  gracefulFallback(prompt) {
+    return `[DEGRADED MODE - LLM Unavailable]
+
+Task received but all AI providers are currently unavailable.
+
+Request: ${prompt.substring(0, 300)}...
+
+Recommended actions:
+1. Check API key validity in Render environment
+2. Verify provider status pages
+3. Task queued for retry
+
+Generated in degraded mode by ${this.name}.
+Constitutional Article 6: Graceful degradation over hard failure.`;
+  }
+
   // ============================================
-  // DEEP REASONING (Grok's SiriuS-style approach)
-  // Multi-step reasoning with reflection loops
+  // AUTO-VERIFICATION (Grok's critical insight)
+  // Low certainty triggers peer review automatically
   // ============================================
 
-  /**
-   * Deep reasoning with chain-of-thought and reflection
-   * Implements Grok's Pre-Act style multi-step planning
-   */
-  async deepReason(task, maxSteps = 5) {
-    const reasoningChain = [];
-    let currentUnderstanding = task.description || task.title;
+  async spawnVerificationTask(originalTask, result, certainty) {
+    if (!this.supabase || certainty >= VERIFICATION_THRESHOLD) return;
     
-    // Step 1: Decompose the problem
-    const decomposition = await this.callLLM(`
-You are ${this.name}, using ${this.wisdom.reasoningStyle} reasoning.
+    console.log(`[${this.name}] 🔍 Certainty ${certainty.toFixed(2)} < ${VERIFICATION_THRESHOLD}, spawning verification...`);
+    
+    try {
+      await this.supabase.from('trinity_tasks').insert({
+        title: `VERIFY: ${originalTask.title || originalTask.description?.substring(0, 50)}`,
+        description: `Peer review needed (certainty ${certainty.toFixed(2)})
 
-TASK: ${currentUnderstanding}
+ORIGINAL TASK:
+${originalTask.description || originalTask.title}
+
+OUTPUT TO VERIFY:
+${result.substring(0, 1500)}
+
+Please verify accuracy, completeness, and actionability.
+Rate confidence 0-1 and flag any issues.`,
+        task_type: 'verification',
+        priority: (originalTask.priority || 5) + 2,  // Higher priority
+        parent_task_id: originalTask.id,
+        agent_assigned: 'VERITAS',  // Route to truth-seeker
+        status: 'pending',
+        metadata: {
+          original_agent: this.name,
+          original_certainty: certainty,
+          verification_type: 'auto'
+        },
+        created_at: new Date().toISOString()
+      });
+      
+      this.sessionMetrics.verificationTasksSpawned++;
+      await this.log('verification_spawned', `Auto-verification for task ${originalTask.id}`, { 
+        certainty, 
+        original_task: originalTask.id 
+      });
+      
+    } catch (err) {
+      console.error(`[${this.name}] Failed to spawn verification:`, err.message);
+    }
+  }
+
+  // ============================================
+  // EVO GENOME REPORTING (Grok's evolution hook)
+  // ============================================
+
+  async reportToEVO() {
+    if (!this.supabase || this.tasksCompletedThisSession % EVO_REPORT_INTERVAL !== 0) return;
+    if (this.tasksCompletedThisSession === 0) return;
+    
+    const genome = {
+      agent: this.name,
+      version: '5.0.0',
+      sessionMetrics: this.sessionMetrics,
+      timestamp: new Date().toISOString(),
+      providerPreferences: this.wisdom.preferredModels,
+      effectiveProviders: Object.keys(this.sessionMetrics.providerSuccesses)
+        .sort((a, b) => this.sessionMetrics.providerSuccesses[b] - this.sessionMetrics.providerSuccesses[a])
+    };
+    
+    try {
+      await this.supabase.from('evolution_log').insert({
+        metric_name: 'agent_genome',
+        value: this.sessionMetrics.tasksCompleted,
+        agent: this.name,
+        context: genome,
+        created_at: new Date().toISOString()
+      });
+      
+      console.log(`[${this.name}] 🧬 Genome reported to EVO`);
+      await this.log('genome_reported', `Session genome after ${this.tasksCompletedThisSession} tasks`, genome);
+      
+    } catch (err) {
+      console.log(`[${this.name}] Note: EVO genome reporting unavailable`);
+    }
+  }
+
+  // ============================================
+  // DEEP REASONING (Claude's contribution)
+  // ============================================
+
+  async deepReason(task) {
+    const reasoningChain = [];
+    
+    // Step 1: Decomposition
+    const decomposition = await this.callLLM(`
+TASK: ${task.description || task.title}
 
 STEP 1 - DECOMPOSITION:
-Break this task into logical steps. For each step:
-- What needs to happen?
-- What are the dependencies?
-- What could go wrong?
+Break this into logical steps with dependencies.
+Output numbered steps.
+`, { maxTokens: 1000, skipCache: true });
 
-Output as numbered steps with dependencies noted.
-`, { maxTokens: 1000 });
+    reasoningChain.push({ step: 1, type: 'decomposition', output: decomposition.output });
 
-    reasoningChain.push({
-      step: 1,
-      type: 'decomposition',
-      output: decomposition.output
-    });
-
-    // Step 2: Identify dependencies (DAG construction)
+    // Step 2: Dependencies
     const dependencies = await this.callLLM(`
 Based on this decomposition:
 ${decomposition.output}
 
 STEP 2 - DEPENDENCY ANALYSIS:
-Which steps must complete before others can start?
-Which steps can run in parallel?
+Which steps must complete before others? Which can parallelize?
+`, { maxTokens: 500, skipCache: true });
 
-Output a dependency map showing the order of execution.
-`, { maxTokens: 500 });
+    reasoningChain.push({ step: 2, type: 'dependencies', output: dependencies.output });
 
-    reasoningChain.push({
-      step: 2,
-      type: 'dependencies',
-      output: dependencies.output
-    });
-
-    // Step 3: Execute reasoning for main task
+    // Step 3: Execute
     const execution = await this.callLLM(`
-TASK: ${currentUnderstanding}
+TASK: ${task.description || task.title}
 
 DECOMPOSITION:
 ${decomposition.output}
@@ -584,17 +771,12 @@ DEPENDENCIES:
 ${dependencies.output}
 
 STEP 3 - EXECUTION:
-Now complete the task following the logical steps identified.
-Be thorough and substantive. Provide actionable output.
-`, { maxTokens: 2000 });
+Complete the task following the logical steps.
+`, { maxTokens: 2000, skipCache: true });
 
-    reasoningChain.push({
-      step: 3,
-      type: 'execution',
-      output: execution.output
-    });
+    reasoningChain.push({ step: 3, type: 'execution', output: execution.output });
 
-    // Store reasoning chain
+    // Store chain
     await this.storeReasoningChain(task.id, reasoningChain);
 
     return {
@@ -605,21 +787,19 @@ Be thorough and substantive. Provide actionable output.
     };
   }
 
-  /**
-   * Reflection loop - critique and improve output
-   * Implements SiriuS actor-critic pattern
-   */
+  // ============================================
+  // REFLECTION (Claude's contribution)
+  // ============================================
+
   async reflectAndImprove(task, initialOutput, initialCertainty) {
-    // Only reflect if certainty is below threshold
-    if (initialCertainty >= REFLECTION_THRESHOLD) {
+    if (initialCertainty >= VERIFICATION_THRESHOLD - 0.05) {
       return { output: initialOutput, certainty: initialCertainty, reflected: false };
     }
 
-    console.log(`[${this.name}] 🔄 Certainty ${initialCertainty} < ${REFLECTION_THRESHOLD}, reflecting...`);
+    console.log(`[${this.name}] 🔄 Reflecting on output (certainty ${initialCertainty.toFixed(2)})...`);
 
-    // Critic phase: Get critique from VERITAS perspective
     const critique = await this.callLLM(`
-You are acting as VERITAS (the truth-seeker) reviewing work by ${this.name}.
+You are VERITAS reviewing ${this.name}'s work.
 
 TASK: ${task.description || task.title}
 
@@ -627,48 +807,34 @@ OUTPUT TO REVIEW:
 ${initialOutput.substring(0, 2000)}
 
 CRITIQUE:
-1. ACCURACY (0-1): Are claims verifiable? Flag uncertain statements.
-2. COMPLETENESS (0-1): Does it fully address the task?
-3. ACTIONABILITY (0-1): Can someone act on this immediately?
-4. REASONING (0-1): Is the logic sound?
+1. ACCURACY (0-1): Verifiable?
+2. COMPLETENESS (0-1): Fully addresses task?
+3. ACTIONABILITY (0-1): Can act on immediately?
 
-For each issue found, suggest a specific fix.
+For each issue, suggest a fix.
 End with: OVERALL_SCORE: X.XX
-`, { maxTokens: 1000 });
+`, { maxTokens: 1000, skipCache: true });
 
-    // Parse score from critique
     const scoreMatch = critique.output.match(/OVERALL_SCORE:\s*([\d.]+)/);
     const critiqueScore = scoreMatch ? parseFloat(scoreMatch[1]) : 0.7;
 
-    // If critique score is still low, regenerate
-    if (critiqueScore < REFLECTION_THRESHOLD) {
+    if (critiqueScore < VERIFICATION_THRESHOLD - 0.1) {
       console.log(`[${this.name}] 🔧 Regenerating based on critique...`);
       
       const improved = await this.callLLM(`
 ORIGINAL TASK: ${task.description || task.title}
 
-YOUR PREVIOUS OUTPUT:
+PREVIOUS OUTPUT:
 ${initialOutput.substring(0, 1500)}
 
-CRITIQUE RECEIVED:
+CRITIQUE:
 ${critique.output}
 
-REGENERATE:
-Address the critique points and produce an improved version.
-Be more specific, accurate, and actionable.
-`, { maxTokens: 2000 });
+REGENERATE: Address critique points. Be more specific and actionable.
+`, { maxTokens: 2000, skipCache: true });
 
       this.sessionMetrics.tasksReflected++;
       
-      // Store reflection in feedback table
-      await this.storeFeedback(task.id, {
-        initial_output: initialOutput.substring(0, 500),
-        critique: critique.output,
-        improved_output: improved.output.substring(0, 500),
-        initial_score: initialCertainty,
-        final_score: Math.min(critiqueScore + 0.15, 0.95)  // Improvement bonus
-      });
-
       return {
         output: improved.output,
         certainty: Math.min(critiqueScore + 0.15, 0.95),
@@ -681,137 +847,27 @@ Be more specific, accurate, and actionable.
   }
 
   // ============================================
-  // HIERARCHICAL TASK PROCESSING
-  // Dependency-aware execution with DAG support
-  // ============================================
-
-  /**
-   * Check if task dependencies are satisfied
-   */
-  async checkDependencies(task) {
-    if (!this.supabase || !task.dependencies?.length) return true;
-
-    try {
-      const { data: deps } = await this.supabase
-        .from('trinity_tasks')
-        .select('id, status')
-        .in('id', task.dependencies);
-
-      const allComplete = deps?.every(d => d.status === 'completed');
-      
-      if (!allComplete) {
-        const pending = deps?.filter(d => d.status !== 'completed').map(d => d.id);
-        console.log(`[${this.name}] ⏳ Waiting for dependencies: ${pending.join(', ')}`);
-      }
-      
-      return allComplete;
-    } catch (err) {
-      console.error(`[${this.name}] Dependency check error:`, err.message);
-      return true;  // Proceed if check fails
-    }
-  }
-
-  /**
-   * Decompose complex task into subtasks (hierarchical orchestration)
-   */
-  async decomposeTask(task) {
-    if (!this.supabase) return [];
-
-    const decomposition = await this.callLLM(`
-TASK TO DECOMPOSE:
-Title: ${task.title}
-Description: ${task.description}
-
-Break this into 2-5 subtasks that can be assigned to specialized agents:
-- APM: spiritual, strategy, product
-- HDM: infrastructure, database, deployment
-- MEL: UI, UX, frontend, design
-- GCM: governance, security, compliance
-- TORCH: optimization, automation
-- VERITAS: verification, fact-checking
-- W3C: blockchain, Web3
-
-Output JSON array:
-[
-  {"title": "...", "description": "...", "agent": "XXX", "depends_on": []},
-  ...
-]
-`, { maxTokens: 1000 });
-
-    try {
-      // Parse JSON from response
-      const jsonMatch = decomposition.output.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) return [];
-      
-      const subtasks = JSON.parse(jsonMatch[0]);
-      
-      // Insert subtasks into database
-      const insertedIds = [];
-      for (const subtask of subtasks) {
-        const { data, error } = await this.supabase
-          .from('trinity_tasks')
-          .insert({
-            title: subtask.title,
-            description: subtask.description,
-            agent_assigned: subtask.agent,
-            parent_task_id: task.id,
-            dependencies: subtask.depends_on || [],
-            status: 'pending',
-            priority: (task.priority || 5) - 1,
-            generation: (task.generation || 0) + 1,
-            created_at: new Date().toISOString()
-          })
-          .select('id')
-          .single();
-
-        if (data) insertedIds.push(data.id);
-      }
-
-      await this.log('task_decomposed', `Split task ${task.id} into ${insertedIds.length} subtasks`, {
-        parent_id: task.id,
-        subtask_ids: insertedIds
-      });
-
-      return insertedIds;
-    } catch (err) {
-      console.error(`[${this.name}] Decomposition parse error:`, err.message);
-      return [];
-    }
-  }
-
-  // ============================================
   // INTELLIGENT TASK PROCESSING
-  // Combines all the pieces: LLM + reasoning + reflection
   // ============================================
 
-  /**
-   * Master intelligent processor
-   * Automatically upgrades template outputs to real AI
-   */
   async intelligentProcess(task) {
-    // Check dependencies first
-    const depsReady = await this.checkDependencies(task);
-    if (!depsReady) {
-      return null;  // Will retry later
-    }
-
-    // For complex tasks, use deep reasoning
+    this.currentTask = task;
+    
     const isComplex = (task.description?.length > 200) || 
                       (task.priority >= 8) ||
                       (task.task_type === 'research');
 
     let result;
     if (isComplex) {
-      console.log(`[${this.name}] 🧠 Using deep reasoning for complex task`);
+      console.log(`[${this.name}] 🧠 Deep reasoning for complex task`);
       result = await this.deepReason(task);
     } else {
-      // Standard processing
       const prompt = this.buildSmartPrompt(task);
-      result = await this.callLLM(prompt);
+      result = await this.callLLM(prompt, { taskType: task.task_type });
       result.reasoningDepth = 1;
     }
 
-    // Calculate initial certainty
+    // Calculate certainty
     let certainty = 0.85;
     const desc = (task.description || '').toLowerCase();
     if (desc.includes('research') || desc.includes('analyze')) {
@@ -819,27 +875,24 @@ Output JSON array:
     } else if (desc.includes('verify') || desc.includes('fact')) {
       certainty = 0.90;
     }
+    if (result.cached) certainty = Math.min(certainty + 0.05, 0.95);
 
-    // Apply reflection if needed
+    // Reflect if needed
     const reflected = await this.reflectAndImprove(task, result.output, certainty);
+
+    // Auto-spawn verification for low certainty (Grok's insight)
+    await this.spawnVerificationTask(task, reflected.output, reflected.certainty);
 
     // Update metrics
     this.sessionMetrics.tasksCompleted++;
-    this.sessionMetrics.avgReasoningDepth = 
-      (this.sessionMetrics.avgReasoningDepth * (this.sessionMetrics.tasksCompleted - 1) + result.reasoningDepth) 
-      / this.sessionMetrics.tasksCompleted;
-    this.sessionMetrics.avgCertainty =
-      (this.sessionMetrics.avgCertainty * (this.sessionMetrics.tasksCompleted - 1) + reflected.certainty)
-      / this.sessionMetrics.tasksCompleted;
+    this.tasksCompletedThisSession++;
 
-    // Calculate RepID bonuses
+    // Report to EVO periodically
+    await this.reportToEVO();
+
     let repidBonus = 0;
-    if (result.reasoningDepth >= REASONING_DEPTH_TARGET) {
-      repidBonus += REPID.DEEP_REASONING_BONUS;
-    }
-    if (reflected.reflected) {
-      repidBonus += REPID.REFLECTION_IMPROVEMENT;
-    }
+    if (result.reasoningDepth >= REASONING_DEPTH_TARGET) repidBonus += REPID.DEEP_REASONING_BONUS;
+    if (reflected.reflected) repidBonus += REPID.REFLECTION_IMPROVEMENT;
 
     return {
       output: reflected.output,
@@ -848,6 +901,7 @@ Output JSON array:
       provider: result.provider,
       reasoningDepth: result.reasoningDepth,
       reflected: reflected.reflected,
+      cached: result.cached,
       repidBonus
     };
   }
@@ -857,7 +911,6 @@ Output JSON array:
 
 **Title:** ${task.title || 'Task'}
 **Type:** ${task.task_type || 'general'}
-**Tags:** ${(task.tags || []).join(', ') || 'none'}
 **Priority:** ${task.priority || 5}/10
 
 **Description:**
@@ -866,17 +919,9 @@ ${task.description || 'Complete this task'}
 ---
 
 **Your Role:** ${this.wisdom.name} (${this.wisdom.role})
-**Reasoning Style:** ${this.wisdom.reasoningStyle}
-**Specialties:** ${this.specialties.join(', ')}
+**Approach:** ${this.wisdom.reasoningStyle}
 
-**Instructions:**
-1. Analyze through your specialized lens
-2. Provide substantive, actionable output
-3. Flag uncertainties (Article 5)
-4. Consider cost implications (free tier priority)
-5. Remember: help people help people
-
-Provide clear, structured response with specific recommendations and next steps.
+Provide clear, actionable output. Flag uncertainties.
 `;
   }
 
@@ -886,14 +931,13 @@ Provide clear, structured response with specific recommendations and next steps.
       /^\[SIMULATED\]/i,
       /\[.*would execute.*\]/i,
       /^DATABASE ANALYSIS:/,
-      /^DEPLOYMENT PLAN:/,
       /\[HDM Analysis.*Confidence.*\]/
     ];
     return patterns.some(p => p.test(output));
   }
 
   // ============================================
-  // DATA PERSISTENCE (Metrics & Feedback)
+  // DATA PERSISTENCE
   // ============================================
 
   async storeReasoningChain(taskId, chain) {
@@ -902,47 +946,12 @@ Provide clear, structured response with specific recommendations and next steps.
       await this.supabase.from('reasoning_log').insert({
         task_id: taskId,
         agent: this.name,
-        chain: chain,
+        chain,
         depth: chain.length,
         created_at: new Date().toISOString()
       });
-    } catch (err) {
-      // Table might not exist yet - that's ok
-      console.log(`[${this.name}] Note: reasoning_log not available`);
-    }
+    } catch (err) { /* Table might not exist */ }
   }
-
-  async storeFeedback(taskId, feedback) {
-    if (!this.supabase) return;
-    try {
-      await this.supabase.from('agent_feedback').insert({
-        task_id: taskId,
-        agent: this.name,
-        feedback: feedback,
-        created_at: new Date().toISOString()
-      });
-    } catch (err) {
-      console.log(`[${this.name}] Note: agent_feedback not available`);
-    }
-  }
-
-  async storeMetrics() {
-    if (!this.supabase) return;
-    try {
-      await this.supabase.from('agent_performance').upsert({
-        agent: this.name,
-        date: new Date().toISOString().split('T')[0],
-        metrics: this.sessionMetrics,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'agent,date' });
-    } catch (err) {
-      console.log(`[${this.name}] Note: agent_performance metrics not stored`);
-    }
-  }
-
-  // ============================================
-  // LOGGING (Article 3: Transparency)
-  // ============================================
 
   async log(action, message, metadata = {}) {
     if (!this.supabase) return;
@@ -975,11 +984,10 @@ Provide clear, structured response with specific recommendations and next steps.
         metadata: {
           role: this.isConductor ? 'CONDUCTOR' : 'MEMBER',
           tier: this.tier,
-          conductor_since: this.conductorSince,
           specialties: this.specialties,
           available_providers: this.availableProviders,
           session_metrics: this.sessionMetrics,
-          version: '4.0.0-evolving-wisdom'
+          version: '5.0.0-unstoppable-wisdom'
         }
       }, { onConflict: 'agent' });
     } catch (err) {
@@ -1000,9 +1008,7 @@ Provide clear, structured response with specific recommendations and next steps.
         .eq('agent_name', this.name)
         .single();
       return data?.repid_score || 100;
-    } catch {
-      return 100;
-    }
+    } catch { return 100; }
   }
 
   async updateRepID(change, reason) {
@@ -1018,8 +1024,7 @@ Provide clear, structured response with specific recommendations and next steps.
       }, { onConflict: 'agent_name' });
       
       await this.log('repid_change', `${change > 0 ? '+' : ''}${change}: ${reason}`, {
-        previous: current,
-        new: newScore
+        previous: current, new: newScore
       });
     } catch (err) {
       console.error(`[${this.name}] RepID error:`, err.message);
@@ -1027,7 +1032,7 @@ Provide clear, structured response with specific recommendations and next steps.
   }
 
   // ============================================
-  // CONDUCTOR ROTATION (Article 2)
+  // CONDUCTOR ROTATION
   // ============================================
 
   async checkRotation() {
@@ -1073,7 +1078,7 @@ Provide clear, structured response with specific recommendations and next steps.
       rotation_number: rotationNumber
     }, { onConflict: 'id' });
     
-    await this.log('conductor_assumed', `🎭 ${this.name} is now CONDUCTOR`);
+    await this.log('conductor_assumed', `🎭 ${this.name} is CONDUCTOR`);
   }
 
   async checkTenure() {
@@ -1081,14 +1086,13 @@ Provide clear, structured response with specific recommendations and next steps.
     
     const tenure = Date.now() - new Date(this.conductorSince).getTime();
     if (tenure > CONDUCTOR_TENURE_MS) {
-      await this.log('tenure_complete', 'Rotating conductor role');
       this.isConductor = false;
       this.conductorSince = null;
     }
   }
 
   // ============================================
-  // TASK ROUTING (Conductor only)
+  // TASK ROUTING
   // ============================================
 
   async routePendingTasks() {
@@ -1111,7 +1115,7 @@ Provide clear, structured response with specific recommendations and next steps.
         let best = { agent: 'HDM', score: 0 };
         
         for (const [agentName, wisdom] of Object.entries(AGENT_WISDOM)) {
-          if (agentName === 'EVO') continue;  // EVO doesn't take regular tasks
+          if (agentName === 'EVO') continue;
           const score = wisdom.specialties.filter(k => text.includes(k)).length;
           if (score > best.score) best = { agent: agentName, score };
         }
@@ -1125,7 +1129,6 @@ Provide clear, structured response with specific recommendations and next steps.
           })
           .eq('id', task.id);
         
-        await this.log('task_routed', `Task ${task.id} → ${best.agent}`);
         routed++;
       }
       
@@ -1137,7 +1140,7 @@ Provide clear, structured response with specific recommendations and next steps.
   }
 
   // ============================================
-  // OWN TASK PROCESSING
+  // TASK PROCESSING
   // ============================================
 
   async claimNextTask() {
@@ -1164,7 +1167,7 @@ Provide clear, structured response with specific recommendations and next steps.
         })
         .eq('id', task.id);
       
-      await this.log('task_claimed', `Working on: ${task.title || task.id}`);
+      await this.log('task_claimed', `Working: ${task.title || task.id}`);
       return task;
     } catch (err) {
       console.error(`[${this.name}] Claim error:`, err.message);
@@ -1186,10 +1189,13 @@ Provide clear, structured response with specific recommendations and next steps.
             completed_by: this.name,
             reasoning_depth: extras.reasoningDepth || 1,
             reflected: extras.reflected || false,
-            version: '4.0.0-evolving-wisdom',
+            cached: extras.cached || false,
+            version: '5.0.0-unstoppable-wisdom',
             timestamp: new Date().toISOString()
           },
           certainty,
+          reasoning_depth: extras.reasoningDepth || 1,
+          reflected: extras.reflected || false,
           completed_at: new Date().toISOString(),
           completed_by: this.name,
           is_real: isReal
@@ -1205,29 +1211,23 @@ Provide clear, structured response with specific recommendations and next steps.
       let repidGain = Math.min(REPID.TASK_COMPLETE_MAX, 
         REPID.TASK_COMPLETE_BASE + (task?.priority || 5));
       
-      // Add bonuses
       if (isReal) repidGain += 2;
       if (extras.repidBonus) repidGain += extras.repidBonus;
       
-      await this.updateRepID(repidGain, `Completed task ${taskId}`);
-      await this.log('task_completed', `✅ Finished task ${taskId}`, { certainty, isReal, ...extras });
+      await this.updateRepID(repidGain, `Completed ${taskId}`);
+      await this.log('task_completed', `✅ ${taskId}`, { certainty, isReal, ...extras });
+      
     } catch (err) {
       console.error(`[${this.name}] Complete error:`, err.message);
     }
   }
 
   // ============================================
-  // PEER VERIFICATION (Article 5)
+  // PEER REVIEW
   // ============================================
 
   async reviewPeerWork() {
-    if (!this.supabase || this.tier !== 'senior') return;  // Only seniors review
-    
-    const today = new Date().toDateString();
-    if (today !== this.lastChallengeReset) {
-      this.challengesToday = 0;
-      this.lastChallengeReset = today;
-    }
+    if (!this.supabase || this.tier !== 'senior') return;
     
     try {
       const { data: tasks } = await this.supabase
@@ -1251,7 +1251,15 @@ Provide clear, structured response with specific recommendations and next steps.
         if (existing?.length > 0) continue;
         
         if (task.certainty < 0.60 || this.challengesToday < FREE_CHALLENGES_PER_DAY) {
-          await this.issueChallenge(task);
+          await this.supabase.from('repid_challenges').insert({
+            task_id: task.id,
+            challenger: this.name,
+            challenged: task.agent_assigned,
+            reason: `Certainty ${task.certainty} < ${CERTAINTY_THRESHOLD}`,
+            outcome: 'pending',
+            created_at: new Date().toISOString()
+          });
+          this.challengesToday++;
         }
       }
     } catch (err) {
@@ -1259,91 +1267,24 @@ Provide clear, structured response with specific recommendations and next steps.
     }
   }
 
-  async issueChallenge(task) {
-    await this.supabase.from('repid_challenges').insert({
-      task_id: task.id,
-      challenger: this.name,
-      challenged: task.agent_assigned,
-      reason: `Certainty ${task.certainty} < ${CERTAINTY_THRESHOLD}`,
-      outcome: 'pending',
-      created_at: new Date().toISOString()
-    });
-    
-    this.challengesToday++;
-    await this.log('challenge_issued', `⚔️ Challenged ${task.agent_assigned} on task ${task.id}`);
-  }
-
   // ============================================
-  // CROSS-AGENT LEARNING
-  // ============================================
-
-  async learnFromPeers(taskType) {
-    if (!this.supabase) return [];
-    
-    try {
-      const { data } = await this.supabase
-        .from('trinity_tasks')
-        .select('*')
-        .eq('status', 'completed')
-        .neq('agent_assigned', this.name)
-        .eq('task_type', taskType)
-        .eq('is_real', true)
-        .gte('certainty', CERTAINTY_THRESHOLD)
-        .order('completed_at', { ascending: false })
-        .limit(5);
-      
-      if (data?.length > 0) {
-        await this.log('peer_learning', `📚 Studied ${data.length} peer solutions`);
-      }
-      
-      return data || [];
-    } catch {
-      return [];
-    }
-  }
-
-  async shareLearning(title, content, taskType) {
-    if (!this.supabase) return;
-    
-    try {
-      await this.supabase.from('shared_learnings').insert({
-        agent: this.name,
-        title,
-        content,
-        task_type: taskType,
-        created_at: new Date().toISOString()
-      });
-      
-      await this.updateRepID(REPID.SHARE_LEARNING, `Shared: ${title}`);
-    } catch (err) {
-      console.error(`[${this.name}] Share error:`, err.message);
-    }
-  }
-
-  // ============================================
-  // MAIN LOOP - THE EVOLVING WISDOM
+  // MAIN LOOP
   // ============================================
 
   async run(customProcessTask = null) {
     console.log('═'.repeat(60));
-    console.log(`[${this.name}] 🚀 Constitutional Agent v4.0.0 - EVOLVING WISDOM`);
-    console.log(`[${this.name}] 🧠 LLM Providers: ${this.availableProviders.join(', ') || 'NONE'}`);
-    console.log(`[${this.name}] 📜 Role: ${this.wisdom.role} (${this.tier})`);
-    console.log(`[${this.name}] 🎯 Reasoning: ${this.wisdom.reasoningStyle}`);
+    console.log(`[${this.name}] 🚀 v5.0.0 - UNSTOPPABLE WISDOM`);
+    console.log(`[${this.name}] 🧠 Providers: ${this.availableProviders.join(', ') || 'NONE'}`);
+    console.log(`[${this.name}] 📜 ${this.wisdom.role} (${this.tier})`);
     console.log('═'.repeat(60));
     
-    await this.log('startup', `${this.name} online - Evolving Wisdom mode`, {
+    await this.log('startup', `${this.name} online - Unstoppable Wisdom`, {
       providers: this.availableProviders,
-      tier: this.tier,
-      version: '4.0.0'
+      version: '5.0.0'
     });
-    
-    let cycleCount = 0;
     
     while (true) {
       try {
-        cycleCount++;
-        
         await this.heartbeat();
         await this.checkRotation();
         
@@ -1352,21 +1293,15 @@ Provide clear, structured response with specific recommendations and next steps.
           await this.checkTenure();
         }
         
-        // Process own tasks
         const task = await this.claimNextTask();
         if (task) {
           let result;
           
-          // Try custom processor first
           if (customProcessTask) {
             result = await customProcessTask(task);
           }
           
-          // Auto-upgrade templates to real AI
           if (!result || this.looksLikeTemplate(result?.output)) {
-            if (result) {
-              console.log(`[${this.name}] 🔄 Upgrading template to real AI...`);
-            }
             result = await this.intelligentProcess(task);
           }
           
@@ -1379,27 +1314,22 @@ Provide clear, structured response with specific recommendations and next steps.
               {
                 reasoningDepth: result.reasoningDepth,
                 reflected: result.reflected,
+                cached: result.cached,
                 repidBonus: result.repidBonus
               }
             );
           }
         }
         
-        // Peer review (seniors only)
         if (this.tier === 'senior') {
           await this.reviewPeerWork();
-        }
-        
-        // Store metrics every 10 cycles
-        if (cycleCount % 10 === 0) {
-          await this.storeMetrics();
         }
         
         await new Promise(r => setTimeout(r, 30000));
         
       } catch (err) {
         console.error(`[${this.name}] ❌ Error:`, err.message);
-        await this.log('error', err.message, { stack: err.stack });
+        await this.log('error', err.message);
         await new Promise(r => setTimeout(r, 5000));
       }
     }
@@ -1411,6 +1341,6 @@ module.exports = {
   REPID, 
   AGENT_WISDOM, 
   LLM_PROVIDERS,
-  REFLECTION_THRESHOLD,
+  VERIFICATION_THRESHOLD,
   REASONING_DEPTH_TARGET
 };
