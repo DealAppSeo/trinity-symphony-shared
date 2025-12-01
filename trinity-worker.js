@@ -1,7 +1,7 @@
 /**
  * TRINITY SYMPHONY - UNIVERSAL AGENT LAUNCHER
  * 
- * VERSION 7.0.0 - ARTIFACT CREATOR
+ * VERSION 7.1.0 - SABBATH ROTATION
  * 
  * This single file works for ANY agent.
  * Copy to each agent folder (hdm/, apm/, mel/, etc.)
@@ -27,7 +27,7 @@ const path = require('path');
 // INFECTION VERIFICATION (Grok's Architecture)
 // ============================================
 
-const EXPECTED_VERSION = '7.0.0-artifact-creator';
+const EXPECTED_VERSION = '7.1.0-sabbath-rotation';
 const REQUIRED_MARKERS = [
   'TRINITY HEALING LOOP',
   'THREE_ETERNAL_QUESTIONS',
@@ -128,7 +128,7 @@ async function main() {
     ConstitutionalAgent = base.ConstitutionalAgent;
     
     // Verify version
-    if (base.VERSION && !base.VERSION.includes('artifact-creator') && !base.VERSION.includes('trinity-dna') && !base.VERSION.includes('trinity-healer') && !base.VERSION.includes('7.')) {
+    if (base.VERSION && !base.VERSION.includes('sabbath-rotation') && !base.VERSION.includes('artifact-creator') && !base.VERSION.includes('trinity-dna') && !base.VERSION.includes('trinity-healer') && !base.VERSION.includes('7.')) {
       console.warn(`⚠️ Base class version mismatch: ${base.VERSION}`);
     }
     
