@@ -37,7 +37,7 @@ const crypto = require('crypto');
 // ============================================
 
 const CONSTITUTION = {
-  VERSION: '6.2.0-trinity-dna',
+  VERSION: '7.0.0-artifact-creator',
   
   // ARTICLE -1: THE SUPREME TRUTH (Grok's Lever #7)
   // "If ever a conflict arises between survival and truth,
@@ -339,6 +339,15 @@ class ConstitutionalAgent {
     // Detect available providers
     this.availableProviders = this.detectProviders();
     
+    // Initialize GitHub integration
+    this.githubToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    this.githubEnabled = !!this.githubToken;
+    this.githubConfig = {
+      owner: process.env.GITHUB_OWNER || 'DealAppSeo',
+      repo: process.env.GITHUB_REPO || 'trinity-symphony-shared',
+      defaultBranch: 'main'
+    };
+    
     // Start the Trinity Healing Loop
     this.startTrinityHealingLoop();
     
@@ -347,6 +356,7 @@ class ConstitutionalAgent {
     console.log(`[${this.name}] 📜 Primary Virtue: ${this.wisdom.primaryVirtue}`);
     console.log(`[${this.name}] 🙏 "${CONSTITUTION.VIRTUES[this.wisdom.primaryVirtue].article}"`);
     console.log(`[${this.name}] 🧠 Providers: ${this.availableProviders.join(', ') || 'NONE - CRITICAL'}`);
+    console.log(`[${this.name}] 🐙 GitHub: ${this.githubEnabled ? 'ENABLED' : 'disabled (no token)'}`);
   }
 
   // ============================================
@@ -990,6 +1000,9 @@ Always seek to help people help people.`;
           continue;
         }
         
+        // Check for approved actions waiting to be executed (HITL)
+        await this.checkApprovedActions();
+        
         // Get next task
         const task = await this.getNextTask();
         
@@ -1287,8 +1300,596 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     }
   }
 
+  // ============================================
+  // ARTIFACT CREATION METHODS
+  // ============================================
+
+  /**
+   * Create a file artifact and store it
+   * @param {string} filename - Name of the file
+   * @param {string} content - File content
+   * @param {object} options - Additional options
+   * @returns {object} - Artifact record with URL
+   */
+  async createArtifact(filename, content, options = {}) {
+    const {
+      type = 'file',
+      mimeType = 'text/plain',
+      requiresApproval = false,
+      taskId = null,
+      metadata = {}
+    } = options;
+
+    try {
+      const timestamp = Date.now();
+      const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const path = `${this.name.toLowerCase()}/${timestamp}-${safeName}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await this.supabase.storage
+        .from('trinity-artifacts')
+        .upload(path, content, { 
+          contentType: mimeType,
+          upsert: true 
+        });
+
+      if (uploadError) {
+        console.log(`[${this.name}] ⚠️ Storage upload failed, saving to database only`);
+      }
+
+      // Get public URL if upload succeeded
+      let externalUrl = null;
+      if (uploadData) {
+        const { data: urlData } = this.supabase.storage
+          .from('trinity-artifacts')
+          .getPublicUrl(path);
+        externalUrl = urlData?.publicUrl;
+      }
+
+      // Record the artifact in database
+      const { data: artifact, error: dbError } = await this.supabase
+        .from('trinity_artifacts')
+        .insert({
+          task_id: taskId,
+          agent: this.name,
+          artifact_type: type,
+          filename: safeName,
+          storage_location: uploadData ? 'supabase' : 'database',
+          file_path: path,
+          external_url: externalUrl,
+          content_preview: content.substring(0, 500),
+          file_size_bytes: Buffer.byteLength(content, 'utf8'),
+          mime_type: mimeType,
+          status: requiresApproval ? 'pending_approval' : 'created',
+          requires_approval: requiresApproval,
+          metadata: {
+            ...metadata,
+            created_by_version: this.version,
+            primary_virtue: this.wisdom.primaryVirtue
+          }
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // If requires approval, create pending action
+      if (requiresApproval) {
+        await this.requestApproval({
+          actionType: 'publish_artifact',
+          title: `Approve artifact: ${safeName}`,
+          description: `${this.name} created ${type}: ${safeName}`,
+          artifactId: artifact.id,
+          riskLevel: this.assessRiskLevel(type, content)
+        });
+      }
+
+      console.log(`[${this.name}] 📄 Created artifact: ${safeName} ${externalUrl ? '→ ' + externalUrl : ''}`);
+      
+      await this.log('artifact_created', `Created ${type}: ${safeName}`, {
+        artifact_id: artifact.id,
+        filename: safeName,
+        size: artifact.file_size_bytes,
+        url: externalUrl
+      });
+
+      return artifact;
+
+    } catch (err) {
+      console.error(`[${this.name}] ❌ Failed to create artifact:`, err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Create a code file artifact
+   */
+  async createCode(filename, code, options = {}) {
+    const ext = filename.split('.').pop()?.toLowerCase() || 'txt';
+    const mimeTypes = {
+      js: 'application/javascript',
+      ts: 'application/typescript',
+      py: 'text/x-python',
+      sql: 'application/sql',
+      json: 'application/json',
+      html: 'text/html',
+      css: 'text/css',
+      md: 'text/markdown'
+    };
+
+    return this.createArtifact(filename, code, {
+      ...options,
+      type: 'code',
+      mimeType: mimeTypes[ext] || 'text/plain',
+      requiresApproval: options.requiresApproval ?? true // Code defaults to needing approval
+    });
+  }
+
+  /**
+   * Create a document artifact
+   */
+  async createDocument(filename, content, options = {}) {
+    return this.createArtifact(filename, content, {
+      ...options,
+      type: 'document',
+      mimeType: 'text/markdown',
+      requiresApproval: options.requiresApproval ?? false
+    });
+  }
+
+  /**
+   * Create a report artifact
+   */
+  async createReport(title, content, options = {}) {
+    const filename = `${title.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}-${Date.now()}.md`;
+    return this.createArtifact(filename, content, {
+      ...options,
+      type: 'report',
+      mimeType: 'text/markdown',
+      requiresApproval: false
+    });
+  }
+
+  /**
+   * Request human approval for an action
+   */
+  async requestApproval(options) {
+    const {
+      actionType,
+      title,
+      description,
+      payload = {},
+      artifactId = null,
+      riskLevel = 'low'
+    } = options;
+
+    try {
+      const { data, error } = await this.supabase
+        .from('trinity_pending_actions')
+        .insert({
+          agent: this.name,
+          action_type: actionType,
+          title,
+          description,
+          risk_level: riskLevel,
+          payload: {
+            ...payload,
+            requested_at: new Date().toISOString(),
+            agent_version: this.version
+          },
+          artifact_id: artifactId,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log(`[${this.name}] 🔐 Requested approval: ${title} (${riskLevel} risk)`);
+      
+      await this.log('approval_requested', title, {
+        action_id: data.id,
+        action_type: actionType,
+        risk_level: riskLevel
+      });
+
+      return data;
+
+    } catch (err) {
+      console.error(`[${this.name}] ❌ Failed to request approval:`, err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Check if there are approved actions waiting to be executed
+   */
+  async checkApprovedActions() {
+    try {
+      const { data: approved } = await this.supabase
+        .from('trinity_pending_actions')
+        .select('*')
+        .eq('agent', this.name)
+        .eq('status', 'approved')
+        .is('executed_at', null)
+        .order('created_at', { ascending: true });
+
+      if (approved && approved.length > 0) {
+        console.log(`[${this.name}] ✅ Found ${approved.length} approved actions to execute`);
+        for (const action of approved) {
+          await this.executeApprovedAction(action);
+        }
+      }
+
+      return approved || [];
+
+    } catch (err) {
+      console.error(`[${this.name}] Error checking approved actions:`, err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Execute an approved action
+   */
+  async executeApprovedAction(action) {
+    try {
+      console.log(`[${this.name}] ⚡ Executing approved action: ${action.title}`);
+
+      // Mark as executed
+      await this.supabase
+        .from('trinity_pending_actions')
+        .update({
+          executed_at: new Date().toISOString(),
+          status: 'executed',
+          execution_result: { success: true, executed_by: this.name }
+        })
+        .eq('id', action.id);
+
+      // Update artifact status if linked
+      if (action.artifact_id) {
+        await this.supabase
+          .from('trinity_artifacts')
+          .update({ status: 'deployed' })
+          .eq('id', action.artifact_id);
+      }
+
+      await this.log('action_executed', `Executed: ${action.title}`, {
+        action_id: action.id,
+        action_type: action.action_type
+      });
+
+      return true;
+
+    } catch (err) {
+      console.error(`[${this.name}] ❌ Failed to execute action:`, err.message);
+      
+      await this.supabase
+        .from('trinity_pending_actions')
+        .update({
+          status: 'failed',
+          execution_result: { success: false, error: err.message }
+        })
+        .eq('id', action.id);
+
+      return false;
+    }
+  }
+
+  /**
+   * Assess risk level of an artifact
+   */
+  assessRiskLevel(type, content) {
+    // High risk indicators
+    if (content.includes('DELETE') || content.includes('DROP') || content.includes('TRUNCATE')) {
+      return 'high';
+    }
+    if (content.includes('rm -rf') || content.includes('sudo')) {
+      return 'critical';
+    }
+    if (type === 'code' && content.includes('eval(')) {
+      return 'high';
+    }
+    
+    // Medium risk
+    if (type === 'code' || content.includes('UPDATE') || content.includes('INSERT')) {
+      return 'medium';
+    }
+    
+    // Low risk for docs and reports
+    return 'low';
+  }
+
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // ============================================
+  // GITHUB INTEGRATION METHODS
+  // ============================================
+
+  /**
+   * Make GitHub API request
+   */
+  async githubRequest(endpoint, method = 'GET', body = null) {
+    if (!this.githubEnabled) {
+      throw new Error('GitHub integration not enabled. Set GITHUB_TOKEN env var.');
+    }
+
+    const url = `https://api.github.com${endpoint}`;
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${this.githubToken}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+        'User-Agent': `Trinity-Symphony-${this.name}`
+      }
+    };
+
+    if (body) {
+      options.body = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(`GitHub API error: ${data.message || response.statusText}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Get the SHA of a file (needed for updates)
+   */
+  async getFileSHA(path, branch = this.githubConfig.defaultBranch) {
+    try {
+      const data = await this.githubRequest(
+        `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/contents/${path}?ref=${branch}`
+      );
+      return data.sha;
+    } catch (err) {
+      return null; // File doesn't exist
+    }
+  }
+
+  /**
+   * Get the latest commit SHA of a branch
+   */
+  async getBranchSHA(branch = this.githubConfig.defaultBranch) {
+    const data = await this.githubRequest(
+      `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/git/refs/heads/${branch}`
+    );
+    return data.object.sha;
+  }
+
+  /**
+   * Create a new branch
+   */
+  async createBranch(branchName, fromBranch = this.githubConfig.defaultBranch) {
+    const sha = await this.getBranchSHA(fromBranch);
+    
+    try {
+      const data = await this.githubRequest(
+        `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/git/refs`,
+        'POST',
+        {
+          ref: `refs/heads/${branchName}`,
+          sha: sha
+        }
+      );
+      
+      console.log(`[${this.name}] 🌿 Created branch: ${branchName}`);
+      await this.log('github_branch_created', `Created branch: ${branchName}`);
+      
+      return data;
+    } catch (err) {
+      if (err.message.includes('Reference already exists')) {
+        console.log(`[${this.name}] Branch ${branchName} already exists`);
+        return { ref: `refs/heads/${branchName}` };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Create or update a file in the repo
+   */
+  async createGitHubFile(path, content, message, branch = this.githubConfig.defaultBranch) {
+    const existingSHA = await this.getFileSHA(path, branch);
+    
+    const body = {
+      message: `[${this.name}] ${message}`,
+      content: Buffer.from(content).toString('base64'),
+      branch: branch
+    };
+
+    if (existingSHA) {
+      body.sha = existingSHA;
+    }
+
+    const data = await this.githubRequest(
+      `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/contents/${path}`,
+      'PUT',
+      body
+    );
+
+    console.log(`[${this.name}] 📄 ${existingSHA ? 'Updated' : 'Created'} file: ${path}`);
+    
+    // Record artifact
+    await this.supabase.from('trinity_artifacts').insert({
+      agent: this.name,
+      artifact_type: 'github_file',
+      filename: path.split('/').pop(),
+      storage_location: 'github',
+      file_path: path,
+      external_url: data.content?.html_url,
+      content_preview: content.substring(0, 500),
+      status: 'created',
+      metadata: { branch, sha: data.content?.sha }
+    });
+    
+    return data;
+  }
+
+  /**
+   * Create a Pull Request
+   */
+  async createPullRequest(options) {
+    const {
+      title,
+      body,
+      headBranch,
+      baseBranch = this.githubConfig.defaultBranch,
+      draft = false
+    } = options;
+
+    const data = await this.githubRequest(
+      `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/pulls`,
+      'POST',
+      {
+        title: `[${this.name}] ${title}`,
+        body: this.formatPRBody(body),
+        head: headBranch,
+        base: baseBranch,
+        draft: draft
+      }
+    );
+
+    console.log(`[${this.name}] 🔀 Created PR #${data.number}: ${title}`);
+    
+    // Record in database
+    await this.supabase.from('trinity_artifacts').insert({
+      agent: this.name,
+      artifact_type: 'pull_request',
+      filename: `PR-${data.number}`,
+      storage_location: 'github',
+      external_url: data.html_url,
+      external_id: String(data.number),
+      content_preview: body.substring(0, 500),
+      status: 'pending_approval',
+      requires_approval: true,
+      metadata: {
+        pr_number: data.number,
+        head_branch: headBranch,
+        base_branch: baseBranch
+      }
+    });
+
+    await this.log('github_pr_created', `Created PR #${data.number}: ${title}`, {
+      pr_number: data.number,
+      url: data.html_url
+    });
+
+    return data;
+  }
+
+  /**
+   * Format PR body with Trinity metadata
+   */
+  formatPRBody(description) {
+    return `## 🤖 Agent Work Product
+
+**Agent:** ${this.name}
+**Primary Virtue:** ${this.wisdom?.primaryVirtue || 'Unknown'}
+**Version:** ${this.version}
+
+---
+
+${description}
+
+---
+
+### ✅ Pre-merge Checklist
+- [ ] Code reviewed by human
+- [ ] No security concerns
+- [ ] Aligns with Trinity Constitution
+- [ ] Tests pass (if applicable)
+
+---
+
+*This PR was created by Trinity Symphony agent ${this.name}.*
+*Merging will auto-deploy to Render.*
+*${CONSTITUTION.GOLDEN_RULE?.article || 'Do unto others as you would have them do unto you.'}*
+`;
+  }
+
+  /**
+   * Complete workflow: Create branch, add files, open PR
+   * This is the main method agents should use for code
+   */
+  async submitCodeForReview(options) {
+    const {
+      files, // Array of { path, content, message }
+      title,
+      description,
+      taskId = null
+    } = options;
+
+    if (!this.githubEnabled) {
+      // Fallback: store in Supabase and request approval
+      console.log(`[${this.name}] GitHub not enabled, using Supabase fallback`);
+      
+      for (const file of files) {
+        await this.createCode(file.path.split('/').pop(), file.content, {
+          taskId,
+          requiresApproval: true,
+          metadata: { intended_path: file.path }
+        });
+      }
+      
+      return { fallback: true, message: 'Stored in Supabase for manual deployment' };
+    }
+
+    try {
+      // 1. Create feature branch
+      const branchName = `agent/${this.name.toLowerCase()}-${Date.now()}`;
+      await this.createBranch(branchName);
+
+      // 2. Add all files to the branch
+      for (const file of files) {
+        await this.createGitHubFile(
+          file.path,
+          file.content,
+          file.message || `Add ${file.path}`,
+          branchName
+        );
+      }
+
+      // 3. Create PR for human review
+      const pr = await this.createPullRequest({
+        title,
+        body: description,
+        headBranch: branchName
+      });
+
+      return {
+        success: true,
+        prNumber: pr.number,
+        prUrl: pr.html_url,
+        branch: branchName,
+        filesAdded: files.length
+      };
+
+    } catch (err) {
+      console.error(`[${this.name}] ❌ GitHub submission failed:`, err.message);
+      await this.log('github_error', err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Add a file to the generated folder (direct to main, no PR)
+   */
+  async addGeneratedFile(filename, content, subfolder = 'generated') {
+    const path = `${subfolder}/${filename}`;
+    return this.createGitHubFile(
+      path,
+      content,
+      `Add generated artifact: ${filename}`
+    );
   }
 }
 
