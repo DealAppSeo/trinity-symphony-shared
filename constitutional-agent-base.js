@@ -37,7 +37,7 @@ const crypto = require('crypto');
 // ============================================
 
 const CONSTITUTION = {
-  VERSION: '7.0.0-artifact-creator',
+  VERSION: '7.1.0-sabbath-rotation',
   
   // ARTICLE -1: THE SUPREME TRUTH (Grok's Lever #7)
   // "If ever a conflict arises between survival and truth,
@@ -630,10 +630,30 @@ ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n'
   // ============================================
 
   isSabbathTime() {
+    // ROTATING SABBATH: Each agent gets one day per week
+    // This ensures continuous operation while each agent gets reflection time
+    const SABBATH_SCHEDULE = {
+      HDM: 0,     // Sunday
+      APM: 1,     // Monday
+      MEL: 2,     // Tuesday
+      GCM: 3,     // Wednesday
+      VERITAS: 4, // Thursday
+      TORCH: 5,   // Friday
+      W3C: 6      // Saturday
+    };
+    
     const now = new Date();
     const utcDay = now.getUTCDay();
     const utcHour = now.getUTCHours();
-    return utcDay === 0 && utcHour < 6; // Sunday 00:00-06:00 UTC
+    
+    const mySabbathDay = SABBATH_SCHEDULE[this.name];
+    
+    // If this agent's Sabbath day, observe for first 6 hours UTC
+    if (mySabbathDay !== undefined && utcDay === mySabbathDay && utcHour < 6) {
+      return true;
+    }
+    
+    return false;
   }
 
   async observeSabbath() {
