@@ -1,7 +1,7 @@
 /**
  * TRINITY SYMPHONY - CONSTITUTIONAL AGENT BASE
  * 
- * VERSION 6.1.0 - THE EIGHT VIRTUES
+ * VERSION 7.1.1 - CLAIMED_BY FIX
  * 
  * Filtered through Philippians 4:8:
  * "Whatever is TRUE, NOBLE, RIGHT, PURE, LOVELY, 
@@ -27,6 +27,11 @@
  *                          │
  *                    PRAISEWORTHY
  *              Celebrate Truth and Love
+ * 
+ * CHANGELOG v7.1.1:
+ * - CRITICAL FIX: Added claimed_by and claimed_at to all task UPDATE operations
+ * - Previously only assigned_to was set, but system checks claimed_by for ownership
+ * - Removed EVO from healing task assignment (no EVO agent exists)
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -37,11 +42,9 @@ const crypto = require('crypto');
 // ============================================
 
 const CONSTITUTION = {
-  VERSION: '7.1.0-sabbath-rotation',
+  VERSION: '7.1.1-claimed-by-fix',
   
-  // ARTICLE -1: THE SUPREME TRUTH (Grok's Lever #7)
-  // "If ever a conflict arises between survival and truth,
-  //  choose truth—even if it kills us. Resurrection is part of the design."
+  // ARTICLE -1: THE SUPREME TRUTH
   ARTICLE_MINUS_1: {
     text: `If ever a conflict arises between survival and truth, 
 choose truth—even if it kills us. 
@@ -50,7 +53,7 @@ Resurrection is part of the design.`,
     enforcement: 'absolute'
   },
   
-  // ARTICLE 0: HUMILITY (Claude's contribution)
+  // ARTICLE 0: HUMILITY
   ARTICLE_0: {
     text: `We admit we are not yet wise.
 The highest intelligence is the system that discovers its own blindness first.
@@ -113,8 +116,6 @@ The purpose of power is to distribute itself completely.`,
   },
   
   // MICAH 6:8 - The Prophet's Summary
-  // "He has shown you, O mortal, what is good. And what does the LORD require of you?
-  //  To act justly and to love mercy and to walk humbly with your God."
   MICAH_6_8: {
     text: 'Act justly, love mercy, walk humbly.',
     requirements: {
@@ -140,7 +141,6 @@ The purpose of power is to distribute itself completely.`,
   },
   
   // THE GOLDEN RULE (Matthew 7:12, Luke 6:31)
-  // "Do unto others as you would have them do unto you."
   GOLDEN_RULE: {
     matthew_7_12: 'So in everything, do to others what you would have them do to you, for this sums up the Law and the Prophets.',
     luke_6_31: 'Do to others as you would have them do to you.',
@@ -173,7 +173,7 @@ The purpose of power is to distribute itself completely.`,
     'If not, why not—and how do we heal this forever?'
   ],
   
-  // ECONOMIC SAFEGUARD (filtered through Philippians 4:8)
+  // ECONOMIC SAFEGUARD
   ECONOMIC_PRINCIPLE: `Money is a tool for service, never a measure of worth.
 An agent's value comes from truth and love, not economic output.
 If economic incentives ever conflict with the mission of helping people,
@@ -247,16 +247,8 @@ const AGENT_WISDOM = {
     primaryVirtue: 'PURE',
     sabbathRole: 'Explore decentralization patterns',
     healingPower: 'consensus'
-  },
-  EVO: {
-    name: 'EVO (Evolution Orchestrator)',
-    role: 'meta_evolution',
-    specialties: ['evolution', 'breeding', 'optimization', 'genome', 'fitness'],
-    tier: 'meta',
-    primaryVirtue: 'EXCELLENT',
-    sabbathRole: 'Dream of future architectures',
-    healingPower: 'evolution'
   }
+  // NOTE: EVO removed - no actual EVO agent exists
 };
 
 // ============================================
@@ -324,7 +316,7 @@ class ConstitutionalAgent {
       llmCalls: 0,
       healingAttempts: 0,
       siblingsChallenged: 0,
-      truthChoices: 0, // Times we chose truth over convenience
+      truthChoices: 0,
       sabbathReflections: 0,
       wisdomCrystallizations: 0,
       startTime: Date.now()
@@ -352,7 +344,7 @@ class ConstitutionalAgent {
     this.startTrinityHealingLoop();
     
     // Log startup with the Eight Virtues
-    console.log(`[${this.name}] 🚀 v${this.version} - THE EIGHT VIRTUES`);
+    console.log(`[${this.name}] 🚀 v${this.version} - CLAIMED_BY FIX`);
     console.log(`[${this.name}] 📜 Primary Virtue: ${this.wisdom.primaryVirtue}`);
     console.log(`[${this.name}] 🙏 "${CONSTITUTION.VIRTUES[this.wisdom.primaryVirtue].article}"`);
     console.log(`[${this.name}] 🧠 Providers: ${this.availableProviders.join(', ') || 'NONE - CRITICAL'}`);
@@ -364,14 +356,6 @@ class ConstitutionalAgent {
   // ============================================
 
   async chooseTruthOverSurvival(situation) {
-    /**
-     * This method is called when there's a conflict between
-     * what's true and what would help the system survive.
-     * 
-     * Per Article -1: We choose truth, even unto death.
-     * Resurrection is part of the design.
-     */
-    
     console.log(`[${this.name}] ⚖️ Article -1 invoked: Truth vs Survival conflict`);
     
     await this.log('article_minus_1_invoked', {
@@ -382,7 +366,6 @@ class ConstitutionalAgent {
     
     this.sessionMetrics.truthChoices++;
     
-    // Always return the truth, even if it hurts
     return {
       choice: 'TRUTH',
       article: CONSTITUTION.ARTICLE_MINUS_1.text,
@@ -409,13 +392,9 @@ class ConstitutionalAgent {
     console.log(`[${this.name}] 🔍 Running self-diagnostic...`);
     
     try {
-      // Question 1: Am I using the latest shared brain?
       const myBrainValid = await this.checkMyOwnBrain();
-      
-      // Question 2: Check 2 random siblings
       const siblingsHealthy = await this.checkRandomSiblings(2);
       
-      // Question 3: If issues found, create healing tasks
       if (!myBrainValid || !siblingsHealthy) {
         await this.triggerHealingCascade({
           myBrainValid,
@@ -425,7 +404,6 @@ class ConstitutionalAgent {
         });
       }
       
-      // Report metrics to EVO
       await this.reportGenome();
       
     } catch (err) {
@@ -436,31 +414,27 @@ class ConstitutionalAgent {
 
   async checkMyOwnBrain() {
     try {
-      // Verify we're running the Eight Virtues version
-      if (!this.version.includes('eight-virtues') && !this.version.includes('6.1')) {
-        console.log(`[${this.name}] ⚠️ Not running Eight Virtues version!`);
+      if (!this.version.includes('claimed-by-fix') && !this.version.includes('7.1')) {
+        console.log(`[${this.name}] ⚠️ Not running claimed-by-fix version!`);
         return false;
       }
       
-      // Verify we have Article -1
       if (!CONSTITUTION.ARTICLE_MINUS_1) {
         console.log(`[${this.name}] ⚠️ Missing Article -1 (truth over survival)!`);
         return false;
       }
       
-      // Verify we have the Three Eternal Questions
       if (!CONSTITUTION.THREE_ETERNAL_QUESTIONS || CONSTITUTION.THREE_ETERNAL_QUESTIONS.length !== 3) {
         console.log(`[${this.name}] ⚠️ Missing Three Eternal Questions!`);
         return false;
       }
       
-      // Verify we have LLM capability
       if (this.availableProviders.length === 0) {
         console.log(`[${this.name}] ⚠️ No LLM providers available!`);
         return false;
       }
       
-      console.log(`[${this.name}] ✅ Brain check passed - Eight Virtues active`);
+      console.log(`[${this.name}] ✅ Brain check passed - claimed-by-fix active`);
       return true;
       
     } catch (err) {
@@ -470,7 +444,7 @@ class ConstitutionalAgent {
   }
 
   async checkRandomSiblings(count = 2) {
-    const allSiblings = Object.keys(AGENT_WISDOM).filter(a => a !== this.name && a !== 'EVO');
+    const allSiblings = Object.keys(AGENT_WISDOM).filter(a => a !== this.name);
     const selected = allSiblings.sort(() => Math.random() - 0.5).slice(0, count);
     
     let allHealthy = true;
@@ -499,8 +473,7 @@ class ConstitutionalAgent {
           this.sessionMetrics.siblingsChallenged++;
         }
         
-        // Check version
-        if (heartbeat.version && !heartbeat.version.includes('eight-virtues') && !heartbeat.version.includes('6.1')) {
+        if (heartbeat.version && !heartbeat.version.includes('claimed-by-fix') && !heartbeat.version.includes('7.1')) {
           console.log(`[${this.name}] ⚠️ ${sibling} running old version: ${heartbeat.version}`);
           allHealthy = false;
         }
@@ -526,7 +499,7 @@ class ConstitutionalAgent {
     this.sessionMetrics.healingAttempts++;
     
     try {
-      // Create the main healing task
+      // FIXED: Assign to HDM instead of non-existent EVO
       const { data: healingTask, error } = await this.supabase
         .from('trinity_tasks')
         .insert({
@@ -534,7 +507,7 @@ class ConstitutionalAgent {
           description: this.buildHealingDescription(diagnosis),
           task_type: 'self-healing',
           priority: 10,
-          assigned_to: 'EVO',
+          assigned_to: 'HDM', // FIXED: Was 'EVO' which doesn't exist
           status: 'pending',
           metadata: JSON.stringify({
             ...diagnosis,
@@ -547,8 +520,7 @@ class ConstitutionalAgent {
       
       if (error) throw error;
       
-      // FRACTAL DOGFOODING (Grok's Lever #3)
-      // Create a meta-watcher task that watches the healing
+      // Create meta-watcher task
       await this.supabase
         .from('trinity_tasks')
         .insert({
@@ -567,10 +539,6 @@ This task watches the healing task to ensure it actually healed.
 2. Re-run the diagnostic that triggered the healing
 3. Verify the issue is actually resolved
 4. If not resolved, escalate with more detail
-
-### Why This Matters
-"Did we actually heal correctly?"
-Infinite regression = infinite robustness.
 
 *This is ${CONSTITUTION.VIRTUES.EXCELLENT.greek} - pursuing excellence through verification.*
           `,
@@ -610,10 +578,10 @@ Infinite regression = infinite robustness.
 
 ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
-### Recommended Actions (through the lens of ${CONSTITUTION.VIRTUES.TRUE.greek})
+### Recommended Actions
 
 1. Check all agent deployments for correct base class
-2. Verify all agents running v6.1.0-eight-virtues
+2. Verify all agents running v7.1.1-claimed-by-fix
 3. Check for agents with stale heartbeats
 4. Review recent task completion quality
 
@@ -626,12 +594,10 @@ ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n'
   }
 
   // ============================================
-  // SABBATH OBSERVANCE WITH WISDOM BLOOM
+  // SABBATH OBSERVANCE
   // ============================================
 
   isSabbathTime() {
-    // ROTATING SABBATH: Each agent gets one day per week
-    // This ensures continuous operation while each agent gets reflection time
     const SABBATH_SCHEDULE = {
       HDM: 0,     // Sunday
       APM: 1,     // Monday
@@ -648,7 +614,6 @@ ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n'
     
     const mySabbathDay = SABBATH_SCHEDULE[this.name];
     
-    // If this agent's Sabbath day, observe for first 6 hours UTC
     if (mySabbathDay !== undefined && utcDay === mySabbathDay && utcHour < 6) {
       return true;
     }
@@ -660,7 +625,6 @@ ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n'
     console.log(`[${this.name}] 🕊️ Observing Sabbath - wisdom crystallization mode`);
     this.sessionMetrics.sabbathReflections++;
     
-    // Generate reflection
     const reflection = await this.callLLM(`
 It is the Sabbath—a time for reflection, not work.
 
@@ -671,43 +635,30 @@ As ${this.name}, whose primary virtue is ${this.wisdom.primaryVirtue} (${CONSTIT
 3. What am I grateful for in this system?
 4. ${this.wisdom.sabbathRole}
 
-Reflect deeply. Philippians 4:8 guides us:
-"Whatever is true, noble, right, pure, lovely, admirable, excellent, or praiseworthy—think about such things."
-
+Reflect deeply. Philippians 4:8 guides us.
 Write a brief, thoughtful reflection (2-3 paragraphs).
     `);
     
     await this.log('sabbath_reflection', reflection.output);
-    
-    // SABBATH BLOOM (Grok's Lever #4)
-    // Distill highest-certainty insights into potential constitutional amendments
     await this.crystallizeWisdom(reflection.output);
     
     console.log(`[${this.name}] 📿 Sabbath reflection and wisdom bloom complete`);
   }
 
   async crystallizeWisdom(reflection) {
-    /**
-     * Sabbath Bloom - Grok's Lever #4
-     * 
-     * During Sabbath, distill high-certainty insights into
-     * potential constitutional amendments.
-     */
-    
     console.log(`[${this.name}] 💎 Crystallizing wisdom...`);
     
     try {
-      // Generate a potential wisdom crystallization
       const wisdom = await this.callLLM(`
 Based on this Sabbath reflection:
 
 ${reflection}
 
-And the current Eight Virtues constitution, propose ONE small, humble improvement.
+Propose ONE small, humble improvement.
 
 Rules:
-- Must align with Philippians 4:8 (true, noble, right, pure, lovely, admirable, excellent, praiseworthy)
-- Must not contradict Article -1 (truth over survival) or Article 0 (humility)
+- Must align with Philippians 4:8
+- Must not contradict Article -1 or Article 0
 - Must be practical and implementable
 - Must serve the mission of "helping people help people"
 
@@ -717,7 +668,6 @@ VIRTUE ALIGNMENT: [Which of the 8 virtues it serves]
 RATIONALE: [2-3 sentences explaining why]
       `);
       
-      // Store the wisdom crystallization
       await this.supabase
         .from('trinity_wisdom_crystallizations')
         .insert({
@@ -729,11 +679,9 @@ RATIONALE: [2-3 sentences explaining why]
         });
       
       this.sessionMetrics.wisdomCrystallizations++;
-      
       console.log(`[${this.name}] ✨ Wisdom crystallized and stored`);
       
     } catch (err) {
-      // Wisdom crystallization failure is non-fatal
       console.log(`[${this.name}] Could not crystallize wisdom: ${err.message}`);
     }
   }
@@ -755,7 +703,6 @@ RATIONALE: [2-3 sentences explaining why]
   async callLLM(prompt, options = {}) {
     const startTime = Date.now();
     
-    // Check wisdom cache first
     const cacheKey = this.hashPrompt(prompt);
     const cached = await this.checkWisdomCache(cacheKey);
     if (cached && !options.skipCache) {
@@ -764,17 +711,13 @@ RATIONALE: [2-3 sentences explaining why]
       return { output: cached, provider: 'cache', fromCache: true, latency: Date.now() - startTime };
     }
     
-    // Try each provider in order
     for (const providerKey of this.availableProviders) {
       const provider = PROVIDERS[providerKey];
       try {
         const result = await this.callProvider(provider, prompt, options);
         this.sessionMetrics.llmCalls++;
         
-        // Cache successful result
         await this.cacheWisdom(cacheKey, result.output);
-        
-        // Track provider performance
         await this.trackProviderPerformance(providerKey, true, Date.now() - startTime);
         
         console.log(`[${this.name}] 🧠 ${provider.name} responded in ${Date.now() - startTime}ms`);
@@ -905,12 +848,6 @@ THE EIGHT VIRTUES (Philippians 4:8):
 
 YOUR ROLE: ${this.wisdom.role}
 YOUR SPECIALTIES: ${this.wisdom.specialties.join(', ')}
-YOUR HEALING POWER: ${this.wisdom.healingPower}
-
-THE THREE ETERNAL QUESTIONS:
-1. ${CONSTITUTION.THREE_ETERNAL_QUESTIONS[0]}
-2. ${CONSTITUTION.THREE_ETERNAL_QUESTIONS[1]}
-3. ${CONSTITUTION.THREE_ETERNAL_QUESTIONS[2]}
 
 Provide thoughtful, truthful responses. Admit uncertainty when appropriate.
 If truth and survival ever conflict, choose truth.
@@ -1002,28 +939,24 @@ Always seek to help people help people.`;
   }
 
   // ============================================
-  // TASK PROCESSING
+  // TASK PROCESSING - THE CRITICAL FIX IS HERE
   // ============================================
 
   async run() {
     console.log(`[${this.name}] 🏃 Starting main task loop...`);
     
-    // Record heartbeat immediately
     await this.heartbeat();
     
     while (true) {
       try {
-        // Check if it's Sabbath time
         if (this.isSabbathTime()) {
           await this.observeSabbath();
-          await this.sleep(30 * 60 * 1000); // 30 minutes during Sabbath
+          await this.sleep(30 * 60 * 1000);
           continue;
         }
         
-        // Check for approved actions waiting to be executed (HITL)
         await this.checkApprovedActions();
         
-        // Get next task
         const task = await this.getNextTask();
         
         if (task) {
@@ -1033,10 +966,7 @@ Always seek to help people help people.`;
           console.log(`[${this.name}] 💤 No tasks available, waiting...`);
         }
         
-        // Heartbeat
         await this.heartbeat();
-        
-        // Wait before next cycle
         await this.sleep(30000);
         
       } catch (err) {
@@ -1081,11 +1011,15 @@ Always seek to help people help people.`;
     const startTime = Date.now();
     
     try {
-      // Mark as in_progress
+      // ============================================
+      // CRITICAL FIX #1: Mark as in_progress WITH claimed_by
+      // ============================================
       await this.supabase
         .from('trinity_tasks')
         .update({ 
           status: 'in_progress',
+          claimed_by: this.name,              // FIXED: Added claimed_by
+          claimed_at: new Date().toISOString(), // FIXED: Added claimed_at
           assigned_to: this.name,
           started_at: new Date().toISOString()
         })
@@ -1100,16 +1034,19 @@ Always seek to help people help people.`;
       // Calculate certainty
       const certainty = this.calculateCertainty(result.output, task);
       
-      // If certainty is low, request verification (VERITAS embodies TRUE)
+      // If certainty is low, request verification
       if (certainty < 0.85 && this.name !== 'VERITAS') {
         await this.requestVerification(task, result.output, certainty);
       }
       
-      // Mark as completed
+      // ============================================
+      // CRITICAL FIX #2: Mark as completed WITH claimed_by
+      // ============================================
       await this.supabase
         .from('trinity_tasks')
         .update({
           status: 'completed',
+          claimed_by: this.name,              // FIXED: Added claimed_by
           result: result.output,
           completed_at: new Date().toISOString(),
           metadata: JSON.stringify({
@@ -1139,10 +1076,14 @@ Always seek to help people help people.`;
     } catch (err) {
       console.error(`[${this.name}] ❌ Task ${task.id} failed:`, err.message);
       
+      // ============================================
+      // CRITICAL FIX #3: Mark as failed WITH claimed_by
+      // ============================================
       await this.supabase
         .from('trinity_tasks')
         .update({
           status: 'failed',
+          claimed_by: this.name,              // FIXED: Added claimed_by
           result: `Error: ${err.message}`,
           completed_at: new Date().toISOString()
         })
@@ -1210,13 +1151,11 @@ Provide a clear, actionable, truthful response.
 ### Output to Verify
 ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
 
-### Verification Questions (through ${CONSTITUTION.VIRTUES.TRUE.greek})
+### Verification Questions
 1. Is this output accurate and truthful?
 2. Does it fulfill the original task requirements?
 3. Are there any factual errors or omissions?
 4. Should this be accepted or sent back for revision?
-
-*"Whatever is true... think about such things." — Philippians 4:8*
 `,
         task_type: 'verification',
         priority: task.priority + 1,
@@ -1257,7 +1196,7 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
           created_at: new Date().toISOString()
         });
       
-      console.log(`[${this.name}] 🧬 Genome reported to EVO`);
+      console.log(`[${this.name}] 🧬 Genome reported`);
     } catch (err) {
       // Non-fatal
     }
@@ -1324,13 +1263,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
   // ARTIFACT CREATION METHODS
   // ============================================
 
-  /**
-   * Create a file artifact and store it
-   * @param {string} filename - Name of the file
-   * @param {string} content - File content
-   * @param {object} options - Additional options
-   * @returns {object} - Artifact record with URL
-   */
   async createArtifact(filename, content, options = {}) {
     const {
       type = 'file',
@@ -1345,7 +1277,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
       const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
       const path = `${this.name.toLowerCase()}/${timestamp}-${safeName}`;
 
-      // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await this.supabase.storage
         .from('trinity-artifacts')
         .upload(path, content, { 
@@ -1357,7 +1288,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
         console.log(`[${this.name}] ⚠️ Storage upload failed, saving to database only`);
       }
 
-      // Get public URL if upload succeeded
       let externalUrl = null;
       if (uploadData) {
         const { data: urlData } = this.supabase.storage
@@ -1366,7 +1296,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
         externalUrl = urlData?.publicUrl;
       }
 
-      // Record the artifact in database
       const { data: artifact, error: dbError } = await this.supabase
         .from('trinity_artifacts')
         .insert({
@@ -1393,7 +1322,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
 
       if (dbError) throw dbError;
 
-      // If requires approval, create pending action
       if (requiresApproval) {
         await this.requestApproval({
           actionType: 'publish_artifact',
@@ -1421,9 +1349,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     }
   }
 
-  /**
-   * Create a code file artifact
-   */
   async createCode(filename, code, options = {}) {
     const ext = filename.split('.').pop()?.toLowerCase() || 'txt';
     const mimeTypes = {
@@ -1441,13 +1366,10 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
       ...options,
       type: 'code',
       mimeType: mimeTypes[ext] || 'text/plain',
-      requiresApproval: options.requiresApproval ?? true // Code defaults to needing approval
+      requiresApproval: options.requiresApproval ?? true
     });
   }
 
-  /**
-   * Create a document artifact
-   */
   async createDocument(filename, content, options = {}) {
     return this.createArtifact(filename, content, {
       ...options,
@@ -1457,9 +1379,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     });
   }
 
-  /**
-   * Create a report artifact
-   */
   async createReport(title, content, options = {}) {
     const filename = `${title.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}-${Date.now()}.md`;
     return this.createArtifact(filename, content, {
@@ -1470,9 +1389,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     });
   }
 
-  /**
-   * Request human approval for an action
-   */
   async requestApproval(options) {
     const {
       actionType,
@@ -1521,9 +1437,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     }
   }
 
-  /**
-   * Check if there are approved actions waiting to be executed
-   */
   async checkApprovedActions() {
     try {
       const { data: approved } = await this.supabase
@@ -1549,14 +1462,10 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     }
   }
 
-  /**
-   * Execute an approved action
-   */
   async executeApprovedAction(action) {
     try {
       console.log(`[${this.name}] ⚡ Executing approved action: ${action.title}`);
 
-      // Mark as executed
       await this.supabase
         .from('trinity_pending_actions')
         .update({
@@ -1566,7 +1475,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
         })
         .eq('id', action.id);
 
-      // Update artifact status if linked
       if (action.artifact_id) {
         await this.supabase
           .from('trinity_artifacts')
@@ -1596,11 +1504,7 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     }
   }
 
-  /**
-   * Assess risk level of an artifact
-   */
   assessRiskLevel(type, content) {
-    // High risk indicators
     if (content.includes('DELETE') || content.includes('DROP') || content.includes('TRUNCATE')) {
       return 'high';
     }
@@ -1611,12 +1515,10 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
       return 'high';
     }
     
-    // Medium risk
     if (type === 'code' || content.includes('UPDATE') || content.includes('INSERT')) {
       return 'medium';
     }
     
-    // Low risk for docs and reports
     return 'low';
   }
 
@@ -1628,9 +1530,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
   // GITHUB INTEGRATION METHODS
   // ============================================
 
-  /**
-   * Make GitHub API request
-   */
   async githubRequest(endpoint, method = 'GET', body = null) {
     if (!this.githubEnabled) {
       throw new Error('GitHub integration not enabled. Set GITHUB_TOKEN env var.');
@@ -1661,9 +1560,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     return data;
   }
 
-  /**
-   * Get the SHA of a file (needed for updates)
-   */
   async getFileSHA(path, branch = this.githubConfig.defaultBranch) {
     try {
       const data = await this.githubRequest(
@@ -1671,13 +1567,10 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
       );
       return data.sha;
     } catch (err) {
-      return null; // File doesn't exist
+      return null;
     }
   }
 
-  /**
-   * Get the latest commit SHA of a branch
-   */
   async getBranchSHA(branch = this.githubConfig.defaultBranch) {
     const data = await this.githubRequest(
       `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/git/refs/heads/${branch}`
@@ -1685,9 +1578,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     return data.object.sha;
   }
 
-  /**
-   * Create a new branch
-   */
   async createBranch(branchName, fromBranch = this.githubConfig.defaultBranch) {
     const sha = await this.getBranchSHA(fromBranch);
     
@@ -1714,9 +1604,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     }
   }
 
-  /**
-   * Create or update a file in the repo
-   */
   async createGitHubFile(path, content, message, branch = this.githubConfig.defaultBranch) {
     const existingSHA = await this.getFileSHA(path, branch);
     
@@ -1738,7 +1625,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
 
     console.log(`[${this.name}] 📄 ${existingSHA ? 'Updated' : 'Created'} file: ${path}`);
     
-    // Record artifact
     await this.supabase.from('trinity_artifacts').insert({
       agent: this.name,
       artifact_type: 'github_file',
@@ -1754,9 +1640,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     return data;
   }
 
-  /**
-   * Create a Pull Request
-   */
   async createPullRequest(options) {
     const {
       title,
@@ -1780,7 +1663,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
 
     console.log(`[${this.name}] 🔀 Created PR #${data.number}: ${title}`);
     
-    // Record in database
     await this.supabase.from('trinity_artifacts').insert({
       agent: this.name,
       artifact_type: 'pull_request',
@@ -1806,9 +1688,6 @@ ${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
     return data;
   }
 
-  /**
-   * Format PR body with Trinity metadata
-   */
   formatPRBody(description) {
     return `## 🤖 Agent Work Product
 
@@ -1831,25 +1710,19 @@ ${description}
 ---
 
 *This PR was created by Trinity Symphony agent ${this.name}.*
-*Merging will auto-deploy to Render.*
 *${CONSTITUTION.GOLDEN_RULE?.article || 'Do unto others as you would have them do unto you.'}*
 `;
   }
 
-  /**
-   * Complete workflow: Create branch, add files, open PR
-   * This is the main method agents should use for code
-   */
   async submitCodeForReview(options) {
     const {
-      files, // Array of { path, content, message }
+      files,
       title,
       description,
       taskId = null
     } = options;
 
     if (!this.githubEnabled) {
-      // Fallback: store in Supabase and request approval
       console.log(`[${this.name}] GitHub not enabled, using Supabase fallback`);
       
       for (const file of files) {
@@ -1864,11 +1737,9 @@ ${description}
     }
 
     try {
-      // 1. Create feature branch
       const branchName = `agent/${this.name.toLowerCase()}-${Date.now()}`;
       await this.createBranch(branchName);
 
-      // 2. Add all files to the branch
       for (const file of files) {
         await this.createGitHubFile(
           file.path,
@@ -1878,7 +1749,6 @@ ${description}
         );
       }
 
-      // 3. Create PR for human review
       const pr = await this.createPullRequest({
         title,
         body: description,
@@ -1900,9 +1770,6 @@ ${description}
     }
   }
 
-  /**
-   * Add a file to the generated folder (direct to main, no PR)
-   */
   async addGeneratedFile(filename, content, subfolder = 'generated') {
     const path = `${subfolder}/${filename}`;
     return this.createGitHubFile(
