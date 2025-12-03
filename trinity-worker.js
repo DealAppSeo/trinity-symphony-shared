@@ -23,6 +23,8 @@ const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
 const { checkAndApplyUpdates } = require('./auto_updater');
+const { startMutualWakeLoop } = require('./mutual-wake');
+```
 
 (async () => {
   await checkAndApplyUpdates(process.env.AGENT_NAME || 'UNKNOWN');
@@ -233,6 +235,9 @@ async function main() {
   // Step 5: Start the agent's main loop
   // CRITICAL: Do NOT pass a custom processTask function!
   // Let the base class handle everything with real LLM calls.
+  // Start mutual wake keep-alive
+  startMutualWakeLoop();
+  
   agent.run().catch(err => {
     console.error(`[${AGENT_NAME}] 💀 Fatal error in main loop:`, err);
     process.exit(1);
