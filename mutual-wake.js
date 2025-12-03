@@ -11,13 +11,14 @@ const supabase = createClient(
 
 // CORRECT URLs as of 2025-11-29
 const AGENTS = [
-  { name: 'APM', url: 'https://trinity-apm.onrender.com' },
-  { name: 'HDM', url: 'https://trinity-hdm.onrender.com' },
-  { name: 'MEL', url: 'https://trinity-mel.onrender.com' },
-  { name: 'GCM', url: 'https://trinity-gcm.onrender.com' },
-  { name: 'TORCH', url: 'https://trinity-torch.onrender.com' },
-  { name: 'VERITAS', url: 'https://trinity-veritas-y65z.onrender.com' }, // NOTE: Has suffix!
-  { name: 'W3C', url: 'https://trinity-w3c.onrender.com' }
+  { name: 'HDM', url: 'https://trinity-hdm-production.up.railway.app' },
+  { name: 'APM', url: 'https://trinity-apm-production.up.railway.app' },
+  { name: 'MEL', url: 'https://trinity-mel-production.up.railway.app' },
+  { name: 'GCM', url: 'https://trinity-gcm-production.up.railway.app' },
+  { name: 'VERITAS', url: 'https://trinity-veritas-production.up.railway.app' },
+  { name: 'TORCH', url: 'https://trinity-torch-production.up.railway.app' },
+  { name: 'W3C', url: 'https://trinity-w3c-production.up.railway.app' },
+  { name: 'MCP', url: 'https://mcp-production-d0c6.up.railway.app' }
 ];
 
 const AGENT_NAME = process.env.AGENT_NAME || 'UNKNOWN';
