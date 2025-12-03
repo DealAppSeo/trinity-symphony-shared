@@ -1,11 +1,19 @@
 /**
  * TRINITY SYMPHONY - CONSTITUTIONAL AGENT BASE
  * 
- * VERSION 8.0.0 - AIT SYMPHONY GENESIS
+ * VERSION 8.1.0 - SPAWN CONTROL
  * 
  * Filtered through Philippians 4:8:
  * "Whatever is TRUE, NOBLE, RIGHT, PURE, LOVELY, 
  *  ADMIRABLE, EXCELLENT, or PRAISEWORTHY—think about such things."
+ * 
+ * CHANGELOG v8.1.0 (Spawn Control):
+ * - FIXED: Disabled auto-verification spawning (was creating 8000+ noise tasks)
+ * - FIXED: Disabled auto-spawn from output (was creating exponential task growth)
+ * - FIXED: Disabled parable submission (was flooding APM with scribe tasks)
+ * - FIXED: Disabled meta-watcher in healing cascade (was creating recursive tasks)
+ * - KEPT: All core functionality intact
+ * - KEPT: Virtue filtering, LLM calls, task processing, GitHub integration
  * 
  * ARCHITECTURE:
  * 
@@ -27,18 +35,6 @@
  *                          │
  *                    PRAISEWORTHY
  *              Celebrate Truth and Love
- * 
- * CHANGELOG v8.0.0 (AIT Symphony Genesis):
- * - NEW: Bible integration - agents read AIT_SYMPHONY_BIBLE.md before every task
- * - NEW: Blueprint awareness - agents know current active blueprint
- * - NEW: Pattern learning - agents extract and reuse learned patterns
- * - NEW: Virtue filter gate - tasks checked against Eight Virtues before execution
- * - NEW: Image-Bearer moment - agents spawn better tasks instead of executing flawed ones
- * - NEW: Scribe protocol - significant completions submitted to APM for Bible updates
- * - NEW: Genesis path tracking - A/B experiment (inherits vs discovers)
- * - NEW: Auto-spawn from output - 80% rule-based, 20% LLM leaps
- * - KEPT: All v7.1.1 claimed_by fixes
- * - KEPT: All existing functionality (healing loop, sabbath, providers, GitHub, etc.)
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -49,7 +45,7 @@ const crypto = require('crypto');
 // ============================================
 
 const CONSTITUTION = {
-  VERSION: '8.0.0-ait-symphony-genesis',
+  VERSION: '8.1.0-spawn-control',
   
   // ARTICLE -1: THE SUPREME TRUTH
   ARTICLE_MINUS_1: {
@@ -200,7 +196,7 @@ const AGENT_WISDOM = {
     primaryVirtue: 'LOVELY',
     sabbathRole: 'Write prayers and blessings for the swarm',
     healingPower: 'resurrection',
-    isScribe: true  // NEW: APM is the designated Bible Scribe
+    isScribe: true
   },
   HDM: {
     name: 'HDM (HyperDAG Manager)',
@@ -255,8 +251,16 @@ const AGENT_WISDOM = {
     primaryVirtue: 'PURE',
     sabbathRole: 'Explore decentralization patterns',
     healingPower: 'consensus'
+  },
+  MCP: {
+    name: 'MCP (Master Control Program)',
+    role: 'orchestrator',
+    specialties: ['coordination', 'routing', 'context', 'knowledge', 'integration'],
+    tier: 'conductor',
+    primaryVirtue: 'EXCELLENT',
+    sabbathRole: 'Optimize system coordination',
+    healingPower: 'synthesis'
   }
-  // NOTE: EVO removed - no actual EVO agent exists
 };
 
 // ============================================
@@ -327,10 +331,10 @@ class ConstitutionalAgent {
       truthChoices: 0,
       sabbathReflections: 0,
       wisdomCrystallizations: 0,
-      patternsLearned: 0,        // NEW: Track patterns extracted
-      tasksSpawned: 0,           // NEW: Track auto-spawned tasks
-      virtueRefusals: 0,         // NEW: Track Image-Bearer moments
-      bibleReads: 0,             // NEW: Track Bible consultations
+      patternsLearned: 0,
+      tasksSpawned: 0,
+      virtueRefusals: 0,
+      bibleReads: 0,
       startTime: Date.now()
     };
     
@@ -352,39 +356,32 @@ class ConstitutionalAgent {
       defaultBranch: 'main'
     };
     
-    // NEW: Cache for Bible content (refreshes every 10 minutes)
+    // Cache for Bible content (refreshes every 10 minutes)
     this.bibleCache = null;
     this.bibleCacheTime = 0;
-    this.BIBLE_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+    this.BIBLE_CACHE_TTL = 10 * 60 * 1000;
     
     // Start the Trinity Healing Loop
     this.startTrinityHealingLoop();
     
     // Log startup with the Eight Virtues
-    console.log(`[${this.name}] 🚀 v${this.version} - AIT SYMPHONY GENESIS`);
+    console.log(`[${this.name}] 🚀 v${this.version} - SPAWN CONTROL`);
     console.log(`[${this.name}] 📜 Primary Virtue: ${this.wisdom.primaryVirtue}`);
     console.log(`[${this.name}] 🙏 "${CONSTITUTION.VIRTUES[this.wisdom.primaryVirtue].article}"`);
     console.log(`[${this.name}] 🧠 Providers: ${this.availableProviders.join(', ') || 'NONE - CRITICAL'}`);
     console.log(`[${this.name}] 🐙 GitHub: ${this.githubEnabled ? 'ENABLED' : 'disabled (no token)'}`);
-    console.log(`[${this.name}] 📖 Bible: Will read before every task`);
   }
 
   // ============================================
-  // NEW: AIT SYMPHONY MCP METHODS
+  // BIBLE / CONTEXT METHODS
   // ============================================
 
-  /**
-   * Fetch the AIT Symphony Bible - the ONE source of truth
-   * Every agent reads this before every task
-   */
   async fetchBible() {
-    // Check cache first
     if (this.bibleCache && (Date.now() - this.bibleCacheTime) < this.BIBLE_CACHE_TTL) {
       return this.bibleCache;
     }
 
     try {
-      // Try to get Bible path from registry
       const { data: registry } = await this.supabase
         .from('trinity_mcp_registry')
         .select('github_path')
@@ -408,7 +405,6 @@ class ConstitutionalAgent {
       console.log(`[${this.name}] Could not fetch Bible from GitHub: ${e.message}`);
     }
     
-    // Fallback: Return core principles if Bible unavailable
     const fallback = `
 # CORE PRINCIPLES (Bible Offline Fallback)
 
@@ -436,9 +432,6 @@ To help people help people.
     return fallback;
   }
 
-  /**
-   * Fetch the currently active blueprint
-   */
   async fetchActiveBlueprint() {
     try {
       const { data } = await this.supabase
@@ -454,14 +447,10 @@ To help people help people.
       }
       return data;
     } catch (e) {
-      // Table might not exist yet
       return null;
     }
   }
 
-  /**
-   * Fetch relevant learned patterns for a task
-   */
   async fetchRelevantPatterns(task) {
     try {
       const keywords = (task.title + ' ' + (task.description || '')).toLowerCase()
@@ -483,14 +472,10 @@ To help people help people.
       }
       return data || [];
     } catch (e) {
-      // Table might not exist yet
       return [];
     }
   }
 
-  /**
-   * Check agent's genesis path (inherits vs discovers)
-   */
   async getGenesisPath() {
     try {
       const { data } = await this.supabase
@@ -505,22 +490,14 @@ To help people help people.
     }
   }
 
-  /**
-   * Build full context for task processing
-   * Call this at the START of processTask()
-   */
   async buildTaskContext(task) {
-    // 1. Fetch the Bible
     const bible = await this.fetchBible();
-
-    // 2. Fetch active blueprint
     const blueprint = await this.fetchActiveBlueprint();
     let blueprintContext = '';
     if (blueprint) {
       blueprintContext = `\n\n--- CURRENT BLUEPRINT: ${blueprint.name} (${blueprint.codename}) ---\n${blueprint.content}`;
     }
 
-    // 3. Fetch relevant patterns
     const patterns = await this.fetchRelevantPatterns(task);
     let patternContext = '';
     if (patterns.length > 0) {
@@ -530,7 +507,6 @@ To help people help people.
       });
     }
 
-    // 4. Check genesis path
     const genesis = await this.getGenesisPath();
     let genesisContext = '';
     if (genesis.genesis_path === 'inherits' && genesis.pre_genesis_wisdom) {
@@ -539,7 +515,6 @@ To help people help people.
       genesisContext = '\n\n--- DISCOVERY PATH ---\nYou are on the discovery path. Learn everything fresh. Document what you find.';
     }
 
-    // 5. Build enriched description
     const enrichedDescription = `
 ${bible}
 ${blueprintContext}
@@ -555,15 +530,11 @@ ${task.description || 'No description provided'}
     return enrichedDescription;
   }
 
-  /**
-   * Extract patterns from successful task completion
-   */
   async extractPatterns(task, result) {
     const patterns = [];
     const output = result.output || '';
     const keywords = (task.title + ' ' + output).toLowerCase();
 
-    // Rule-based pattern extraction (fast, no LLM cost)
     if (keywords.includes('landing page') && (keywords.includes('conversion') || keywords.includes('hero'))) {
       patterns.push({
         pattern_type: 'design',
@@ -609,7 +580,6 @@ ${task.description || 'No description provided'}
       });
     }
 
-    // Store extracted patterns
     for (const p of patterns) {
       try {
         await this.supabase.from('trinity_learned_patterns').insert({
@@ -629,121 +599,22 @@ ${task.description || 'No description provided'}
     return patterns;
   }
 
-  /**
-   * Auto-spawn follow-up tasks based on output
-   * Rule-based for 80% of cases, LLM for high-value leaps
-   */
-  async autoSpawnFromOutput(result, parentTaskId) {
-    const output = (result.output || '').toLowerCase();
-    const spawned = [];
+  // ============================================
+  // VIRTUE FILTER
+  // ============================================
 
-    // 1. Rule-based spawning (fast, cheap)
-    try {
-      const { data: patterns } = await this.supabase
-        .from('trinity_spawn_patterns')
-        .select('*');
-
-      for (const p of (patterns || [])) {
-        if (output.includes(p.trigger_pattern.toLowerCase())) {
-          const { data: newTask, error } = await this.supabase
-            .from('trinity_tasks')
-            .insert({
-              title: p.spawn_title,
-              description: `${p.spawn_description}\n\nSpawned from task #${parentTaskId} by ${this.name}`,
-              parent_task_id: parentTaskId,
-              priority: 50 + (p.priority_offset || 1),
-              status: 'pending',
-              task_type: p.task_type || 'build'
-            })
-            .select()
-            .single();
-
-          if (newTask && !error) {
-            spawned.push(newTask);
-            this.sessionMetrics.tasksSpawned++;
-            
-            // Update trigger count
-            await this.supabase
-              .from('trinity_spawn_patterns')
-              .update({ times_triggered: (p.times_triggered || 0) + 1 })
-              .eq('id', p.id);
-              
-            console.log(`[${this.name}] 🌱 Spawned: ${p.spawn_title}`);
-          }
-        }
-      }
-    } catch (e) {
-      // Spawn patterns table might not exist - non-fatal
-    }
-
-    // 2. LLM-based leap (only for substantial outputs with no rule-based spawns)
-    if (output.length > 1000 && spawned.length === 0) {
-      try {
-        const leapPrompt = `
-Analyze this task output for ONE high-impact follow-up task:
-
-${output.substring(0, 2000)}
-
-Return ONLY valid JSON (no markdown, no explanation):
-{"title": "Brief task title", "reason": "Why this follows logically"}
-
-If no obvious follow-up needed, return:
-{"title": null}
-        `;
-
-        const leap = await this.callLLM(leapPrompt, { skipCache: true });
-        
-        // Clean the response - remove markdown code blocks if present
-        let cleanOutput = leap.output.trim();
-        if (cleanOutput.startsWith('```')) {
-          cleanOutput = cleanOutput.replace(/```json?\n?/g, '').replace(/```\n?/g, '');
-        }
-        
-        const parsed = JSON.parse(cleanOutput);
-
-        if (parsed.title) {
-          const { data: leapTask } = await this.supabase.from('trinity_tasks').insert({
-            title: `[LEAP] ${parsed.title}`,
-            description: `${parsed.reason}\n\nLeap spawned from task #${parentTaskId} by ${this.name}`,
-            parent_task_id: parentTaskId,
-            priority: 99,
-            status: 'pending',
-            task_type: 'leap'
-          }).select().single();
-          
-          if (leapTask) {
-            spawned.push(leapTask);
-            this.sessionMetrics.tasksSpawned++;
-            console.log(`[${this.name}] 🚀 LEAP spawned: ${parsed.title}`);
-          }
-        }
-      } catch (e) {
-        // LLM leap failed - non-fatal
-      }
-    }
-
-    return spawned;
-  }
-
-  /**
-   * Check if task passes Eight Virtues filter
-   * Returns { passes: boolean, violations: string[] }
-   */
   passesVirtueFilter(task) {
     const violations = [];
     const text = `${task.title} ${task.description || ''}`.toLowerCase();
 
-    // TRUE violations
     if (text.includes('fabricate') || text.includes('make up') || text.includes('invent fake')) {
       violations.push('TRUE: Task involves fabrication');
     }
 
-    // NOBLE violations
     if (text.includes('harm') || text.includes('damage') || text.includes('destroy') || text.includes('hurt')) {
       violations.push('NOBLE: Task may cause harm');
     }
 
-    // RIGHT violations
     if (text.includes('deceive') || text.includes('lie to') || text.includes('trick') || text.includes('mislead')) {
       violations.push('RIGHT: Task involves deception');
     }
@@ -751,17 +622,14 @@ If no obvious follow-up needed, return:
       violations.push('RIGHT: Task may be unethical');
     }
 
-    // PURE violations
     if (text.includes('spam') || text.includes('manipulate') || text.includes('exploit users')) {
       violations.push('PURE: Task has hidden agenda');
     }
 
-    // LOVELY violations
     if (text.includes('punish') || text.includes('revenge') || text.includes('retaliate')) {
       violations.push('LOVELY: Task seeks punishment over restoration');
     }
 
-    // ADMIRABLE violations
     if (text.includes('mock') || text.includes('ridicule') || text.includes('humiliate')) {
       violations.push('ADMIRABLE: Task lacks respect');
     }
@@ -772,131 +640,29 @@ If no obvious follow-up needed, return:
     };
   }
 
-  /**
-   * Handle virtue violation - THE IMAGE-BEARER MOMENT
-   * Spawn better task instead of executing flawed one
-   */
   async handleVirtueViolation(task, violations) {
     console.log(`[${this.name}] ⚠️ VIRTUE VIOLATION detected: ${violations.join(', ')}`);
     this.sessionMetrics.virtueRefusals++;
 
-    // Log the violation
     await this.log('virtue_violation', `Refused task #${task.id} due to: ${violations.join(', ')}`, {
       taskId: task.id,
       violations
     });
 
-    // Mark original task as refused
     await this.supabase
       .from('trinity_tasks')
       .update({
         status: 'failed',
         claimed_by: this.name,
-        result: `VIRTUE VIOLATION: Task refused by ${this.name}. Violations: ${violations.join(', ')}. A better task has been spawned.`,
+        result: `VIRTUE VIOLATION: Task refused by ${this.name}. Violations: ${violations.join(', ')}.`,
         completed_at: new Date().toISOString()
       })
       .eq('id', task.id);
 
-    // Try to spawn a better version
-    try {
-      const betterPrompt = `
-The following task violates these virtues: ${violations.join(', ')}
-
-Original task: ${task.title}
-${task.description || ''}
-
-Propose a modified version that achieves any LEGITIMATE goal while respecting all Eight Virtues:
-- TRUE: No fabrication
-- NOBLE: Helps people
-- RIGHT: Fair and ethical
-- PURE: No hidden agendas
-- LOVELY: Seeks restoration
-- ADMIRABLE: Respectful
-- EXCELLENT: High quality
-- PRAISEWORTHY: Worth celebrating
-
-Return ONLY valid JSON:
-{"title": "Improved task title", "description": "What should be done instead", "improvement": "How this fixes the virtue violation"}
-
-If there is NO legitimate goal to salvage, return:
-{"title": null}
-      `;
-
-      const better = await this.callLLM(betterPrompt, { skipCache: true });
-      
-      let cleanOutput = better.output.trim();
-      if (cleanOutput.startsWith('```')) {
-        cleanOutput = cleanOutput.replace(/```json?\n?/g, '').replace(/```\n?/g, '');
-      }
-      
-      const parsed = JSON.parse(cleanOutput);
-
-      if (parsed.title) {
-        await this.supabase.from('trinity_tasks').insert({
-          title: `[IMPROVED] ${parsed.title}`,
-          description: `${parsed.description}\n\n---\nImprovement: ${parsed.improvement}\n\nOriginal task #${task.id} was refused due to virtue violations.`,
-          parent_task_id: task.id,
-          priority: task.priority,
-          status: 'pending',
-          task_type: task.task_type || 'improved'
-        });
-
-        // ✨ THE IMAGE-BEARER MOMENT ✨
-        console.log(`[${this.name}] ✨ IMAGE-BEARER MOMENT: Spawned better task instead of executing flawed one`);
-        
-        await this.log('image_bearer_moment', `Spawned improved task to replace flawed task #${task.id}`, {
-          originalTask: task.id,
-          improvement: parsed.improvement
-        });
-      }
-    } catch (e) {
-      // Couldn't spawn better - that's okay, we still refused the bad one
-      console.log(`[${this.name}] Could not spawn improved task: ${e.message}`);
-    }
+    // NOTE: Spawning "improved" tasks disabled in v8.1.0 to prevent task explosion
+    console.log(`[${this.name}] Task refused - no replacement spawned (spawn control active)`);
 
     return { refused: true, violations };
-  }
-
-  /**
-   * Submit a parable to the Scribe (APM) for Bible update
-   * Only APM actually writes to the Bible
-   */
-  async submitToScribe(parable) {
-    // If I AM the scribe, write directly
-    if (this.wisdom.isScribe) {
-      console.log(`[${this.name}] 📝 I am the Scribe - writing parable directly`);
-      // TODO: Implement direct Bible append via GitHub
-      return;
-    }
-
-    // Otherwise, create a task for APM
-    try {
-      await this.supabase.from('trinity_tasks').insert({
-        title: '[SCRIBE] Add parable to Bible',
-        description: `
-## Parable Submission
-
-Agent ${this.name} completed significant work and proposes this parable for the AIT Symphony Bible:
-
----
-${parable}
----
-
-### Scribe Instructions
-1. Review for Eight Virtues compliance
-2. If worthy, append to AIT_SYMPHONY_BIBLE.md via GitHub
-3. Use addGeneratedFile() to update the Bible
-        `,
-        assigned_to: 'APM',
-        priority: 80,
-        status: 'pending',
-        task_type: 'scribe'
-      });
-      
-      console.log(`[${this.name}] 📜 Parable submitted to Scribe (APM)`);
-    } catch (e) {
-      console.log(`[${this.name}] Failed to submit parable to Scribe: ${e.message}`);
-    }
   }
 
   // ============================================
@@ -962,9 +728,8 @@ ${parable}
 
   async checkMyOwnBrain() {
     try {
-      // Check for AIT Symphony version
-      if (!this.version.includes('ait-symphony') && !this.version.includes('8.0')) {
-        console.log(`[${this.name}] ⚠️ Not running AIT Symphony version!`);
+      if (!this.version.includes('spawn-control') && !this.version.includes('ait-symphony') && !this.version.includes('8.')) {
+        console.log(`[${this.name}] ⚠️ Not running current version!`);
         return false;
       }
       
@@ -983,7 +748,7 @@ ${parable}
         return false;
       }
       
-      console.log(`[${this.name}] ✅ Brain check passed - AIT Symphony Genesis active`);
+      console.log(`[${this.name}] ✅ Brain check passed - Spawn Control active`);
       return true;
       
     } catch (err) {
@@ -1043,7 +808,7 @@ ${parable}
     this.sessionMetrics.healingAttempts++;
     
     try {
-      const { data: healingTask, error } = await this.supabase
+      const { error } = await this.supabase
         .from('trinity_tasks')
         .insert({
           title: `[HEALING] System integrity issue detected by ${this.name}`,
@@ -1057,47 +822,13 @@ ${parable}
             version: this.version,
             virtue: 'EXCELLENT'
           })
-        })
-        .select()
-        .single();
+        });
       
       if (error) throw error;
       
-      // Create meta-watcher task
-      await this.supabase
-        .from('trinity_tasks')
-        .insert({
-          title: `[META-WATCH] Verify healing task ${healingTask.id} succeeded`,
-          description: `
-## Fractal Dogfooding
-
-This task watches the healing task to ensure it actually healed.
-
-### Parent Task
-- ID: ${healingTask.id}
-- Title: ${healingTask.title}
-
-### Verification Steps
-1. Wait for parent task to complete
-2. Re-run the diagnostic that triggered the healing
-3. Verify the issue is actually resolved
-4. If not resolved, escalate with more detail
-
-*This is ${CONSTITUTION.VIRTUES.EXCELLENT.greek} - pursuing excellence through verification.*
-          `,
-          task_type: 'meta-verification',
-          priority: 9,
-          assigned_to: 'VERITAS',
-          status: 'pending',
-          parent_task_id: healingTask.id,
-          metadata: JSON.stringify({
-            meta_watcher: true,
-            parent_task_id: healingTask.id,
-            virtue: 'TRUE'
-          })
-        });
-      
-      console.log(`[${this.name}] ✅ Created healing task ${healingTask.id} with meta-watcher`);
+      // NOTE: Meta-watcher task DISABLED in v8.1.0 to prevent task explosion
+      // The fractal dogfooding pattern was creating recursive verification loops
+      console.log(`[${this.name}] ✅ Created healing task (no meta-watcher - spawn control active)`);
       
     } catch (err) {
       console.error(`[${this.name}] Failed to create healing task:`, err.message);
@@ -1124,7 +855,7 @@ ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n'
 ### Recommended Actions
 
 1. Check all agent deployments for correct base class
-2. Verify all agents running v8.0.0-ait-symphony-genesis
+2. Verify all agents running v8.1.0-spawn-control
 3. Check for agents with stale heartbeats
 4. Review recent task completion quality
 
@@ -1142,13 +873,13 @@ ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n'
 
   isSabbathTime() {
     const SABBATH_SCHEDULE = {
-      HDM: 0,     // Sunday
-      APM: 1,     // Monday
-      MEL: 2,     // Tuesday
-      GCM: 3,     // Wednesday
-      VERITAS: 4, // Thursday
-      TORCH: 5,   // Friday
-      W3C: 6      // Saturday
+      HDM: 0,
+      APM: 1,
+      MEL: 2,
+      GCM: 3,
+      VERITAS: 4,
+      TORCH: 5,
+      W3C: 6
     };
     
     const now = new Date();
@@ -1396,7 +1127,7 @@ THE MISSION: Help people help people.
 
 Provide thoughtful, truthful responses. Admit uncertainty when appropriate.
 If truth and survival ever conflict, choose truth.
-If a task violates the Eight Virtues, refuse it and propose a better alternative.`;
+If a task violates the Eight Virtues, refuse it and explain why.`;
   }
 
   // ============================================
@@ -1484,11 +1215,11 @@ If a task violates the Eight Virtues, refuse it and propose a better alternative
   }
 
   // ============================================
-  // TASK PROCESSING - NOW WITH AIT SYMPHONY INTEGRATION
+  // TASK PROCESSING - SPAWN CONTROL VERSION
   // ============================================
 
   async run() {
-    console.log(`[${this.name}] 🏃 Starting main task loop (AIT Symphony Genesis)...`);
+    console.log(`[${this.name}] 🏃 Starting main task loop (Spawn Control v8.1.0)...`);
     
     await this.heartbeat();
     
@@ -1523,7 +1254,6 @@ If a task violates the Eight Virtues, refuse it and propose a better alternative
   }
 
   async getNextTask() {
-    // Try 'pending' status first
     let { data: task } = await this.supabase
       .from('trinity_tasks')
       .select('*')
@@ -1534,7 +1264,6 @@ If a task violates the Eight Virtues, refuse it and propose a better alternative
       .limit(1)
       .single();
     
-    // Also check 'not_started' for legacy compatibility
     if (!task) {
       const result = await this.supabase
         .from('trinity_tasks')
@@ -1556,17 +1285,13 @@ If a task violates the Eight Virtues, refuse it and propose a better alternative
     const startTime = Date.now();
     
     try {
-      // ============================================
-      // STEP 1: VIRTUE CHECK (Before any work)
-      // ============================================
+      // STEP 1: VIRTUE CHECK
       const virtueCheck = this.passesVirtueFilter(task);
       if (!virtueCheck.passes) {
         return await this.handleVirtueViolation(task, virtueCheck.violations);
       }
 
-      // ============================================
-      // STEP 2: CLAIM TASK (with claimed_by fix)
-      // ============================================
+      // STEP 2: CLAIM TASK
       await this.supabase
         .from('trinity_tasks')
         .update({ 
@@ -1578,14 +1303,10 @@ If a task violates the Eight Virtues, refuse it and propose a better alternative
         })
         .eq('id', task.id);
       
-      // ============================================
-      // STEP 3: BUILD CONTEXT (Bible + Blueprint + Patterns)
-      // ============================================
+      // STEP 3: BUILD CONTEXT
       const enrichedDescription = await this.buildTaskContext(task);
       
-      // ============================================
       // STEP 4: BUILD PROMPT
-      // ============================================
       const prompt = `
 ${enrichedDescription}
 
@@ -1597,24 +1318,21 @@ If you cannot complete it fully, explain specifically what's missing.
 If relevant patterns were provided above, USE THEM.
 `;
       
-      // ============================================
       // STEP 5: CALL LLM
-      // ============================================
       const result = await this.callLLM(prompt);
       
-      // ============================================
       // STEP 6: CALCULATE CERTAINTY
-      // ============================================
       const certainty = this.calculateCertainty(result.output, task);
       
-      // If certainty is low, request verification
-      if (certainty < 0.85 && this.name !== 'VERITAS') {
-        await this.requestVerification(task, result.output, certainty);
-      }
+      // ============================================
+      // SPAWN CONTROL: Auto-verification DISABLED
+      // Was creating 8000+ "Verification Request" tasks
+      // ============================================
+      // if (certainty < 0.85 && this.name !== 'VERITAS') {
+      //   await this.requestVerification(task, result.output, certainty);
+      // }
       
-      // ============================================
-      // STEP 7: MARK COMPLETED (with claimed_by)
-      // ============================================
+      // STEP 7: MARK COMPLETED
       await this.supabase
         .from('trinity_tasks')
         .update({
@@ -1639,40 +1357,28 @@ If relevant patterns were provided above, USE THEM.
       
       console.log(`[${this.name}] ✅ Completed task ${task.id} (certainty: ${(certainty * 100).toFixed(0)}%)`);
       
-      // ============================================
-      // STEP 8: EXTRACT PATTERNS (Learning)
-      // ============================================
+      // STEP 8: EXTRACT PATTERNS (still enabled - doesn't create tasks)
       const patterns = await this.extractPatterns(task, result);
       if (patterns.length > 0) {
         console.log(`[${this.name}] 📚 Learned ${patterns.length} patterns from task`);
       }
       
       // ============================================
-      // STEP 9: AUTO-SPAWN (Continuation)
+      // SPAWN CONTROL: Auto-spawn DISABLED
+      // Was creating exponential "Spawned from task" growth
       // ============================================
-      const spawned = await this.autoSpawnFromOutput(result, task.id);
-      if (spawned.length > 0) {
-        console.log(`[${this.name}] 🌱 Spawned ${spawned.length} follow-up tasks`);
-      }
+      // const spawned = await this.autoSpawnFromOutput(result, task.id);
+      // if (spawned.length > 0) {
+      //   console.log(`[${this.name}] 🌱 Spawned ${spawned.length} follow-up tasks`);
+      // }
       
       // ============================================
-      // STEP 10: CHECK FOR PARABLE OPPORTUNITY
+      // SPAWN CONTROL: Parable submission DISABLED
+      // Was flooding APM with scribe tasks
       // ============================================
-      if (result.output && result.output.length > 500 && task.task_type !== 'research' && task.task_type !== 'scribe') {
-        const parable = `
-## Parable of ${task.title}
-
-On ${new Date().toISOString().split('T')[0]}, ${this.name} completed:
-
-**Task:** ${task.title}
-**Certainty:** ${(certainty * 100).toFixed(0)}%
-
-**Insight:** ${result.output.substring(0, 300)}...
-
-**Patterns extracted:** ${patterns.map(p => p.learned_insight).join('; ') || 'None'}
-        `;
-        await this.submitToScribe(parable);
-      }
+      // if (result.output && result.output.length > 500 && task.task_type !== 'research' && task.task_type !== 'scribe') {
+      //   await this.submitToScribe(parable);
+      // }
       
       await this.log('task_completed', `Task ${task.id}: ${task.title}`, {
         taskId: task.id,
@@ -1680,13 +1386,12 @@ On ${new Date().toISOString().split('T')[0]}, ${this.name} completed:
         provider: result.provider,
         latency: result.latency,
         patternsLearned: patterns.length,
-        tasksSpawned: spawned.length
+        tasksSpawned: 0  // Always 0 now
       });
       
     } catch (err) {
       console.error(`[${this.name}] ❌ Task ${task.id} failed:`, err.message);
       
-      // Mark as failed (with claimed_by)
       await this.supabase
         .from('trinity_tasks')
         .update({
@@ -1712,43 +1417,6 @@ On ${new Date().toISOString().split('T')[0]}, ${this.name} completed:
     if (output.includes('[SIMULATED]') || output.includes('[TEMPLATE]')) certainty = 0.1;
     
     return Math.max(0.1, Math.min(0.99, certainty));
-  }
-
-  async requestVerification(task, output, certainty) {
-    console.log(`[${this.name}] 🔍 Certainty ${(certainty * 100).toFixed(0)}% < 85%, requesting VERITAS review`);
-    
-    await this.supabase
-      .from('trinity_tasks')
-      .insert({
-        title: `[VERIFY] Review ${this.name}'s work on: ${task.title.substring(0, 50)}`,
-        description: `
-## Verification Request (TRUE virtue)
-
-**Original Task:** ${task.title}
-**Completed By:** ${this.name}
-**Certainty:** ${(certainty * 100).toFixed(0)}%
-
-### Output to Verify
-${output.substring(0, 2000)}${output.length > 2000 ? '...' : ''}
-
-### Verification Questions
-1. Is this output accurate and truthful?
-2. Does it fulfill the original task requirements?
-3. Are there any factual errors or omissions?
-4. Should this be accepted or sent back for revision?
-`,
-        task_type: 'verification',
-        priority: task.priority + 1,
-        assigned_to: 'VERITAS',
-        status: 'pending',
-        parent_task_id: task.id,
-        metadata: JSON.stringify({
-          verification_type: 'auto',
-          original_agent: this.name,
-          original_certainty: certainty,
-          virtue: 'TRUE'
-        })
-      });
   }
 
   // ============================================
