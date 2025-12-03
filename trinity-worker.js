@@ -24,7 +24,6 @@ const fs = require('fs').promises;
 const path = require('path');
 const { checkAndApplyUpdates } = require('./auto_updater');
 const { startMutualWakeLoop } = require('./mutual-wake');
-```
 
 (async () => {
   await checkAndApplyUpdates(process.env.AGENT_NAME || 'UNKNOWN');
