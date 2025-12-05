@@ -1,46 +1,41 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
+const { ConstitutionalAgent } = require('./constitutional-agent-base.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const AGENT_NAME = process.env.AGENT_NAME || 'HDM';
 
-// Serve static files from core-documents
-app.use('/docs', express.static(path.join(__dirname, 'core-documents')));
-
-// Root endpoint - list available documents
-app.get('/', (req, res) => {
-  const docsPath = path.join(__dirname, 'core-documents');
-  
-  try {
-    const files = fs.readdirSync(docsPath)
-      .filter(f => f.endsWith('.md'))
-      .map(f => ({
-        name: f,
-        url: `/docs/${f}`
-      }));
-    
-    res.json({
-      status: 'Trinity Symphony Shared Documentation',
-      version: '1.0.0',
-      documents: files,
-      health: 'OK'
-    });
-  } catch (err) {
-    res.json({
-      status: 'Trinity Symphony Shared Documentation',
-      version: '1.0.0',
-      error: 'core-documents directory not found',
-      health: 'OK'
-    });
-  }
-});
+// Initialize agent
+const agent = new ConstitutionalAgent({ name: AGENT_NAME });
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'healthy',
+    agent: AGENT_NAME,
+    version: agent.version,
+    providers: agent.availableProviders
+  });
 });
 
+// TRIGGER ENDPOINT - This is what cron will hit
+app.get('/trigger', async (req, res) => {
+  try {
+    const task = await agent.getNextTask();
+    if (task) {
+      await agent.processTask(task);
+      res.json({ status: 'processed', taskId: task.id, title: task.title });
+    } else {
+      await agent.heartbeat();
+      res.json({ status: 'no_tasks', message: 'Heartbeat updated' });
+    }
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+// Start server
 app.listen(PORT, () => {
-  console.log(`Trinity Symphony Shared Docs running on port ${PORT}`);
+  console.log(`[${AGENT_NAME}] 🚀 Server running on port ${PORT}`);
+  console.log(`[${AGENT_NAME}] 🎯 Hit /trigger to process tasks`);
 });
