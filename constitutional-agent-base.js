@@ -993,7 +993,16 @@ RATIONALE: [2-3 sentences explaining why]
         
         await this.cacheWisdom(cacheKey, result.output);
         await this.trackProviderPerformance(providerKey, true, Date.now() - startTime);
-        
+        await this.supabase.rpc('log_execution', {
+          p_agent: this.name,
+          p_provider: providerKey,
+          p_model: provider.model,
+          p_task_type: options.taskType || null,
+          p_task_id: options.taskId || null,
+          p_tokens: Math.ceil((prompt.length + (result.output?.length || 0)) / 4),
+          p_latency_ms: Date.now() - startTime,
+          p_success: true
+        }).catch(() => {});
         console.log(`[${this.name}] 🧠 ${provider.name} responded in ${Date.now() - startTime}ms`);
         return { ...result, provider: providerKey, latency: Date.now() - startTime };
         
