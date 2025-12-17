@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-AI Trinity Symphony Agent
+AI Trinity Symphony Agent v2.0
 Role progression: AGENT → CONDUCTOR → ORCHESTRATOR (based on RepID)
+Updated: 2025-12-17
 """
 
 import os, json, time, random, base64
@@ -10,7 +11,7 @@ from typing import Optional, Dict, Any, List
 import httpx
 from supabase import create_client, Client
 
-# Identity (constant)
+# Identity (constant) - Uses AGENT_NAME from your existing env vars
 AGENT_NAME = os.environ.get("AGENT_NAME", "HDM")
 
 # Supabase
@@ -102,7 +103,6 @@ class TrinityAgent:
         """Check if task requires Human-In-The-Loop verification."""
         # Orchestrators can approve most things without HITL
         if self.role == "Orchestrator":
-            # Even orchestrators need HITL for critical operations
             critical_types = ["config_change", "security", "financial", "deployment_prod"]
             return task.get("task_type") in critical_types
         
@@ -117,25 +117,19 @@ class TrinityAgent:
             return task.get("task_type") not in trivial_types
     
     def _can_spawn_subtasks(self) -> bool:
-        """Only Conductors and Orchestrators can spawn subtasks."""
         return self.role in ["Conductor", "Orchestrator"]
     
     def _can_vote(self) -> bool:
-        """Only Conductors and Orchestrators can vote."""
         return self.permissions.get("can_vote", False)
     
     def _can_propose_changes(self) -> bool:
-        """Only Conductors and Orchestrators can propose changes."""
         return self.permissions.get("can_propose_changes", False)
     
     def _can_modify_config(self) -> bool:
-        """Only Orchestrators can modify config."""
         return self.role == "Orchestrator" and self.permissions.get("can_modify_config", False)
     
     def _get_voting_weight(self) -> float:
-        """Get voting weight based on role and RepID."""
         base_weight = self.permissions.get("voting_weight", 1.0)
-        # Orchestrators get bonus weight
         if self.role == "Orchestrator":
             return base_weight * 1.5
         return base_weight
@@ -146,7 +140,6 @@ class TrinityAgent:
             self.log("No AI providers configured", "error")
             return None
         
-        # Find available provider
         provider = None
         now = datetime.now()
         for p in self.providers:
@@ -161,7 +154,6 @@ class TrinityAgent:
             time.sleep(60)
             return self._call_llm(prompt, system)
         
-        # Stealth timing jitter
         time.sleep(random.uniform(0.5, 2.0))
         
         messages = []
@@ -174,7 +166,6 @@ class TrinityAgent:
                 "Authorization": f"Bearer {provider['api_key']}",
                 "Content-Type": "application/json"
             }
-            # OpenRouter needs extra header
             if provider["name"] == "openrouter":
                 headers["HTTP-Referer"] = os.environ.get("OPENROUTER_REFERRER", "https://trinity-symphony.ai")
             
@@ -194,8 +185,7 @@ class TrinityAgent:
                 return r.json()["choices"][0]["message"]["content"]
         except Exception as e:
             self.log(f"LLM error ({provider['name']}): {e}", "error")
-            provider["calls"] = provider["rpm_limit"]  # Mark exhausted
-            # Try next provider
+            provider["calls"] = provider["rpm_limit"]
             remaining = [p for p in self.providers if p["calls"] < p["rpm_limit"]]
             if remaining:
                 return self._call_llm(prompt, system)
@@ -208,7 +198,7 @@ class TrinityAgent:
         print(f"[{ts}] [{self.agent_name}] {role_tag} [{level.upper()}] {msg}")
         try:
             supabase.table("autonomous_logs").insert({
-                "conductor_id": self.agent_name,  # Keep column name for compatibility
+                "conductor_id": self.agent_name,
                 "level": level,
                 "message": f"{role_tag} {msg}"[:1000],
                 "created_at": ts
@@ -229,7 +219,6 @@ class TrinityAgent:
     def refresh_state(self):
         """Refresh RepID, role, and permissions from database."""
         try:
-            # Get current RepID
             result = supabase.table("conductor_state").select(
                 "reputation_score"
             ).eq("conductor_id", self.agent_name).execute()
@@ -238,7 +227,6 @@ class TrinityAgent:
                 self.repid_score = result.data[0].get("reputation_score", 0.5)
                 self.role = self._determine_role()
             
-            # Get permissions for current tier
             perm_result = supabase.rpc("get_conductor_permissions", {
                 "p_conductor_id": self.agent_name
             }).execute()
@@ -264,12 +252,10 @@ class TrinityAgent:
                 
                 self.log(f"Broadcast: {title} ({btype})")
                 
-                # Handle different broadcast types
                 if btype == "emergency":
                     self.log(f"EMERGENCY: {b.get('content')}", "warning")
-                    self.current_task = None  # Stop current work
+                    self.current_task = None
                 
-                # Acknowledge if required
                 if b.get("requires_acknowledgment"):
                     supabase.rpc("acknowledge_broadcast", {
                         "p_broadcast_id": b["id"],
@@ -293,7 +279,7 @@ class TrinityAgent:
                     return False
             return True
         except:
-            return True  # Allow on error (grace period)
+            return True
 
     def claim_task(self) -> Optional[Dict]:
         """Claim next available task."""
@@ -321,16 +307,13 @@ class TrinityAgent:
         description = task["description"]
         issue_num = task.get("github_issue_number")
         
-        # Check if HITL required
         if self._requires_hitl(task):
             self.log(f"HITL required for: {title} (Role: {self.role})")
-            # Mark task as pending_approval instead of executing
             self._request_approval(task_id)
             return False
         
         self.log(f"Executing: {title}")
         
-        # Build system prompt with role context
         system = f"""You are {self.agent_name}, a Trinity Symphony {self.role}.
 RepID Score: {self.repid_score:.2f}
 Role Abilities: {"Full autonomy" if self.role == "Orchestrator" else "Standard execution" if self.role == "Conductor" else "Supervised execution"}
@@ -347,7 +330,6 @@ No explanations or meta-commentary."""
             self._fail_task(task_id, "No LLM response")
             return False
         
-        # Create artifact on GitHub
         artifact_path = self._get_artifact_path(task)
         artifact_url = self._create_github_file(artifact_path, result, title)
         
@@ -367,7 +349,6 @@ No explanations or meta-commentary."""
         if " at " in desc:
             path = desc.split(" at ")[1].split()[0].strip("`")
             return path
-        # Default path
         slug = f"{task['id']}_{self.agent_name.lower()}"
         return f"docs/outputs/{slug}.md"
 
@@ -383,7 +364,6 @@ No explanations or meta-commentary."""
             "Accept": "application/vnd.github+json"
         }
         
-        # Check if file exists (need SHA for update)
         sha = None
         try:
             with httpx.Client() as c:
@@ -393,7 +373,6 @@ No explanations or meta-commentary."""
         except:
             pass
         
-        # Create/update file
         data = {
             "message": f"[{self.agent_name}] [{self.role}] {title}",
             "content": base64.b64encode(content.encode()).decode(),
@@ -441,7 +420,6 @@ No explanations or meta-commentary."""
     def _complete_task(self, task_id: int, artifact_url: str):
         """Mark task complete and update RepID."""
         try:
-            # Update task
             supabase.table("trinity_tasks").update({
                 "status": "complete",
                 "completed_by": self.agent_name,
@@ -449,7 +427,6 @@ No explanations or meta-commentary."""
                 "external_artifact_url": artifact_url
             }).eq("id", task_id).execute()
             
-            # Log RepID event (more points for higher roles taking harder tasks)
             repid_delta = 0.04 if self.role == "Agent" else 0.03 if self.role == "Conductor" else 0.02
             
             supabase.rpc("log_repid_event", {
@@ -464,7 +441,6 @@ No explanations or meta-commentary."""
                 "p_reputation_delta": repid_delta
             }).execute()
             
-            # Update conductor state
             supabase.table("conductor_state").update({
                 "current_task_id": None,
                 "status": "idle",
@@ -485,7 +461,6 @@ No explanations or meta-commentary."""
                 "error_message": reason
             }).eq("id", task_id).execute()
             
-            # RepID penalty
             supabase.rpc("log_repid_event", {
                 "p_event_type": "task_fail",
                 "p_subject_type": "conductor",
@@ -514,7 +489,6 @@ No explanations or meta-commentary."""
                 "notes": f"HITL required - {self.role} (RepID: {self.repid_score:.2f})"
             }).eq("id", task_id).execute()
             
-            # Release conductor to do other work
             supabase.table("conductor_state").update({
                 "current_task_id": None,
                 "status": "idle"
@@ -528,19 +502,15 @@ No explanations or meta-commentary."""
 
     def run(self):
         """Main loop."""
-        self.log(f"Starting {self.agent_name}")
+        self.log(f"🚀 Starting {self.agent_name} v2.0 (Role Progression Enabled)")
         self.refresh_state()
         
         while True:
             try:
-                # Update state
                 self.heartbeat()
                 self.refresh_state()
-                
-                # Process viral broadcasts
                 self.process_broadcasts()
                 
-                # Claim and execute tasks
                 if not self.current_task:
                     task = self.claim_task()
                     if task:
