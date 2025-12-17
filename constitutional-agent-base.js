@@ -1787,6 +1787,53 @@ If relevant patterns were provided above, USE THEM.
   // GITHUB INTEGRATION METHODS
   // ============================================
 
+async logRepIDEvent(eventType, eventData, reputationDelta) {
+  try {
+    await this.supabase.rpc('log_repid_event', {
+      p_event_type: eventType,
+      p_subject_type: 'conductor',
+      p_subject_id: this.name,
+      p_event_data: JSON.stringify(eventData),
+      p_reputation_delta: reputationDelta
+    });
+  } catch (err) {
+    console.log(`[${this.name}] RepID log error: ${err.message}`);
+  }
+}
+
+async checkProductivity() {
+  try {
+    const { data } = await this.supabase.rpc('check_conductor_productivity', {
+      p_conductor_id: this.name
+    });
+    if (data && data[0] && !data[0].is_allowed) {
+      console.log(`[${this.name}] ⚠️ Productivity blocked: ${data[0].reason}`);
+      return false;
+    }
+    return true;
+  } catch {
+    return true; // Allow on error
+  }
+}
+
+async commentOnGitHubIssue(issueNumber, artifactUrl) {
+  if (!this.githubEnabled || !issueNumber) return;
+  
+  try {
+    await this.githubRequest(
+      `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/issues/${issueNumber}/comments`,
+      'POST',
+      {
+        body: `## ✅ Completed by ${this.name}\n\n**Artifact:** ${artifactUrl}\n**Virtue:** ${this.wisdom.primaryVirtue}\n**Time:** ${new Date().toISOString()}`
+      }
+    );
+    console.log(`[${this.name}] 💬 Commented on issue #${issueNumber}`);
+  } catch (err) {
+    console.log(`[${this.name}] Could not comment on issue: ${err.message}`);
+  }
+}
+
+  
   async githubRequest(endpoint, method = 'GET', body = null) {
     if (!this.githubEnabled) {
       throw new Error('GitHub integration not enabled. Set GITHUB_TOKEN env var.');
