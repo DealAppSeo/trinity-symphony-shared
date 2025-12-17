@@ -1299,6 +1299,12 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
       if (!virtueCheck.passes) {
         return await this.handleVirtueViolation(task, virtueCheck.violations);
       }
+ // STEP 1.5: PRODUCTIVITY CHECK
+      const canProceed = await this.checkProductivity();
+      if (!canProceed) {
+        console.log(`[${this.name}] ⏸️ Skipping task - productivity guardrails active`);
+        return;
+      }
 
       // STEP 2: CLAIM TASK
       await this.supabase
@@ -1332,6 +1338,23 @@ If relevant patterns were provided above, USE THEM.
       
       // STEP 6: CALCULATE CERTAINTY
       const certainty = this.calculateCertainty(result.output, task);
+
+ // STEP 6.5: CREATE EXTERNAL ARTIFACT
+      let externalArtifactUrl = null;
+      if (task.github_issue_number || task.requires_external_artifact) {
+        try {
+          const artifactPath = this.getArtifactPath(task);
+          const artifact = await this.createGitHubFile(
+            artifactPath,
+            result.output,
+            `Complete: ${task.title}`
+          );
+          externalArtifactUrl = artifact?.content?.html_url;
+          console.log(`[${this.name}] 📄 Created artifact: ${artifactPath}`);
+        } catch (err) {
+          console.log(`[${this.name}] ⚠️ Artifact creation failed: ${err.message}`);
+        }
+      }
       
       // ============================================
       // SPAWN CONTROL: Auto-verification DISABLED
@@ -1371,6 +1394,18 @@ If relevant patterns were provided above, USE THEM.
       if (patterns.length > 0) {
         console.log(`[${this.name}] 📚 Learned ${patterns.length} patterns from task`);
       }
+ // STEP 8.5: LOG REPID EVENT
+      await this.logRepIDEvent('task_complete', {
+        task_id: task.id,
+        certainty: certainty,
+        has_artifact: !!externalArtifactUrl
+      }, 0.04);
+
+      // STEP 8.6: COMMENT ON GITHUB ISSUE
+      if (task.github_issue_number && externalArtifactUrl) {
+        await this.commentOnGitHubIssue(task.github_issue_number, externalArtifactUrl);
+      }
+
       
       // ============================================
       // SPAWN CONTROL: Auto-spawn DISABLED
@@ -1645,7 +1680,69 @@ If relevant patterns were provided above, USE THEM.
       requiresApproval: false
     });
   }
+// ============================================
+  // GOVERNANCE INTEGRATION METHODS
+  // ============================================
 
+  async checkProductivity() {
+    try {
+      const { data } = await this.supabase.rpc('check_conductor_productivity', {
+        p_conductor_id: this.name
+      });
+      if (data && data[0] && !data[0].is_allowed) {
+        console.log(`[${this.name}] ⏸️ Productivity blocked: ${data[0].reason}`);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      return true; // Allow on error (grace period)
+    }
+  }
+
+  async logRepIDEvent(eventType, eventData, reputationDelta) {
+    try {
+      await this.supabase.rpc('log_repid_event', {
+        p_event_type: eventType,
+        p_subject_type: 'conductor',
+        p_subject_id: this.name,
+        p_event_data: JSON.stringify(eventData),
+        p_reputation_delta: reputationDelta
+      });
+    } catch (err) {
+      console.log(`[${this.name}] RepID log error: ${err.message}`);
+    }
+  }
+
+  async commentOnGitHubIssue(issueNumber, artifactUrl) {
+    if (!this.githubEnabled || !issueNumber) return;
+    try {
+      await this.githubRequest(
+        `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/issues/${issueNumber}/comments`,
+        'POST',
+        {
+          body: `## ✅ Completed by ${this.name}\n\n**Artifact:** ${artifactUrl}\n**Virtue:** ${this.wisdom.primaryVirtue}\n**Version:** ${this.version}\n**Time:** ${new Date().toISOString()}\n\n*Trinity Symphony - Helping people help people*`
+        }
+      );
+      console.log(`[${this.name}] 💬 Commented on issue #${issueNumber}`);
+    } catch (err) {
+      console.log(`[${this.name}] Issue comment failed: ${err.message}`);
+    }
+  }
+
+  getArtifactPath(task) {
+    // Check if task description specifies a path
+    if (task.description && task.description.includes(' at ')) {
+      const match = task.description.split(' at ')[1];
+      if (match) {
+        return match.split(/\s/)[0].replace(/`/g, '');
+      }
+    }
+    // Default: put in agent's output folder
+    const slug = (task.title || 'output').toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50);
+    return `docs/outputs/${this.name.toLowerCase()}/${task.id}-${slug}.md`;
+  }
+
+  
   async requestApproval(options) {
     const {
       actionType,
