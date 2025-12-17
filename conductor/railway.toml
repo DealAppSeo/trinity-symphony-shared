@@ -1,5 +1,12 @@
 [build]
-builder = "dockerfile"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-restartPolicyType = "always"
+numReplicas = 1
+startCommand = "python -m conductor"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+# Override CONDUCTOR_ID per service in Railway dashboard
+# HDM, APM, MEL, VERITAS, NEXUS, ANTIGRAV, GCM, TORCH
