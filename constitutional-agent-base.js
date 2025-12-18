@@ -271,7 +271,7 @@ const PROVIDERS = {
   groq: {
     name: 'Groq (Llama)',
     baseUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.1-70b-versatile',
+    model: 'llama-3.3-70b-versatile',
     envKey: 'GROQ_API_KEY',
     tier: 'free',
     priority: 1
