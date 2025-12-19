@@ -268,13 +268,21 @@ const AGENT_WISDOM = {
 // ============================================
 
 const PROVIDERS = {
+  cerebras: {
+    name: 'Cerebras',
+    baseUrl: 'https://api.cerebras.ai/v1/chat/completions',
+    model: 'llama-3.3-70b',
+    envKey: 'CEREBRAS_API_KEY',
+    tier: 'free',
+    priority: 1  // Highest priority - 1M tokens/day FREE
+  },
   groq: {
     name: 'Groq (Llama)',
     baseUrl: 'https://api.groq.com/openai/v1/chat/completions',
     model: 'llama-3.3-70b-versatile',
     envKey: 'GROQ_API_KEY',
     tier: 'free',
-    priority: 1
+    priority: 2  // Was 1, now 2
   },
   deepseek: {
     name: 'DeepSeek',
@@ -282,7 +290,7 @@ const PROVIDERS = {
     model: 'deepseek-chat',
     envKey: 'DEEPSEEK_API_KEY',
     tier: 'cheap',
-    priority: 2
+    priority: 3  // Was 2, now 3
   },
   openrouter: {
     name: 'OpenRouter',
@@ -290,16 +298,15 @@ const PROVIDERS = {
     model: 'meta-llama/llama-3.1-8b-instruct:free',
     envKey: 'OPENROUTER_API_KEY',
     tier: 'free',
-    priority: 3
+    priority: 4  // Was 3, now 4
   },
   gemini: {
     name: 'Google Gemini',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
-    model: 'gemini-pro',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',  // FIXED: was gemini-pro
+    model: 'gemini-1.5-flash',  // FIXED: was gemini-pro
     envKey: 'GEMINI_API_KEY',
     tier: 'free',
-    priority: 4,
-    isGemini: true
+    priority: 5  // Was 4, now 5
   },
   anthropic: {
     name: 'Anthropic Claude',
@@ -307,7 +314,7 @@ const PROVIDERS = {
     model: 'claude-3-haiku-20240307',
     envKey: 'ANTHROPIC_API_KEY',
     tier: 'paid',
-    priority: 5,
+    priority: 6,  // Was 5, now 6
     isAnthropic: true
   }
 };
