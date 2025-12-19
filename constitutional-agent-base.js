@@ -38,7 +38,10 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { createClient } = require('@supabase/supabase-js');
+const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
+
 
 // ============================================
 // THE CONSTITUTION - IMMUTABLE PRINCIPLES
@@ -350,6 +353,18 @@ class ConstitutionalAgent {
       process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
     );
+
+// Initialize Redis (Upstash)
+if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  this.redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  });
+  console.log(`[${this.name}] 🔴 Redis connected (Upstash)`);
+} else {
+  this.redis = null;
+  console.log(`[${this.name}] ⚠️ Redis not configured`);
+}
     
     // Detect available providers
     this.availableProviders = this.detectProviders();
@@ -981,16 +996,75 @@ RATIONALE: [2-3 sentences explaining why]
     return available.sort((a, b) => PROVIDERS[a].priority - PROVIDERS[b].priority);
   }
 
-  async callLLM(prompt, options = {}) {
+ async callLLM(prompt, options = {}) {
     const startTime = Date.now();
-    
     const cacheKey = this.hashPrompt(prompt);
+    
+    // Check Redis cache FIRST (fastest)
+    if (!options.skipCache) {
+      const redisCached = await this.getRedisCachedResponse(cacheKey);
+      if (redisCached) {
+        this.sessionMetrics.cacheHits++;
+        console.log(`[${this.name}] ⚡ Redis cache HIT`);
+        return { output: redisCached, provider: 'redis-cache', fromCache: true, latency: Date.now() - startTime };
+      }
+    }
+    
+    // Check Supabase wisdom cache (fallback)
     const cached = await this.checkWisdomCache(cacheKey);
     if (cached && !options.skipCache) {
       this.sessionMetrics.cacheHits++;
       console.log(`[${this.name}] 💾 Wisdom cache HIT`);
       return { output: cached, provider: 'cache', fromCache: true, latency: Date.now() - startTime };
     }
+    
+    for (const providerKey of this.availableProviders) {
+      // Check circuit breaker
+      if (await this.isCircuitOpen(providerKey)) {
+        console.log(`[${this.name}] ⏭️ Skipping ${providerKey} (circuit open)`);
+        continue;
+      }
+      
+      // Check rate limit
+      const limits = { groq: 100000, cerebras: 1000000, deepseek: 500000 };
+      if (!await this.checkProviderLimit(providerKey, limits[providerKey] || 100000)) {
+        continue;
+      }
+      
+      const provider = PROVIDERS[providerKey];
+      try {
+        const result = await this.callProvider(provider, prompt, options);
+        this.sessionMetrics.llmCalls++;
+        
+        // Cache to Redis (fast) and Supabase (persistent)
+        await this.setRedisCachedResponse(cacheKey, result.output);
+        await this.cacheWisdom(cacheKey, result.output);
+        await this.trackProviderPerformance(providerKey, true, Date.now() - startTime);
+        
+        await this.supabase.rpc('log_execution', {
+          p_agent: this.name,
+          p_provider: providerKey,
+          p_model: provider.model,
+          p_task_type: options.taskType || null,
+          p_task_id: options.taskId || null,
+          p_tokens: Math.ceil((prompt.length + (result.output?.length || 0)) / 4),
+          p_latency_ms: Date.now() - startTime,
+          p_success: true
+        }).catch(() => {});
+        
+        console.log(`[${this.name}] 🧠 ${provider.name} responded in ${Date.now() - startTime}ms`);
+        return { ...result, provider: providerKey, latency: Date.now() - startTime };
+        
+      } catch (err) {
+        console.log(`[${this.name}] ⚠️ ${provider.name} failed: ${err.message}`);
+        await this.markProviderFailure(providerKey);
+        await this.trackProviderPerformance(providerKey, false, Date.now() - startTime);
+      }
+    }
+    
+    throw new Error('All LLM providers failed');
+  }
+
     
     for (const providerKey of this.availableProviders) {
       const provider = PROVIDERS[providerKey];
@@ -1154,6 +1228,80 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
     return crypto.createHash('sha256').update(prompt).digest('hex').substring(0, 32);
   }
 
+// ============================================
+// REDIS HELPERS (Rate Limiting, Caching, Circuit Breaker)
+// ============================================
+
+async checkProviderLimit(provider, dailyLimit = 100000) {
+  if (!this.redis) return true;
+  try {
+    const key = `ratelimit:${provider}:${new Date().toISOString().split('T')[0]}`;
+    const current = await this.redis.incr(key);
+    if (current === 1) await this.redis.expire(key, 86400);
+    if (current > dailyLimit) {
+      console.log(`[${this.name}] ⚠️ ${provider} daily limit reached (${current}/${dailyLimit})`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    return true; // Fail open
+  }
+}
+
+async markProviderFailure(provider) {
+  if (!this.redis) return;
+  try {
+    const key = `circuit:${provider}:failures`;
+    const failures = await this.redis.incr(key);
+    await this.redis.expire(key, 300);
+    if (failures >= 3) {
+      await this.redis.set(`circuit:${provider}:open`, 'true', { ex: 60 });
+      console.log(`[${this.name}] 🔴 Circuit OPEN for ${provider} (60s cooldown)`);
+    }
+  } catch (e) { }
+}
+
+async isCircuitOpen(provider) {
+  if (!this.redis) return false;
+  try {
+    return await this.redis.get(`circuit:${provider}:open`) === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+async shouldSpawnTask(taskTitle) {
+  if (!this.redis) return true;
+  try {
+    const key = `spawn:${this.hashPrompt(taskTitle)}`;
+    const exists = await this.redis.get(key);
+    if (exists) {
+      console.log(`[${this.name}] 🛑 Duplicate spawn blocked`);
+      return false;
+    }
+    await this.redis.set(key, 'true', { ex: 300 });
+    return true;
+  } catch (e) {
+    return true;
+  }
+}
+
+async getRedisCachedResponse(promptHash) {
+  if (!this.redis) return null;
+  try {
+    return await this.redis.get(`llm:${promptHash}`);
+  } catch (e) {
+    return null;
+  }
+}
+
+async setRedisCachedResponse(promptHash, response) {
+  if (!this.redis) return;
+  try {
+    await this.redis.set(`llm:${promptHash}`, response, { ex: 3600 });
+  } catch (e) { }
+}
+  
   async checkWisdomCache(hash) {
     try {
       const { data } = await this.supabase
