@@ -38,7 +38,6 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { createClient } = require('@supabase/supabase-js');
 const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
 
