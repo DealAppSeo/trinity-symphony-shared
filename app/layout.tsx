@@ -15,9 +15,28 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "AISocialMirror - What does AI see when you write?",
-  description: "Paste any text. Discover your IQ, EQ, and SQ scores in seconds.",
+  title: "AISocialMirror – AI Reveals Your Hidden IQ, EQ & SQ",
+  description: "Paste your posts privately. Get instant insights + a refined shareable version. Nothing stored.",
   generator: "v0.app",
+  openGraph: {
+    title: "AISocialMirror – AI Reveals Your Hidden IQ, EQ & SQ",
+    description: "Paste your posts privately. Get instant insights + a refined shareable version. Nothing stored.",
+    images: [
+      {
+        url: "/mirror-reflection-graphic-with-ai-digital-interfac.jpg",
+        width: 1200,
+        height: 630,
+        alt: "AISocialMirror - Discover your IQ, EQ, and SQ through AI",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AISocialMirror – AI Reveals Your Hidden IQ, EQ & SQ",
+    description: "Paste your posts privately. Get instant insights + a refined shareable version. Nothing stored.",
+    images: ["/mirror-reflection-graphic-with-ai-digital-interfac.jpg"],
+  },
   icons: {
     icon: [
       {
