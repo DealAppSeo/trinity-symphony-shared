@@ -17,8 +17,21 @@ export default function Home() {
   const handleAnalyze = async () => {
     if (!isValid) return
     setIsLoading(true)
-    // Simulate analysis
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      const data = await response.json()
+      if (data.error) {
+        alert(data.error)
+      } else {
+        alert(`Your Archetype: ${data.archetype}\n\nIQ: ${data.iq_score}/100\nEQ: ${data.eq_score}/100\nSQ: ${data.sq_score}/100\n\n${data.pastoral_reflection}`)
+      }
+    } catch (error) {
+      alert('Something went wrong. Please try again.')
+    }
     setIsLoading(false)
   }
 
@@ -36,8 +49,7 @@ export default function Home() {
 
   return (
     <>
-      {/* Skip to main content link for accessibility */}
-      <a
+      
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-violet-500 focus:text-white focus:rounded-lg"
       >
@@ -55,11 +67,8 @@ export default function Home() {
           transition={{ duration: 0.6 }}
           className="max-w-7xl mx-auto"
         >
-          {/* Mobile-first single column, desktop two-column */}
           <div className="lg:grid lg:grid-cols-2 lg:gap-12 lg:items-start">
-            {/* Left Column - Main Content */}
             <div className="space-y-8">
-              {/* Hero Section */}
               <div className="text-center lg:text-left space-y-6">
                 <motion.div
                   className="text-7xl lg:text-8xl animate-float animate-pulse-subtle inline-block"
@@ -85,7 +94,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Score Preview Badges */}
               <div className="flex flex-wrap gap-3 justify-center lg:justify-start">
                 <motion.div
                   whileHover={{ scale: 1.05 }}
@@ -121,7 +129,6 @@ export default function Home() {
                 </motion.div>
               </div>
 
-              {/* Input Card with Glass Effect */}
               <Card className="bg-white/[0.03] backdrop-blur-xl border-white/[0.08] rounded-2xl p-6 space-y-4">
                 <div className="space-y-2">
                   <label htmlFor="text-input" className="sr-only">
@@ -137,7 +144,6 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Character Counter */}
                 <div
                   id="char-counter"
                   className={`text-sm ${isValid ? "text-green-400" : "text-zinc-500"}`}
@@ -146,14 +152,12 @@ export default function Home() {
                   {charCount} / {minChars} minimum
                 </div>
 
-                {/* Privacy Note */}
                 <div id="privacy-note" className="flex items-center gap-2 text-sm text-zinc-400">
                   <span aria-hidden="true">🔒</span>
                   <span>Your text is analyzed but never stored</span>
                 </div>
               </Card>
 
-              {/* Primary CTA Button - Sticky on mobile */}
               <div className="sticky bottom-4 lg:static">
                 <motion.div
                   whileTap={{ scale: isValid && !isLoading ? 0.98 : 1 }}
@@ -177,15 +181,12 @@ export default function Home() {
                 </motion.div>
               </div>
 
-              {/* Social Proof Footer */}
               <div className="text-center lg:text-left">
                 <p className="text-sm text-zinc-500">Join 12,847+ people who've discovered their reflection</p>
               </div>
             </div>
 
-            {/* Right Column - Desktop Only */}
             <div className="hidden lg:block space-y-8 lg:sticky lg:top-12">
-              {/* What You'll Discover Section */}
               <Card className="bg-white/[0.03] backdrop-blur-xl border-white/[0.08] rounded-2xl p-6 space-y-6">
                 <h2 className="font-heading text-2xl font-bold">What You'll Discover</h2>
 
@@ -228,7 +229,6 @@ export default function Home() {
                 </div>
               </Card>
 
-              {/* Example Use Cases */}
               <div className="space-y-4">
                 <h3 className="font-heading text-lg font-semibold">Try an example:</h3>
                 <div className="flex flex-wrap gap-3">
@@ -247,7 +247,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* QR Code Component */}
               <QRCodeComponent />
             </div>
           </div>
