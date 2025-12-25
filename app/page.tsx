@@ -17,6 +17,7 @@ export default function Home() {
     sq_score: number
     pastoral_reflection: string
   } | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const charCount = text.length
   const minChars = 100
@@ -26,7 +27,8 @@ export default function Home() {
     if (!isValid) return
 
     setIsLoading(true)
-    setResults(null) // Clear previous results
+    setResults(null)
+    setError(null)
 
     try {
       const response = await fetch("/api/analyze", {
@@ -37,7 +39,7 @@ export default function Home() {
 
       if (!response.ok) {
         const errText = await response.text()
-        throw new Error(`Server error: ${response.status} - ${errText}`)
+        throw new Error(errText || `Server error ${response.status}`)
       }
 
       const data = await response.json()
@@ -47,8 +49,10 @@ export default function Home() {
       }
 
       setResults(data)
-    } catch (error: any) {
-      alert("Error: " + (error.message || "Something went wrong. Please try again."))
+    } catch (err: any) {
+      setError(
+        "Analysis temporarily unavailable – please try again in a few minutes. (This usually happens when the free AI service hits its rate limit during testing.)"
+      )
     } finally {
       setIsLoading(false)
     }
@@ -68,6 +72,7 @@ export default function Home() {
 
   const handleAnalyzeAgain = () => {
     setResults(null)
+    setError(null)
     setText("")
   }
 
@@ -159,6 +164,7 @@ export default function Home() {
                     placeholder="Paste a tweet, LinkedIn bio, email, or any text you've written..."
                     className="w-full min-h-[160px] lg:min-h-[200px] bg-white/[0.02] border border-white/[0.08] rounded-xl px-4 py-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-none"
                     aria-describedby="char-counter privacy-note"
+                    autoFocus
                   />
                 </div>
                 <div
@@ -173,6 +179,17 @@ export default function Home() {
                   <span>Your text is analyzed but never stored</span>
                 </div>
               </Card>
+
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-red-400 text-center text-lg font-medium px-4"
+                >
+                  {error}
+                </motion.div>
+              )}
+
               <div className="sticky bottom-4 lg:static">
                 <motion.div
                   whileTap={{ scale: isValid && !isLoading ? 0.98 : 1 }}
@@ -259,7 +276,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Results Section - Shown after analysis */}
           {results && (
             <div className="mt-12 lg:mt-16">
               <motion.div
