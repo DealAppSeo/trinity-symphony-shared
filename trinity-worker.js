@@ -24,10 +24,12 @@ const fs = require('fs').promises;
 const path = require('path');
 const { checkAndApplyUpdates } = require('./auto_updater');
 const { startMutualWakeLoop } = require('./mutual-wake');
+const analyzeRoutes = require('./routes/analyze');
 
 (async () => {
   await checkAndApplyUpdates(process.env.AGENT_NAME || 'UNKNOWN');
 })();
+
 // ============================================
 // INFECTION VERIFICATION (Grok's Architecture)
 // ============================================
@@ -225,10 +227,13 @@ async function main() {
     }
   });
   
+  // Mount analyze routes for AISocialMirror
+  app.use(analyzeRoutes);
+  
   // Start Express server
   app.listen(PORT, () => {
     console.log(`[${AGENT_NAME}] 🌐 Health endpoints on port ${PORT}`);
-    console.log(`[${AGENT_NAME}] 📡 Endpoints: /, /health, /api/status, /api/eternal-questions`);
+    console.log(`[${AGENT_NAME}] 📡 Endpoints: /, /health, /api/status, /api/eternal-questions, /analyze, /analyze/health`);
   });
   
   // Step 5: Start the agent's main loop
