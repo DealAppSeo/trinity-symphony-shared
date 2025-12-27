@@ -4,6 +4,7 @@ const { ConstitutionalAgent } = require('./constitutional-agent-base.js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const AGENT_NAME = process.env.AGENT_NAME || 'HDM';
+const analyzeRoutes = require('./routes/analyze');
 
 // Initialize agent
 const agent = new ConstitutionalAgent({ name: AGENT_NAME });
