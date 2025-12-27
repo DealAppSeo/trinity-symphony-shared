@@ -1,527 +1,523 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Loader2, Brain, Heart, Sparkles, CheckCircle, AlertCircle, MessageCircle } from "lucide-react"
-import { QRCodeComponent } from "@/components/qr-code"
+import { useState, useEffect } from 'react';
 
-// Types for analysis results
-interface ScoreResult {
-  score: number
-  confidence: number
-  strengths: string[]
-  growth_edges: string[]
-  insight: string
-}
+// ============================================
+// AISOCIALMIRROR - PROGRESSIVE VULNERABILITY
+// A healing journey, not a broadcast tool
+// ============================================
 
-interface AnalysisResult {
-  iq: ScoreResult
-  eq: ScoreResult
-  sq: ScoreResult
-  overall_reflection: string
-  who_needs_to_hear_this: string
-}
-
-interface EngagementQuestion {
-  question: string
-  purpose: string
-}
-
-// Analysis states for UX
-type AnalysisState = 
-  | 'idle' 
-  | 'thinking' 
-  | 'engaging' 
-  | 'analyzing' 
-  | 'verifying' 
-  | 'complete' 
-  | 'error'
-
-export default function Home() {
-  // Input state
-  const [text, setText] = useState("")
-  const [storyMode, setStoryMode] = useState(false)
-  
-  // Analysis state
-  const [analysisState, setAnalysisState] = useState<AnalysisState>('idle')
-  const [engagement, setEngagement] = useState<EngagementQuestion | null>(null)
-  const [engagementAnswer, setEngagementAnswer] = useState("")
-  const [result, setResult] = useState<AnalysisResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [meta, setMeta] = useState<any>(null)
-  
-  // Validation
-  const charCount = text.length
-  const minChars = 100
-  const isValid = charCount >= minChars
-
-  // Status messages for each state
-  const statusMessages: Record<AnalysisState, string> = {
-    idle: '',
-    thinking: 'Reflecting on what you shared...',
-    engaging: 'One moment...',
-    analyzing: 'Looking deeper into your words...',
-    verifying: 'Checking my analysis for accuracy...',
-    complete: 'Your reflection is ready',
-    error: 'Something went wrong'
+// The Sharing Ladder - graduated progression
+const SHARING_LEVELS = {
+  reflect: {
+    id: 'reflect',
+    icon: '🪞',
+    label: 'Reflect',
+    description: 'Just for me',
+    color: 'purple',
+    placeholder: "Write freely. No one will see this but you. Be honest with yourself. What's really going on?",
+    prompt: 'private_reflection'
+  },
+  understand: {
+    id: 'understand',
+    icon: '💭',
+    label: 'Understand',
+    description: 'Get AI insight',
+    color: 'blue',
+    placeholder: "Share what you're processing. I'll help you see patterns, understand your feelings, and reflect back what I notice...",
+    prompt: 'ai_insight'
+  },
+  onepessoa: {
+    id: 'one',
+    icon: '💌',
+    label: 'Share with One',
+    description: 'A trusted person',
+    color: 'teal',
+    placeholder: "Who needs to hear this? A friend, family member, therapist? I'll help you find the right words...",
+    prompt: 'share_one'
+  },
+  circle: {
+    id: 'circle',
+    icon: '🤝',
+    label: 'Share with Circle',
+    description: 'Close friends/family',
+    color: 'green',
+    placeholder: "Ready to share with people who care about you? I'll help you express this in a way that invites support...",
+    prompt: 'share_circle'
+  },
+  public: {
+    id: 'public',
+    icon: '🌱',
+    label: 'Share Publicly',
+    description: 'When you\'re ready',
+    color: 'amber',
+    placeholder: "Sharing your story can help others who feel alone. When you're ready, I'll help you share in a way that protects you while connecting with others...",
+    prompt: 'share_public'
   }
+};
 
-  const handleAnalyze = async () => {
-    if (!isValid) return
+export default function AISocialMirror() {
+  const [text, setText] = useState('');
+  const [sharingLevel, setSharingLevel] = useState('reflect');
+  const [results, setResults] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [savedDraft, setSavedDraft] = useState(null);
+  const [copyFeedback, setCopyFeedback] = useState('');
+  const [showLevelInfo, setShowLevelInfo] = useState(false);
+
+  const currentLevel = SHARING_LEVELS[sharingLevel];
+
+  // Auto-save to localStorage
+  useEffect(() => {
+    if (!text || text.length < 10) return;
     
-    setAnalysisState('thinking')
-    setResult(null)
-    setError(null)
-    setEngagement(null)
+    const timeoutId = setTimeout(() => {
+      localStorage.setItem('asm_draft', JSON.stringify({
+        text,
+        sharingLevel,
+        savedAt: new Date().toISOString()
+      }));
+    }, 500);
     
+    return () => clearTimeout(timeoutId);
+  }, [text, sharingLevel]);
+
+  // Check for saved draft on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('asm_draft');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        if (data.text && data.text.length > 10) {
+          setSavedDraft(data);
+          setShowRestoreModal(true);
+        }
+      } catch (e) {}
+    }
+  }, []);
+
+  const restoreDraft = () => {
+    if (savedDraft) {
+      setText(savedDraft.text);
+      setSharingLevel(savedDraft.sharingLevel || 'reflect');
+    }
+    setShowRestoreModal(false);
+  };
+
+  const analyze = async () => {
+    if (text.length < 100) return;
+    
+    setIsAnalyzing(true);
     try {
-      // Simulate initial thinking (gives time for UI to respond)
-      await new Promise(resolve => setTimeout(resolve, 800))
-      
-      setAnalysisState('analyzing')
-      
-      const response = await fetch('/api/analyze', {
+      const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           text, 
-          mode: 'mirror',
-          storyMode 
+          mode: currentLevel.prompt,
+          sharingLevel: sharingLevel 
         })
-      })
-      
-      const data = await response.json()
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Analysis failed')
-      }
-      
-      // If there's an engagement question, show it
-      if (data.engagement) {
-        setEngagement(data.engagement)
-        setAnalysisState('engaging')
-        // Continue to show results after a moment
-        await new Promise(resolve => setTimeout(resolve, 1500))
-      }
-      
-      // Show verifying state if confidence is being checked
-      if (data.meta?.avgConfidence < 0.8) {
-        setAnalysisState('verifying')
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      }
-      
-      setResult(data.analysis)
-      setMeta(data.meta)
-      setAnalysisState('complete')
-      
+      });
+      const data = await res.json();
+      setResults(data);
+    } catch (error) {
+      console.error('Analysis failed:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const copyToClipboard = async (content, label) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopyFeedback(label);
+      setTimeout(() => setCopyFeedback(''), 2000);
     } catch (err) {
-      console.error('Analysis error:', err)
-      setError(err instanceof Error ? err.message : 'Analysis failed')
-      setAnalysisState('error')
+      console.error('Copy failed:', err);
     }
-  }
+  };
 
-  const handleExampleClick = (example: string) => {
-    const examples: Record<string, string> = {
-      LinkedIn: "Passionate software engineer with 10+ years of experience building scalable web applications. I thrive on solving complex problems and mentoring junior developers. My approach combines technical excellence with genuine care for the people I work with. Always learning, always growing, always looking for ways to help others succeed.",
-      Dating: "I'm an adventurous soul who loves hiking on weekends and trying new coffee shops. I value deep conversations over small talk and believe in kindness above all else. Looking for someone who shares my curiosity about the world and isn't afraid to be vulnerable. Life's too short for surface-level connections.",
-      Email: "Hi team, I wanted to follow up on the project timeline we discussed last week. I think we should prioritize the user authentication feature first, as it blocks several other tasks. I've been thinking about this a lot, and I believe if we focus our energy here, we'll unlock momentum for everything else. Let me know your thoughts - I'm open to other perspectives!",
-    }
-    setText(examples[example] || "")
-  }
+  const getTimeAgo = (dateString) => {
+    const seconds = Math.floor((new Date() - new Date(dateString)) / 1000);
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+    return `${Math.floor(seconds / 86400)} days ago`;
+  };
 
-  const resetAnalysis = () => {
-    setAnalysisState('idle')
-    setResult(null)
-    setError(null)
-    setEngagement(null)
-    setMeta(null)
-  }
+  const getLevelColor = (level) => {
+    const colors = {
+      purple: 'bg-purple-600',
+      blue: 'bg-blue-600',
+      teal: 'bg-teal-600',
+      green: 'bg-green-600',
+      amber: 'bg-amber-600'
+    };
+    return colors[SHARING_LEVELS[level].color];
+  };
 
-  // Render score card
-  const renderScoreCard = (
-    type: 'iq' | 'eq' | 'sq',
-    data: ScoreResult,
-    icon: React.ReactNode,
-    color: string,
-    label: string
-  ) => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: type === 'iq' ? 0.1 : type === 'eq' ? 0.2 : 0.3 }}
-    >
-      <Card className="bg-white/[0.03] backdrop-blur-xl border-white/[0.08] rounded-xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 ${color} rounded-lg`}>
-              {icon}
+  const getLevelBorderColor = (level) => {
+    const colors = {
+      purple: 'border-purple-500',
+      blue: 'border-blue-500',
+      teal: 'border-teal-500',
+      green: 'border-green-500',
+      amber: 'border-amber-500'
+    };
+    return colors[SHARING_LEVELS[level].color];
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white">
+      {/* Restore Draft Modal */}
+      {showRestoreModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl p-6 max-w-md w-full border border-gray-700">
+            <h3 className="text-xl font-semibold mb-2">Welcome back 💜</h3>
+            <p className="text-gray-400 mb-4">
+              You were working on something {savedDraft && getTimeAgo(savedDraft.savedAt)}.
+              Your words are safe here.
+            </p>
+            <div className="bg-gray-800 rounded-lg p-3 mb-4 max-h-32 overflow-hidden">
+              <p className="text-gray-300 text-sm line-clamp-3">
+                {savedDraft?.text?.substring(0, 200)}...
+              </p>
             </div>
-            <h3 className="font-semibold text-lg">{label}</h3>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold">{data.score}</div>
-            <div className="text-xs text-zinc-500">
-              {Math.round(data.confidence * 100)}% confident
+            <div className="flex gap-3">
+              <button
+                onClick={restoreDraft}
+                className="flex-1 bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded-lg transition-colors"
+              >
+                Continue Where I Left Off
+              </button>
+              <button
+                onClick={() => { localStorage.removeItem('asm_draft'); setShowRestoreModal(false); }}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors"
+              >
+                Start Fresh
+              </button>
             </div>
           </div>
         </div>
-        
-        <p className="text-sm text-zinc-300">{data.insight}</p>
-        
-        {data.strengths.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-xs text-green-400 font-medium">Strengths</div>
-            <div className="flex flex-wrap gap-2">
-              {data.strengths.map((s, i) => (
-                <span key={i} className="text-xs bg-green-500/10 text-green-400 px-2 py-1 rounded">
-                  {s}
-                </span>
-              ))}
+      )}
+
+      {/* Header */}
+      <header className="border-b border-gray-800 p-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-600 rounded-lg flex items-center justify-center">
+              <span className="text-xl">🪞</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold">AISocialMirror</h1>
+              <p className="text-sm text-gray-400">Reflect. Understand. Heal. Share when ready.</p>
             </div>
           </div>
-        )}
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-6xl mx-auto p-4">
         
-        {data.growth_edges.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-xs text-amber-400 font-medium">Growth Edges</div>
-            <div className="flex flex-wrap gap-2">
-              {data.growth_edges.map((g, i) => (
-                <span key={i} className="text-xs bg-amber-500/10 text-amber-400 px-2 py-1 rounded">
-                  {g}
-                </span>
-              ))}
-            </div>
+        {/* Sharing Level Selector - The Progression */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-gray-400">Your sharing journey:</span>
+            <button 
+              onClick={() => setShowLevelInfo(!showLevelInfo)}
+              className="text-xs text-gray-500 hover:text-gray-300"
+            >
+              {showLevelInfo ? 'Hide guide' : 'What is this?'}
+            </button>
           </div>
-        )}
-      </Card>
-    </motion.div>
-  )
+          
+          {showLevelInfo && (
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-4 text-sm">
+              <p className="text-gray-300 mb-3">
+                <strong>Healing happens in stages.</strong> You don't have to share everything with everyone. 
+                Start where you're comfortable and progress naturally.
+              </p>
+              <ul className="space-y-2 text-gray-400">
+                <li>🪞 <strong>Reflect</strong> — Write just for yourself. Process privately.</li>
+                <li>💭 <strong>Understand</strong> — Get AI insight. See patterns you might miss.</li>
+                <li>💌 <strong>Share with One</strong> — Find words for someone you trust.</li>
+                <li>🤝 <strong>Share with Circle</strong> — Open up to close friends or family.</li>
+                <li>🌱 <strong>Share Publicly</strong> — When ready, your story might help others.</li>
+              </ul>
+              <p className="text-gray-500 mt-3 italic">
+                There's no rush. Some things stay private forever. That's okay too.
+              </p>
+            </div>
+          )}
+          
+          {/* Level Pills */}
+          <div className="flex flex-wrap gap-2">
+            {Object.values(SHARING_LEVELS).map((level) => (
+              <button
+                key={level.id}
+                onClick={() => setSharingLevel(level.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  sharingLevel === level.id
+                    ? `${getLevelColor(level.id)} text-white shadow-lg`
+                    : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                <span className="mr-1">{level.icon}</span>
+                {level.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Current Level Description */}
+          <p className="text-sm text-gray-500 mt-2 ml-1">
+            {currentLevel.icon} {currentLevel.description}
+          </p>
+        </div>
 
-  return (
-    <>
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-violet-500 focus:text-white focus:rounded-lg"
-      >
-        Skip to main content
-      </a>
-
-      <main
-        id="main-content"
-        className="min-h-screen bg-zinc-950 text-white px-4 py-8 lg:py-12 pb-safe"
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="max-w-7xl mx-auto"
-        >
-          <div className="lg:grid lg:grid-cols-2 lg:gap-12 lg:items-start">
-            {/* Left Column - Input or Results */}
-            <div className="space-y-8">
-              {/* Hero */}
-              <div className="text-center lg:text-left space-y-6">
-                <motion.div
-                  className="text-7xl lg:text-8xl inline-block"
-                  animate={{ 
-                    scale: analysisState === 'idle' ? [1, 1.05, 1] : 1,
-                    rotate: analysisState === 'analyzing' ? [0, 5, -5, 0] : 0
-                  }}
-                  transition={{ 
-                    duration: 2, 
-                    repeat: analysisState === 'idle' ? Infinity : 0,
-                    repeatDelay: 3
-                  }}
+        {/* Split View Container */}
+        <div className={`grid gap-6 ${results ? 'lg:grid-cols-5' : 'lg:grid-cols-1 max-w-2xl mx-auto'}`}>
+          
+          {/* LEFT: Text Input (ALWAYS VISIBLE) */}
+          <div className={results ? 'lg:col-span-2' : ''}>
+            <div className={`bg-gray-900 rounded-xl border ${getLevelBorderColor(sharingLevel)} p-4`}>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={currentLevel.placeholder}
+                className="w-full h-64 bg-gray-800 border border-gray-700 rounded-lg p-4 text-gray-100 placeholder-gray-500 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+              />
+              
+              <div className="flex justify-between items-center mt-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">
+                    {text.length} chars
+                  </span>
+                  {text.length > 10 && (
+                    <span className="text-xs text-green-500">✓ Saved</span>
+                  )}
+                </div>
+                
+                <div className="flex gap-2">
+                  {text.length > 0 && (
+                    <button
+                      onClick={() => copyToClipboard(text, 'text')}
+                      className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                    >
+                      {copyFeedback === 'text' ? '✓ Copied!' : '📋 Copy'}
+                    </button>
+                  )}
+                  
+                  {!results && (
+                    <button
+                      onClick={analyze}
+                      disabled={text.length < 100 || isAnalyzing}
+                      className={`px-5 py-2 rounded-lg font-medium transition-colors ${
+                        text.length < 100 || isAnalyzing
+                          ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                          : `${getLevelColor(sharingLevel)} hover:opacity-90 text-white`
+                      }`}
+                    >
+                      {isAnalyzing ? (
+                        <span className="flex items-center gap-2">
+                          <span className="animate-pulse">🪞</span>
+                          Reflecting...
+                        </span>
+                      ) : text.length < 100 ? (
+                        `${100 - text.length} more to go`
+                      ) : (
+                        `${currentLevel.icon} See My Reflection`
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Action buttons when results showing */}
+            {results && (
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={analyze}
+                  disabled={isAnalyzing}
+                  className={`flex-1 px-4 py-2 ${getLevelColor(sharingLevel)} hover:opacity-90 rounded-lg text-sm font-medium transition-colors`}
                 >
-                  🪞
-                </motion.div>
+                  {isAnalyzing ? '🪞 Reflecting...' : '🔄 Reflect Again'}
+                </button>
+                <button
+                  onClick={() => { setText(''); setResults(null); localStorage.removeItem('asm_draft'); }}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+                >
+                  ✨ New
+                </button>
+              </div>
+            )}
+          </div>
 
-                <div className="space-y-3">
-                  <h1 className="font-heading text-4xl lg:text-5xl xl:text-6xl font-bold text-balance leading-tight">
-                    {result ? 'Your Reflection' : 'What does AI see when you write?'}
-                  </h1>
-                  <p className="text-lg lg:text-xl text-zinc-400 text-pretty">
-                    {result 
-                      ? 'Here\'s what your words reveal about you'
-                      : 'Paste any text. Discover your IQ, EQ, and SQ scores in seconds.'
-                    }
+          {/* RIGHT: Results */}
+          {results && (
+            <div className="lg:col-span-3 space-y-4">
+              {/* Reflection Summary */}
+              <div className={`bg-gray-900 rounded-xl border ${getLevelBorderColor(sharingLevel)} p-5`}>
+                <div className="flex items-center gap-2 mb-3 text-gray-400">
+                  <span>{currentLevel.icon}</span>
+                  <span>Your Reflection</span>
+                </div>
+                <p className="text-gray-200 mb-3">
+                  {results.summary || results.analysis || "I see someone processing something meaningful. Your words carry weight."}
+                </p>
+                {results.insight && (
+                  <p className="text-sm text-purple-300/80 italic flex items-center gap-2">
+                    <span>💜</span> {results.insight}
+                  </p>
+                )}
+              </div>
+
+              {/* Score Cards */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                {/* IQ Card */}
+                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-gray-400 text-sm">🧠 Clarity</span>
+                    <span className="text-xl font-bold">{results.iq?.score || 70}</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {results.iq?.description || "Your thoughts come through."}
+                  </p>
+                </div>
+
+                {/* EQ Card */}
+                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-gray-400 text-sm">💚 Feeling</span>
+                    <span className="text-xl font-bold">{results.eq?.score || 70}</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {results.eq?.description || "There's genuine emotion here."}
+                  </p>
+                </div>
+
+                {/* SQ Card */}
+                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-gray-400 text-sm">✨ Meaning</span>
+                    <span className="text-xl font-bold">{results.sq?.score || 70}</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {results.sq?.description || "Purpose shines through."}
                   </p>
                 </div>
               </div>
 
-              {/* Status indicator during analysis */}
-              <AnimatePresence mode="wait">
-                {analysisState !== 'idle' && analysisState !== 'complete' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="flex items-center justify-center lg:justify-start gap-3 py-4"
+              {/* Next Step Suggestion based on level */}
+              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                <p className="text-sm text-gray-400 mb-3">
+                  {sharingLevel === 'reflect' && (
+                    <>💭 <strong>When you're ready:</strong> Get AI insight to understand your patterns better.</>
+                  )}
+                  {sharingLevel === 'understand' && (
+                    <>💌 <strong>Consider:</strong> Is there one person who might understand? A friend, family member, or therapist?</>
+                  )}
+                  {sharingLevel === 'one' && (
+                    <>🤝 <strong>If it felt safe:</strong> Others who care about you might want to support you too.</>
+                  )}
+                  {sharingLevel === 'circle' && (
+                    <>🌱 <strong>Your story matters:</strong> When ready, sharing publicly can help others who feel alone.</>
+                  )}
+                  {sharingLevel === 'public' && (
+                    <>💜 <strong>You're ready:</strong> Your vulnerability is a gift. Share when it feels right.</>
+                  )}
+                </p>
+                
+                {/* Copy for sharing */}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => copyToClipboard(text, 'text')}
+                    className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
                   >
-                    {analysisState === 'error' ? (
-                      <AlertCircle className="w-5 h-5 text-red-400" />
-                    ) : (
-                      <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
-                    )}
-                    <span className={`text-lg ${analysisState === 'error' ? 'text-red-400' : 'text-violet-400'}`}>
-                      {statusMessages[analysisState]}
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Engagement Question */}
-              <AnimatePresence>
-                {engagement && analysisState === 'engaging' && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
+                    {copyFeedback === 'text' ? '✓' : '📋'} Copy my words
+                  </button>
+                  <button
+                    onClick={() => {
+                      const formatted = `${text}\n\n---\nReflected with AISocialMirror.com`;
+                      copyToClipboard(formatted, 'share');
+                    }}
+                    className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
                   >
-                    <Card className="bg-violet-500/10 border-violet-500/20 rounded-xl p-5 space-y-3">
-                      <div className="flex items-start gap-3">
-                        <MessageCircle className="w-5 h-5 text-violet-400 mt-0.5" />
-                        <div className="space-y-2">
-                          <p className="text-violet-200">{engagement.question}</p>
-                          <p className="text-xs text-violet-400">{engagement.purpose}</p>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Results Display */}
-              <AnimatePresence mode="wait">
-                {result && analysisState === 'complete' ? (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="space-y-6"
-                  >
-                    {/* Overall Reflection */}
-                    <Card className="bg-gradient-to-br from-violet-500/10 to-blue-500/10 border-violet-500/20 rounded-xl p-6 space-y-4">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5 text-green-400" />
-                        <span className="text-sm text-green-400">Analysis Complete</span>
-                        {meta?.avgConfidence && (
-                          <span className="text-xs text-zinc-500 ml-auto">
-                            {Math.round(meta.avgConfidence * 100)}% confidence
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-lg text-zinc-200 leading-relaxed">
-                        {result.overall_reflection}
-                      </p>
-                      {result.who_needs_to_hear_this && (
-                        <p className="text-sm text-violet-400 italic">
-                          💡 {result.who_needs_to_hear_this}
-                        </p>
-                      )}
-                    </Card>
-
-                    {/* Score Cards */}
-                    <div className="grid gap-4">
-                      {renderScoreCard(
-                        'iq',
-                        result.iq,
-                        <Brain className="w-5 h-5 text-green-400" />,
-                        'bg-green-500/10',
-                        'IQ Mirror'
-                      )}
-                      {renderScoreCard(
-                        'eq',
-                        result.eq,
-                        <Heart className="w-5 h-5 text-amber-400" />,
-                        'bg-amber-500/10',
-                        'EQ Mirror'
-                      )}
-                      {renderScoreCard(
-                        'sq',
-                        result.sq,
-                        <Sparkles className="w-5 h-5 text-blue-400" />,
-                        'bg-blue-500/10',
-                        'SQ Mirror'
-                      )}
-                    </div>
-
-                    {/* Meta info */}
-                    {meta && (
-                      <div className="text-xs text-zinc-600 text-center space-x-4">
-                        <span>Processed by {meta.processedBy}</span>
-                        <span>•</span>
-                        <span>{meta.latencyMs}ms</span>
-                        <span>•</span>
-                        <span>Provider: {meta.provider}</span>
-                        {meta.fromCache && <span className="text-violet-500">• Cached</span>}
-                      </div>
-                    )}
-
-                    {/* Try Again Button */}
-                    <Button
-                      onClick={resetAnalysis}
-                      variant="outline"
-                      className="w-full border-zinc-700 hover:bg-zinc-800"
-                    >
-                      Analyze Different Text
-                    </Button>
-                  </motion.div>
-                ) : analysisState === 'idle' || analysisState === 'error' ? (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="space-y-6"
-                  >
-                    {/* Score Preview Badges */}
-                    <div className="flex flex-wrap gap-3 justify-center lg:justify-start">
-                      <div className="bg-green-500/10 border border-green-500/20 rounded-full px-4 py-2 flex items-center gap-2 min-h-[48px]">
-                        <span className="text-xl">🧠</span>
-                        <span className="text-sm font-medium text-green-400">IQ Score</span>
-                      </div>
-                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-2 flex items-center gap-2 min-h-[48px]">
-                        <span className="text-xl">💛</span>
-                        <span className="text-sm font-medium text-amber-400">EQ Score</span>
-                      </div>
-                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-2 flex items-center gap-2 min-h-[48px]">
-                        <span className="text-xl">✨</span>
-                        <span className="text-sm font-medium text-blue-400">SQ Score</span>
-                      </div>
-                    </div>
-
-                    {/* Input Card */}
-                    <Card className="bg-white/[0.03] backdrop-blur-xl border-white/[0.08] rounded-2xl p-6 space-y-4">
-                      <textarea
-                        value={text}
-                        onChange={(e) => setText(e.target.value)}
-                        placeholder="Paste a tweet, LinkedIn bio, email, or any text you've written..."
-                        className="w-full min-h-[160px] lg:min-h-[200px] bg-white/[0.02] border border-white/[0.08] rounded-xl px-4 py-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-none"
-                      />
-                      
-                      <div className={`text-sm ${isValid ? "text-green-400" : "text-zinc-500"}`}>
-                        {charCount} / {minChars} minimum
-                      </div>
-
-                      <div className="flex items-center gap-2 text-sm text-zinc-400">
-                        <span>🔒</span>
-                        <span>Your text is analyzed but never stored</span>
-                      </div>
-                    </Card>
-
-                    {/* Error Display */}
-                    {error && (
-                      <Card className="bg-red-500/10 border-red-500/20 rounded-xl p-4">
-                        <div className="flex items-center gap-3">
-                          <AlertCircle className="w-5 h-5 text-red-400" />
-                          <p className="text-red-400">{error}</p>
-                        </div>
-                      </Card>
-                    )}
-
-                    {/* Story Mode Toggle */}
-                    <Card className="bg-white/[0.03] backdrop-blur-xl border-white/[0.08] rounded-xl p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <h3 className="font-semibold">Story Mode</h3>
-                          <p className="text-sm text-zinc-400">Transform your text for metered sharing</p>
-                        </div>
-                        <button
-                          onClick={() => setStoryMode(!storyMode)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            storyMode ? "bg-violet-500" : "bg-zinc-700"
-                          }`}
-                          role="switch"
-                          aria-checked={storyMode}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              storyMode ? "translate-x-6" : "translate-x-1"
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    </Card>
-
-                    {/* Primary CTA */}
-                    <div className="sticky bottom-4 lg:static">
-                      <Button
-                        onClick={handleAnalyze}
-                        disabled={!isValid || (analysisState !== 'idle' && analysisState !== 'error')}
-                        className="w-full h-14 bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-600 hover:to-violet-700 text-white font-semibold text-lg rounded-xl disabled:opacity-50 shadow-lg shadow-violet-500/25"
-                      >
-                        Reveal My Mirror →
-                      </Button>
-                    </div>
-
-                    <p className="text-sm text-zinc-500 text-center lg:text-left">
-                      Join 12,847+ people who've discovered their reflection
-                    </p>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </div>
-
-            {/* Right Column - Desktop Only */}
-            <div className="hidden lg:block space-y-8 lg:sticky lg:top-12">
-              <Card className="bg-white/[0.03] backdrop-blur-xl border-white/[0.08] rounded-2xl p-6 space-y-6">
-                <h2 className="font-heading text-2xl font-bold">What You'll Discover</h2>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">🧠</span>
-                      <h3 className="font-semibold text-lg">IQ - Intellectual Quotient</h3>
-                    </div>
-                    <p className="text-sm text-zinc-400">
-                      Measures your cognitive abilities, reasoning, and problem-solving reflected in your writing.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">💛</span>
-                      <h3 className="font-semibold text-lg">EQ - Emotional Quotient</h3>
-                    </div>
-                    <p className="text-sm text-zinc-400">
-                      Analyzes your empathy, emotional awareness, and interpersonal communication patterns.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">✨</span>
-                      <h3 className="font-semibold text-lg">SQ - Spiritual Quotient</h3>
-                    </div>
-                    <p className="text-sm text-zinc-400">
-                      Evaluates your sense of purpose, values alignment, and inspirational voice.
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Example Use Cases */}
-              <div className="space-y-4">
-                <h3 className="font-heading text-lg font-semibold">Try an example:</h3>
-                <div className="flex flex-wrap gap-3">
-                  {["LinkedIn", "Dating", "Email"].map((example) => (
-                    <button
-                      key={example}
-                      onClick={() => handleExampleClick(example)}
-                      className="bg-white/[0.05] hover:bg-white/[0.08] border border-white/[0.08] rounded-full px-4 py-2 text-sm font-medium transition-colors min-h-[48px]"
-                    >
-                      {example}
-                    </button>
-                  ))}
+                    {copyFeedback === 'share' ? '✓' : '📤'} Copy to share
+                  </button>
                 </div>
               </div>
-
-              <QRCodeComponent />
+              
+              {/* Sharing suggestions based on level */}
+              {(sharingLevel === 'one' || sharingLevel === 'circle' || sharingLevel === 'public') && (
+                <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                  <p className="text-sm text-gray-400 mb-3">Share to:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {sharingLevel === 'one' && (
+                      <>
+                        <button className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                          📱 Text Message
+                        </button>
+                        <button className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                          ✉️ Email
+                        </button>
+                        <button className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                          💬 DM
+                        </button>
+                      </>
+                    )}
+                    {sharingLevel === 'circle' && (
+                      <>
+                        <button className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                          👥 Group Text
+                        </button>
+                        <button className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                          🔒 Close Friends Story
+                        </button>
+                        <button className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                          👨‍👩‍👧‍👦 Family Group
+                        </button>
+                      </>
+                    )}
+                    {sharingLevel === 'public' && (
+                      <>
+                        <button className="px-3 py-1.5 text-xs bg-blue-900/50 hover:bg-blue-800/50 text-blue-300 rounded transition-colors">
+                          💼 LinkedIn
+                        </button>
+                        <button className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                          𝕏 Twitter/X
+                        </button>
+                        <button className="px-3 py-1.5 text-xs bg-orange-900/50 hover:bg-orange-800/50 text-orange-300 rounded transition-colors">
+                          📖 Medium
+                        </button>
+                        <button className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
+                          💬 Reddit
+                        </button>
+                        <button className="px-3 py-1.5 text-xs bg-blue-900/50 hover:bg-blue-800/50 text-blue-300 rounded transition-colors">
+                          📘 Facebook
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        </motion.div>
+          )}
+        </div>
       </main>
-    </>
-  )
+
+      {/* Footer */}
+      <footer className="border-t border-gray-800 mt-12 p-6">
+        <div className="max-w-2xl mx-auto text-center">
+          <p className="text-gray-500 text-sm mb-2">
+            Your words are auto-saved on your device. We don't store your private reflections.
+          </p>
+          <p className="text-gray-600 text-xs italic">
+            "Healing happens when we're witnessed — first by ourselves, then by those we trust."
+          </p>
+        </div>
+      </footer>
+    </div>
+  );
 }
