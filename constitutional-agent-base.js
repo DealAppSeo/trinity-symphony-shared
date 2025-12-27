@@ -1064,37 +1064,6 @@ RATIONALE: [2-3 sentences explaining why]
     throw new Error('All LLM providers failed');
   }
 
-    
-    for (const providerKey of this.availableProviders) {
-      const provider = PROVIDERS[providerKey];
-      try {
-        const result = await this.callProvider(provider, prompt, options);
-        this.sessionMetrics.llmCalls++;
-        
-        await this.cacheWisdom(cacheKey, result.output);
-        await this.trackProviderPerformance(providerKey, true, Date.now() - startTime);
-        await this.supabase.rpc('log_execution', {
-          p_agent: this.name,
-          p_provider: providerKey,
-          p_model: provider.model,
-          p_task_type: options.taskType || null,
-          p_task_id: options.taskId || null,
-          p_tokens: Math.ceil((prompt.length + (result.output?.length || 0)) / 4),
-          p_latency_ms: Date.now() - startTime,
-          p_success: true
-        }).catch(() => {});
-        console.log(`[${this.name}] 🧠 ${provider.name} responded in ${Date.now() - startTime}ms`);
-        return { ...result, provider: providerKey, latency: Date.now() - startTime };
-        
-      } catch (err) {
-        console.log(`[${this.name}] ⚠️ ${provider.name} failed: ${err.message}`);
-        await this.trackProviderPerformance(providerKey, false, Date.now() - startTime);
-      }
-    }
-    
-    throw new Error('All LLM providers failed');
-  }
-
   async callProvider(provider, prompt, options = {}) {
     const apiKey = process.env[provider.envKey];
     if (!apiKey) throw new Error(`No API key for ${provider.name}`);
