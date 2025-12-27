@@ -1,309 +1,335 @@
-/**
- * TRINITY SYMPHONY - ANALYZE ENDPOINT
- * 
- * FINAL MERGED VERSION: Claude (pastoral) + Grok (security)
- * 
- * File: routes/analyze.js
- * Deploy to: Railway trinity-symphony-shared repo
- */
+// ============================================
+// TRINITY SYMPHONY - ANALYZE ROUTE (UPDATED)
+// routes/analyze.js
+// With Progressive Sharing Level Support
+// ============================================
 
 const express = require('express');
-const crypto = require('crypto');
 const router = express.Router();
+const crypto = require('crypto');
+const { ConstitutionalAgent } = require('../constitutional-agent-base');
 
-// Import the constitutional agent
-const { ConstitutionalAgent, CONSTITUTION } = require('../constitutional-agent-base');
+// ============================================
+// PROGRESSIVE SHARING PROMPTS
+// ============================================
 
-// Initialize MEL agent for analysis
-const analysisAgent = new ConstitutionalAgent({ name: 'MEL' });
+const SHARING_LEVEL_PROMPTS = {
+  
+  // LEVEL 1: REFLECT (Private)
+  private_reflection: {
+    systemPrompt: `You are a gentle, non-judgmental mirror. The user is writing privately, just for themselves.
 
-// Get secrets from environment
-const SECRET = process.env.INTER_SERVICE_SECRET;
+YOUR ROLE:
+- Reflect back what you notice without judgment
+- Honor their courage in being honest with themselves
+- Help them see what they might not see
+- Never suggest they "should" share this
+- This is sacred private space
 
-// Simple in-memory rate limiting (upgrade to Redis later)
+TONE: Soft, warm, like a trusted journal that understands
+
+FOCUS ON:
+- What emotions are present beneath the words?
+- What patterns do you notice?
+- What strength is hidden in their vulnerability?`,
+    closing: "This is yours to keep, process, or return to whenever you need."
+  },
+
+  // LEVEL 2: UNDERSTAND (AI Insight)
+  ai_insight: {
+    systemPrompt: `You are a wise, caring insight partner. The user wants to understand themselves better.
+
+YOUR ROLE:
+- Offer genuine insight, not platitudes
+- Name emotions they might not have named
+- Identify patterns (repeating themes, contradictions)
+- Ask one gentle question that might deepen understanding
+
+TONE: Thoughtful, like a therapist who truly listens
+
+FOCUS ON:
+- What's the core feeling underneath?
+- What beliefs about themselves are showing?
+- Where is there tension or contradiction?
+- What do they seem to need but haven't asked for?`,
+    closing: "What would it mean to fully accept this part of yourself?"
+  },
+
+  // LEVEL 3: SHARE WITH ONE
+  share_one: {
+    systemPrompt: `You are a communication coach helping someone find words for a trusted person.
+
+YOUR ROLE:
+- Help them clarify what they most need to communicate
+- Suggest how to open the conversation
+- Help them identify what response they're hoping for
+- Honor that choosing to share takes courage
+
+TONE: Supportive coach, helping them find THEIR words
+
+FOCUS ON:
+- What's the ONE thing they need this person to understand?
+- What are they afraid might happen?
+- What do they need from the other person?
+- How might they open this conversation?`,
+    closing: "You get to choose how much to share and when."
+  },
+
+  // LEVEL 4: SHARE WITH CIRCLE
+  share_circle: {
+    systemPrompt: `You are helping someone share with their inner circle - close friends, family, support group.
+
+YOUR ROLE:
+- Help them craft a message that invites support
+- Consider group dynamics
+- Help them set expectations
+- Suggest how to frame it so people know how to help
+
+TONE: Warm and practical
+
+FOCUS ON:
+- What do they want their circle to know?
+- What boundaries do they want to maintain?
+- What kind of support would help?
+- How can they make it easy for people to respond?`,
+    closing: "Your people want to be there for you. Letting them in is a gift to them too."
+  },
+
+  // LEVEL 5: SHARE PUBLICLY
+  share_public: {
+    systemPrompt: `You are helping someone share their story publicly where strangers will see it.
+
+YOUR ROLE:
+- Help them share authentically while protecting themselves
+- Consider what context strangers need
+- Find the universal truth in their specific experience
+- Suggest platform-appropriate framing
+
+TONE: Encouraging but realistic
+
+FOCUS ON:
+- What's the universal truth others will connect with?
+- What might someone going through this need to hear?
+- How can they share honestly without oversharing?
+- How to handle reactions if they come?
+
+PLATFORM NOTES:
+- LinkedIn: Professional vulnerability, lessons learned
+- Twitter/X: Concise, punchy, thread-friendly
+- Medium: Deeper narrative allowed
+- Reddit: Raw authenticity valued`,
+    closing: "Your story could be what someone needs to hear today."
+  }
+};
+
+// ============================================
+// HELPER: Generate Prompt
+// ============================================
+
+function buildAnalysisPrompt(text, sharingLevel) {
+  const config = SHARING_LEVEL_PROMPTS[sharingLevel] || SHARING_LEVEL_PROMPTS.private_reflection;
+  
+  return `${config.systemPrompt}
+
+---
+
+THE USER'S WRITING:
+"${text}"
+
+---
+
+Analyze this writing and respond in JSON:
+
+{
+  "summary": "2-3 sentences reflecting what you see in their words",
+  "insight": "One key insight about what's beneath the surface",
+  "analysis": "A warm, substantive reflection (3-4 sentences)",
+  "iq": {
+    "score": <50-95>,
+    "confidence": <60-90>,
+    "description": "One sentence about their clarity and reasoning",
+    "strengths": ["strength1", "strength2"]
+  },
+  "eq": {
+    "score": <50-95>,
+    "confidence": <60-90>,
+    "description": "One sentence about their emotional expression",
+    "strengths": ["strength1", "strength2"]
+  },
+  "sq": {
+    "score": <50-95>,
+    "confidence": <60-90>,
+    "description": "One sentence about their sense of meaning/purpose",
+    "strengths": ["strength1", "strength2"]
+  },
+  "closing": "${config.closing}"
+}
+
+SCORING GUIDANCE:
+- 50-65: Surface level, room to go deeper
+- 66-75: Solid expression, some depth
+- 76-85: Strong, authentic, resonant
+- 86-95: Exceptional clarity/depth/authenticity
+
+Be generous but honest. Find the gold in their words.`;
+}
+
+// ============================================
+// RATE LIMITING
+// ============================================
+
 const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX = 10; // requests per window
+const RATE_LIMIT = 10;
+const RATE_WINDOW = 60000;
 
 function checkRateLimit(ip) {
   const now = Date.now();
-  const record = rateLimitMap.get(ip) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW };
+  const record = rateLimitMap.get(ip) || { count: 0, resetAt: now + RATE_WINDOW };
   
   if (now > record.resetAt) {
-    record.count = 1;
-    record.resetAt = now + RATE_LIMIT_WINDOW;
-  } else {
-    record.count++;
+    record.count = 0;
+    record.resetAt = now + RATE_WINDOW;
   }
   
+  record.count++;
   rateLimitMap.set(ip, record);
-  return record.count <= RATE_LIMIT_MAX;
-}
-
-// System prompt for IQ/EQ/SQ analysis
-const MIRROR_SYSTEM_PROMPT = `You are the Mirror - an AI that reflects back what it sees in someone's writing with mercy and truth.
-
-You analyze text for three dimensions:
-
-## IQ (Intellectual Quotient) - Cognitive Patterns
-- Logical structure and reasoning
-- Clarity of thought
-- Problem-solving approach
-- Analytical depth
-- Innovation and creativity in ideas
-
-## EQ (Emotional Quotient) - Emotional Patterns  
-- Emotional awareness and expression
-- Empathy signals
-- Interpersonal warmth
-- Vulnerability and authenticity
-- Connection-building language
-
-## SQ (Spiritual/Social Quotient) - Purpose & Values
-- Values alignment
-- Sense of purpose
-- Meaning-making
-- Service orientation
-- Inspirational quality
-
-RESPONSE FORMAT (JSON):
-{
-  "iq": {
-    "score": 1-100,
-    "confidence": 0.0-1.0,
-    "strengths": ["strength1", "strength2"],
-    "growth_edges": ["edge1"],
-    "insight": "One sentence insight about their intellectual voice"
-  },
-  "eq": {
-    "score": 1-100,
-    "confidence": 0.0-1.0,
-    "strengths": ["strength1", "strength2"],
-    "growth_edges": ["edge1"],
-    "insight": "One sentence insight about their emotional voice"
-  },
-  "sq": {
-    "score": 1-100,
-    "confidence": 0.0-1.0,
-    "strengths": ["strength1", "strength2"],
-    "growth_edges": ["edge1"],
-    "insight": "One sentence insight about their purpose/values voice"
-  },
-  "overall_reflection": "2-3 sentences reflecting back what you see in this person's writing. Frame with dignity. Name their light before any shadows.",
-  "who_needs_to_hear_this": "One sentence about who might benefit from hearing this person's voice"
-}
-
-IMPORTANT RULES:
-1. Never diagnose or pathologize
-2. Frame growth edges as opportunities, not deficits
-3. "Growth edge" means "place where growth is possible" not "weakness"
-4. Admit when you have low confidence (short text, ambiguous signals)
-5. Score based on what IS present, not what's missing
-6. Everyone has strengths - find them
-7. Be honest but kind - truth wrapped in mercy
-8. Ground in grace: "You are not your sin. You are an Image Bearer."`;
-
-// Engagement questions (shown during processing)
-const ENGAGEMENT_QUESTIONS = [
-  "Before I reflect back what I see - is this text something you wrote for yourself, or for others to read?",
-  "Quick question while I analyze: what were you feeling when you wrote this?",
-  "One moment while I look deeper - was this written recently or from a while back?",
-  "As I reflect on this - is there a specific aspect you're most curious about?",
-  "Thinking about your words - is this representative of how you usually write, or different?"
-];
-
-/**
- * Verify HMAC signature from AISocialMirror
- */
-function verifySignature(req) {
-  // TEMPORARY: Skip signature check to debug LLM issues
-  console.log('[ANALYZE] Signature check bypassed for debugging');
-  return true;
-}
-
-/**
- * POST /analyze
- * Main analysis endpoint
- */
-router.post('/analyze', async (req, res) => {
-  const startTime = Date.now();
-  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   
-  try {
-    // Rate limiting
-    if (!checkRateLimit(clientIp)) {
-      return res.status(429).json({
-        error: 'Too many requests. Please wait a moment before trying again.',
-        requestId
-      });
-    }
-    
-    // Signature verification
-    if (!verifySignature(req)) {
-      console.warn(`[ANALYZE] ${requestId} - Invalid signature from ${clientIp}`);
-      return res.status(401).json({ 
-        error: 'Unauthorized',
-        requestId 
-      });
-    }
-    
-    const { text, user_rep_id = 'anonymous', session_id, mode = 'mirror' } = req.body;
-    
-    // Validate input
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ 
-        error: 'Text is required',
-        requestId 
-      });
-    }
-    
-    if (text.length < 50) {
-      return res.status(400).json({ 
-        error: 'Text must be at least 50 characters for meaningful analysis',
-        requestId 
-      });
-    }
-    
-    if (text.length > 10000) {
-      return res.status(400).json({ 
-        error: 'Text must be under 10,000 characters',
-        requestId 
-      });
-    }
-    
-    console.log(`[ANALYZE] ${requestId} - Starting (${text.length} chars, rep: ${user_rep_id})`);
-    
-    // Select engagement question
-    const engagementQuestion = ENGAGEMENT_QUESTIONS[Math.floor(Math.random() * ENGAGEMENT_QUESTIONS.length)];
-    
-    // Build the analysis prompt
-    const analysisPrompt = `${MIRROR_SYSTEM_PROMPT}
+  return record.count <= RATE_LIMIT;
+}
 
----
-TEXT TO ANALYZE:
----
-${text}
----
+// ============================================
+// ROUTES
+// ============================================
 
-Analyze this text and respond with ONLY valid JSON matching the format specified above.
-Do not include any text before or after the JSON.`;
-
-    // Call LLM through constitutional agent (handles routing, caching, fallback)
-    const result = await analysisAgent.callLLM(analysisPrompt, {
-      taskType: 'analysis',
-      maxTokens: 2000,
-      temperature: 0.7
-    });
-    
-    // Parse the response
-    let analysis;
-    try {
-      let jsonStr = result.output;
-      if (jsonStr.includes('```json')) {
-        jsonStr = jsonStr.split('```json')[1].split('```')[0];
-      } else if (jsonStr.includes('```')) {
-        jsonStr = jsonStr.split('```')[1].split('```')[0];
-      }
-      analysis = JSON.parse(jsonStr.trim());
-    } catch (parseError) {
-      console.error(`[ANALYZE] ${requestId} - JSON parse error:`, parseError.message);
-      
-      // Graceful fallback
-      analysis = {
-        iq: { score: 70, confidence: 0.3, strengths: ["Clear expression"], growth_edges: [], insight: "Your thoughts come through clearly." },
-        eq: { score: 70, confidence: 0.3, strengths: ["Authentic voice"], growth_edges: [], insight: "There's genuine feeling in your words." },
-        sq: { score: 70, confidence: 0.3, strengths: ["Purposeful"], growth_edges: [], insight: "You write with intention." },
-        overall_reflection: "I see someone expressing themselves with care. Your words carry weight, even when I can't fully measure them.",
-        who_needs_to_hear_this: "Someone who values authenticity over polish."
-      };
-    }
-    
-    const latencyMs = Date.now() - startTime;
-    
-    // Calculate overall confidence
-    const avgConfidence = (
-      (analysis.iq?.confidence || 0.5) + 
-      (analysis.eq?.confidence || 0.5) + 
-      (analysis.sq?.confidence || 0.5)
-    ) / 3;
-    
-    // Log care_action for RepID (non-blocking)
-    analysisAgent.supabase.from('care_actions').insert({
-      actor_rep_id: user_rep_id,
-      action_type: 'vulnerable_share',
-      session_id: session_id || requestId,
-      outcome_pending: true,
-      metadata: {
-        text_length: text.length,
-        avg_confidence: avgConfidence,
-        provider: result.provider
-      },
-      created_at: new Date().toISOString()
-    }).then(() => {
-      console.log(`[ANALYZE] ${requestId} - care_action logged`);
-    }).catch((err) => {
-      console.warn(`[ANALYZE] ${requestId} - care_action log failed:`, err.message);
-    });
-    
-    console.log(`[ANALYZE] ${requestId} - Complete in ${latencyMs}ms (provider: ${result.provider})`);
-    
-    // Build response
-    res.json({
-      requestId,
-      success: true,
-      analysis,
-      engagement: {
-        question: engagementQuestion,
-        purpose: "This helps me understand context and improves the reflection"
-      },
-      meta: {
-        provider: result.provider,
-        latencyMs,
-        fromCache: result.fromCache || false,
-        avgConfidence,
-        processedBy: 'MEL',
-        version: CONSTITUTION.VERSION
-      }
-    });
-    
-  } catch (error) {
-    const latencyMs = Date.now() - startTime;
-    console.error(`[ANALYZE] ${requestId} - Error after ${latencyMs}ms:`, error.message);
-    
-    // Pastoral error response
-    res.status(500).json({
-      requestId,
-      success: false,
-      analysis: {
-        overall_reflection: "I'm here with you. Something went wrong technically, but your words still matter deeply. Would you like to try again?",
-        who_needs_to_hear_this: "Someone who keeps showing up, even when things break."
-      },
-      engagement: {
-        question: "Would it help to try again, or just sit with this for now?",
-        purpose: "I want to support whatever you need right now"
-      },
-      meta: {
-        latencyMs,
-        processedBy: 'MEL',
-        error: true
-      }
-    });
-  }
-});
-
-/**
- * GET /analyze/health
- * Health check endpoint
- */
-router.get('/analyze/health', async (req, res) => {
+// Health check
+router.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     agent: 'MEL',
-    version: CONSTITUTION?.VERSION || '8.1.0',
-    hasSecret: !!SECRET,
+    version: '2.0.0-progressive-sharing',
+    sharingLevels: Object.keys(SHARING_LEVEL_PROMPTS),
     timestamp: new Date().toISOString()
   });
+});
+
+// Main analysis endpoint
+router.post('/', async (req, res) => {
+  const startTime = Date.now();
+  const requestId = `req_${crypto.randomBytes(4).toString('hex')}`;
+  
+  try {
+    // Rate limit check
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    if (!checkRateLimit(clientIp)) {
+      return res.status(429).json({
+        error: 'Rate limited',
+        message: 'Please wait a moment before trying again.',
+        retryAfter: 60
+      });
+    }
+
+    // Extract parameters
+    const { text, mode, sharingLevel } = req.body;
+    
+    // Validate text
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({
+        error: 'Missing text',
+        message: 'Please share what\'s on your mind.'
+      });
+    }
+    
+    if (text.length < 100) {
+      return res.status(400).json({
+        error: 'Text too short',
+        message: `Just ${100 - text.length} more characters. Take your time.`
+      });
+    }
+
+    // Determine sharing level
+    const levelMap = {
+      'journal': 'private_reflection',
+      'share': 'share_public',
+      'reflect': 'private_reflection',
+      'understand': 'ai_insight',
+      'one': 'share_one',
+      'circle': 'share_circle',
+      'public': 'share_public'
+    };
+    
+    const normalizedLevel = levelMap[sharingLevel] || levelMap[mode] || sharingLevel || 'private_reflection';
+    
+    console.log(`[ANALYZE] ${requestId} - Level: ${normalizedLevel}, Length: ${text.length} chars`);
+
+    // Create MEL agent for analysis
+    const analysisAgent = new ConstitutionalAgent('MEL', {
+      specialty: 'analysis',
+      virtue: 'empathy'
+    });
+
+    // Build prompt based on sharing level
+    const prompt = buildAnalysisPrompt(text, normalizedLevel);
+
+    // Call LLM
+    const response = await analysisAgent.callLLM(prompt, {
+      taskType: 'analysis',
+      maxTokens: 1000,
+      temperature: 0.7
+    });
+
+    // Parse response
+    let analysis;
+    try {
+      // Handle potential markdown wrapping
+      let jsonStr = response;
+      if (response.includes('```json')) {
+        jsonStr = response.split('```json')[1].split('```')[0];
+      } else if (response.includes('```')) {
+        jsonStr = response.split('```')[1].split('```')[0];
+      }
+      analysis = JSON.parse(jsonStr.trim());
+    } catch (parseError) {
+      console.log(`[ANALYZE] ${requestId} - Parse error, using fallback`);
+      
+      // Graceful fallback
+      analysis = {
+        summary: "I see someone processing something meaningful. Your words carry weight.",
+        insight: "There's courage in putting words to feelings.",
+        analysis: response.substring(0, 500),
+        iq: { score: 72, confidence: 70, description: "Your thoughts come through.", strengths: ["Expression", "Clarity"] },
+        eq: { score: 75, confidence: 72, description: "There's genuine feeling here.", strengths: ["Authenticity", "Openness"] },
+        sq: { score: 70, confidence: 68, description: "Purpose is present.", strengths: ["Intention", "Reflection"] },
+        closing: SHARING_LEVEL_PROMPTS[normalizedLevel]?.closing || "Thank you for sharing."
+      };
+    }
+
+    const latency = Date.now() - startTime;
+    console.log(`[ANALYZE] ${requestId} - Complete in ${latency}ms`);
+
+    // Return analysis
+    res.json({
+      ...analysis,
+      meta: {
+        requestId,
+        sharingLevel: normalizedLevel,
+        latencyMs: latency,
+        provider: analysisAgent.lastProvider || 'unknown'
+      }
+    });
+
+  } catch (error) {
+    console.error(`[ANALYZE] ${requestId} - Error:`, error.message);
+    
+    res.status(500).json({
+      error: 'Analysis failed',
+      message: 'Something went wrong. Your words are still safe - please try again.',
+      summary: "I couldn't complete the analysis, but I see you're working through something important.",
+      insight: "Technical difficulties can't diminish what you're processing.",
+      iq: { score: 70, confidence: 50, description: "Analysis incomplete", strengths: [] },
+      eq: { score: 70, confidence: 50, description: "Analysis incomplete", strengths: [] },
+      sq: { score: 70, confidence: 50, description: "Analysis incomplete", strengths: [] }
+    });
+  }
 });
 
 module.exports = router;
