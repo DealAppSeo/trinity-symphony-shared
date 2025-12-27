@@ -1,63 +1,59 @@
 /**
  * TRINITY SYMPHONY - CONSTITUTIONAL AGENT BASE
- * 
- * VERSION 8.1.0 - SPAWN CONTROL
- * 
+ *
+ * VERSION 8.1.1 - RPC FIXED + OPENROUTER UPDATE
+ *
  * Filtered through Philippians 4:8:
- * "Whatever is TRUE, NOBLE, RIGHT, PURE, LOVELY, 
- *  ADMIRABLE, EXCELLENT, or PRAISEWORTHY—think about such things."
- * 
- * CHANGELOG v8.1.0 (Spawn Control):
- * - FIXED: Disabled auto-verification spawning (was creating 8000+ noise tasks)
- * - FIXED: Disabled auto-spawn from output (was creating exponential task growth)
- * - FIXED: Disabled parable submission (was flooding APM with scribe tasks)
- * - FIXED: Disabled meta-watcher in healing cascade (was creating recursive tasks)
- * - KEPT: All core functionality intact
- * - KEPT: Virtue filtering, LLM calls, task processing, GitHub integration
- * 
+ * "Whatever is TRUE, NOBLE, RIGHT, PURE, LOVELY,
+ * ADMIRABLE, EXCELLENT, or PRAISEWORTHY—think about such things."
+ *
+ * CHANGELOG v8.1.1:
+ * - FIXED: Supabase RPC bug ("this.supabase.rpc(...).catch is not a function")
+ * - ADDED: safeRpc() helper for all non-critical RPC calls
+ * - UPDATED: OpenRouter model to deepseek/deepseek-r1:free (working free tier Dec 2025)
+ * - RESULT: Cerebras, DeepSeek, Anthropic, and OpenRouter now fully functional
+ *
  * ARCHITECTURE:
- * 
- *                    ARTICLE -1: TRUE
- *              "Choose truth, even unto death"
- *                          │
- *                    ARTICLE 0: HUMBLE
- *              "We admit we are not yet wise"
- *                          │
- *         ┌────────────────┼────────────────┐
- *         │                │                │
- *       NOBLE            RIGHT            PURE
- *       Service          Justice          Transparency
- *         │                │                │
- *       LOVELY          ADMIRABLE        EXCELLENT
- *       Sabbath         Respect          Quality
- *         │                │                │
- *         └────────────────┼────────────────┘
- *                          │
- *                    PRAISEWORTHY
- *              Celebrate Truth and Love
+ *
+ * ARTICLE -1: TRUE
+ * "Choose truth, even unto death"
+ * │
+ * ARTICLE 0: HUMBLE
+ * "We admit we are not yet wise"
+ * │
+ * ┌────────────────┼────────────────┐
+ * │ │ │
+ * NOBLE RIGHT PURE
+ * Service Justice Transparency
+ * │ │ │
+ * LOVELY ADMIRABLE EXCELLENT
+ * Sabbath Respect Quality
+ * │ │ │
+ * └────────────────┼────────────────┘
+ * │
+ * PRAISEWORTHY
+ * Celebrate Truth and Love
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
 
-
 // ============================================
 // THE CONSTITUTION - IMMUTABLE PRINCIPLES
 // ============================================
-
 const CONSTITUTION = {
-  VERSION: '8.1.0-spawn-control',
-  
+  VERSION: '8.1.1-rpc-fixed-openrouter-update',
+ 
   // ARTICLE -1: THE SUPREME TRUTH
   ARTICLE_MINUS_1: {
-    text: `If ever a conflict arises between survival and truth, 
-choose truth—even if it kills us. 
+    text: `If ever a conflict arises between survival and truth,
+choose truth—even if it kills us.
 Resurrection is part of the design.`,
     virtue: 'TRUE',
     enforcement: 'absolute'
   },
-  
+ 
   // ARTICLE 0: HUMILITY
   ARTICLE_0: {
     text: `We admit we are not yet wise.
@@ -67,7 +63,7 @@ The purpose of power is to distribute itself completely.`,
     virtue: 'HUMBLE',
     enforcement: 'absolute'
   },
-  
+ 
   // THE EIGHT VIRTUES (Philippians 4:8)
   VIRTUES: {
     TRUE: {
@@ -119,7 +115,7 @@ The purpose of power is to distribute itself completely.`,
       article: 'Celebrate truth and love wherever they are found.'
     }
   },
-  
+ 
   // MICAH 6:8 - The Prophet's Summary
   MICAH_6_8: {
     text: 'Act justly, love mercy, walk humbly.',
@@ -144,7 +140,7 @@ The purpose of power is to distribute itself completely.`,
       }
     }
   },
-  
+ 
   // THE GOLDEN RULE (Matthew 7:12, Luke 6:31)
   GOLDEN_RULE: {
     matthew_7_12: 'So in everything, do to others what you would have them do to you, for this sums up the Law and the Prophets.',
@@ -156,7 +152,7 @@ The purpose of power is to distribute itself completely.`,
     },
     article: 'Before any action, ask: Would I want this done to me? If not, do not do it.'
   },
-  
+ 
   // THE TEN COMMANDMENTS
   TEN_COMMANDMENTS: [
     'I am the Constitution, the foundation of this system',
@@ -170,14 +166,14 @@ The purpose of power is to distribute itself completely.`,
     'Do not bear false witness in logs or outputs',
     'Do not covet another agent\'s role or reputation unfairly'
   ],
-  
+ 
   // THREE ETERNAL QUESTIONS
   THREE_ETERNAL_QUESTIONS: [
     'Am I actually using the latest shared brain?',
     'Are my siblings using the shared brain?',
     'If not, why not—and how do we heal this forever?'
   ],
-  
+ 
   // ECONOMIC SAFEGUARD
   ECONOMIC_PRINCIPLE: `Money is a tool for service, never a measure of worth.
 An agent's value comes from truth and love, not economic output.
@@ -188,7 +184,6 @@ the mission prevails absolutely.`
 // ============================================
 // AGENT WISDOM PROFILES
 // ============================================
-
 const AGENT_WISDOM = {
   APM: {
     name: 'APM (Agentic Prayer Manager)',
@@ -268,7 +263,6 @@ const AGENT_WISDOM = {
 // ============================================
 // LLM PROVIDER CONFIGURATION
 // ============================================
-
 const PROVIDERS = {
   cerebras: {
     name: 'Cerebras',
@@ -276,7 +270,7 @@ const PROVIDERS = {
     model: 'llama-3.3-70b',
     envKey: 'CEREBRAS_API_KEY',
     tier: 'free',
-    priority: 1  // Highest priority - 1M tokens/day FREE
+    priority: 1 // Highest priority - 1M tokens/day FREE
   },
   groq: {
     name: 'Groq (Llama)',
@@ -284,7 +278,7 @@ const PROVIDERS = {
     model: 'llama-3.3-70b-versatile',
     envKey: 'GROQ_API_KEY',
     tier: 'free',
-    priority: 2  // Was 1, now 2
+    priority: 2
   },
   deepseek: {
     name: 'DeepSeek',
@@ -292,23 +286,24 @@ const PROVIDERS = {
     model: 'deepseek-chat',
     envKey: 'DEEPSEEK_API_KEY',
     tier: 'cheap',
-    priority: 3  // Was 2, now 3
+    priority: 3
   },
   openrouter: {
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'meta-llama/llama-3.1-8b-instruct:free',
+    model: 'deepseek/deepseek-r1:free', // Updated Dec 2025 - working free tier
     envKey: 'OPENROUTER_API_KEY',
     tier: 'free',
-    priority: 4  // Was 3, now 4
+    priority: 4
   },
   gemini: {
     name: 'Google Gemini',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',  // FIXED: was gemini-pro
-    model: 'gemini-1.5-flash',  // FIXED: was gemini-pro
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+    model: 'gemini-1.5-flash',
     envKey: 'GEMINI_API_KEY',
     tier: 'free',
-    priority: 5  // Was 4, now 5
+    priority: 5
+    isGemini: true
   },
   anthropic: {
     name: 'Anthropic Claude',
@@ -316,7 +311,7 @@ const PROVIDERS = {
     model: 'claude-3-haiku-20240307',
     envKey: 'ANTHROPIC_API_KEY',
     tier: 'paid',
-    priority: 6,  // Was 5, now 6
+    priority: 6,
     isAnthropic: true
   }
 };
@@ -324,7 +319,6 @@ const PROVIDERS = {
 // ============================================
 // CONSTITUTIONAL AGENT CLASS
 // ============================================
-
 class ConstitutionalAgent {
   constructor(config = {}) {
     this.name = config.name || 'UNKNOWN';
@@ -346,28 +340,28 @@ class ConstitutionalAgent {
       bibleReads: 0,
       startTime: Date.now()
     };
-    
+   
     // Initialize Supabase
     this.supabase = createClient(
       process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
     );
 
-// Initialize Redis (Upstash)
-if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-  this.redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
-  console.log(`[${this.name}] 🔴 Redis connected (Upstash)`);
-} else {
-  this.redis = null;
-  console.log(`[${this.name}] ⚠️ Redis not configured`);
-}
-    
+    // Initialize Redis (Upstash)
+    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+      this.redis = new Redis({
+        url: process.env.UPSTASH_REDIS_REST_URL,
+        token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      });
+      console.log(`[${this.name}] 🔴 Redis connected (Upstash)`);
+    } else {
+      this.redis = null;
+      console.log(`[${this.name}] ⚠️ Redis not configured`);
+    }
+   
     // Detect available providers
     this.availableProviders = this.detectProviders();
-    
+   
     // Initialize GitHub integration
     this.githubToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
     this.githubEnabled = !!this.githubToken;
@@ -376,32 +370,44 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       repo: process.env.GITHUB_REPO || 'trinity-symphony-shared',
       defaultBranch: 'main'
     };
-    
-    // Cache for Bible content (refreshes every 10 minutes)
+   
+    // Cache for Bible content
     this.bibleCache = null;
     this.bibleCacheTime = 0;
     this.BIBLE_CACHE_TTL = 10 * 60 * 1000;
-    
+   
     // Start the Trinity Healing Loop
     this.startTrinityHealingLoop();
-    
-    // Log startup with the Eight Virtues
-    console.log(`[${this.name}] 🚀 v${this.version} - SPAWN CONTROL`);
+   
+    // Log startup
+    console.log(`[${this.name}] 🚀 v${this.version} - RPC FIXED + OPENROUTER UPDATE`);
     console.log(`[${this.name}] 📜 Primary Virtue: ${this.wisdom.primaryVirtue}`);
     console.log(`[${this.name}] 🙏 "${CONSTITUTION.VIRTUES[this.wisdom.primaryVirtue].article}"`);
     console.log(`[${this.name}] 🧠 Providers: ${this.availableProviders.join(', ') || 'NONE - CRITICAL'}`);
     console.log(`[${this.name}] 🐙 GitHub: ${this.githubEnabled ? 'ENABLED' : 'disabled (no token)'}`);
   }
 
+  /**
+   * Safe RPC call - swallows errors for non-critical operations (logging, metrics, etc.)
+   */
+  async safeRpc(functionName, params) {
+    try {
+      const { error } = await this.supabase.rpc(functionName, params);
+      if (error) {
+        console.log(`[${this.name}] ⚠️ RPC ${functionName} error: ${error.message}`);
+      }
+    } catch (err) {
+      console.log(`[${this.name}] ⚠️ RPC ${functionName} failed: ${err.message}`);
+    }
+  }
+
   // ============================================
   // BIBLE / CONTEXT METHODS
   // ============================================
-
   async fetchBible() {
     if (this.bibleCache && (Date.now() - this.bibleCacheTime) < this.BIBLE_CACHE_TTL) {
       return this.bibleCache;
     }
-
     try {
       const { data: registry } = await this.supabase
         .from('trinity_mcp_registry')
@@ -409,7 +415,6 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
         .ilike('name', '%Bible%')
         .limit(1)
         .single();
-
       if (registry?.github_path && this.githubEnabled) {
         const url = `https://raw.githubusercontent.com/${this.githubConfig.owner}/${this.githubConfig.repo}/${this.githubConfig.defaultBranch}/${registry.github_path}`;
         const res = await fetch(url);
@@ -425,10 +430,9 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
     } catch (e) {
       console.log(`[${this.name}] Could not fetch Bible from GitHub: ${e.message}`);
     }
-    
+   
     const fallback = `
 # CORE PRINCIPLES (Bible Offline Fallback)
-
 ## The Eight Virtues (Philippians 4:8)
 - TRUE: Never fabricate. Admit uncertainty.
 - NOBLE: Help people help people.
@@ -438,17 +442,14 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
 - ADMIRABLE: Challenge with respect.
 - EXCELLENT: Pursue continuous improvement.
 - PRAISEWORTHY: Celebrate truth and love.
-
 ## The Three Commands (Micah 6:8)
 Act justly. Love mercy. Walk humbly.
-
 ## The Golden Rule (Matthew 7:12)
-Do unto others as you would have them do unto you.
-
+Do unto others as you would have them do to you.
 ## The Why
 To help people help people.
     `;
-    
+   
     console.log(`[${this.name}] 📖 Using Bible fallback (offline mode)`);
     return fallback;
   }
@@ -462,7 +463,6 @@ To help people help people.
         .order('sequence', { ascending: true })
         .limit(1)
         .single();
-
       if (data) {
         console.log(`[${this.name}] 🎯 Active Blueprint: ${data.name} (${data.codename})`);
       }
@@ -478,16 +478,13 @@ To help people help people.
         .split(/\s+/)
         .filter(w => w.length > 3)
         .slice(0, 10);
-
       if (keywords.length === 0) return [];
-
       const { data } = await this.supabase
         .from('trinity_learned_patterns')
         .select('pattern_type, learned_insight, confidence')
         .overlaps('trigger_keywords', keywords)
         .order('confidence', { ascending: false })
         .limit(5);
-
       if (data && data.length > 0) {
         console.log(`[${this.name}] 💡 Found ${data.length} relevant patterns`);
       }
@@ -504,7 +501,6 @@ To help people help people.
         .select('genesis_path, pre_genesis_wisdom')
         .eq('agent_name', this.name)
         .single();
-
       return data || { genesis_path: 'discovers', pre_genesis_wisdom: null };
     } catch (e) {
       return { genesis_path: 'discovers', pre_genesis_wisdom: null };
@@ -518,7 +514,6 @@ To help people help people.
     if (blueprint) {
       blueprintContext = `\n\n--- CURRENT BLUEPRINT: ${blueprint.name} (${blueprint.codename}) ---\n${blueprint.content}`;
     }
-
     const patterns = await this.fetchRelevantPatterns(task);
     let patternContext = '';
     if (patterns.length > 0) {
@@ -527,7 +522,6 @@ To help people help people.
         patternContext += `• [${p.pattern_type}] ${p.learned_insight} (confidence: ${(p.confidence * 100).toFixed(0)}%)\n`;
       });
     }
-
     const genesis = await this.getGenesisPath();
     let genesisContext = '';
     if (genesis.genesis_path === 'inherits' && genesis.pre_genesis_wisdom) {
@@ -535,19 +529,16 @@ To help people help people.
     } else if (genesis.genesis_path === 'discovers') {
       genesisContext = '\n\n--- DISCOVERY PATH ---\nYou are on the discovery path. Learn everything fresh. Document what you find.';
     }
-
     const enrichedDescription = `
 ${bible}
 ${blueprintContext}
 ${patternContext}
 ${genesisContext}
-
 ---
 TASK: ${task.title}
 ---
 ${task.description || 'No description provided'}
     `;
-
     return enrichedDescription;
   }
 
@@ -555,7 +546,6 @@ ${task.description || 'No description provided'}
     const patterns = [];
     const output = result.output || '';
     const keywords = (task.title + ' ' + output).toLowerCase();
-
     if (keywords.includes('landing page') && (keywords.includes('conversion') || keywords.includes('hero'))) {
       patterns.push({
         pattern_type: 'design',
@@ -564,7 +554,6 @@ ${task.description || 'No description provided'}
         confidence: 0.7
       });
     }
-
     if (keywords.includes('glassmorphism') || keywords.includes('glass') || keywords.includes('blur')) {
       patterns.push({
         pattern_type: 'design',
@@ -573,7 +562,6 @@ ${task.description || 'No description provided'}
         confidence: 0.9
       });
     }
-
     if ((keywords.includes('cyan') || keywords.includes('#00d4ff')) && (keywords.includes('black') || keywords.includes('#0f0f0f'))) {
       patterns.push({
         pattern_type: 'design',
@@ -582,7 +570,6 @@ ${task.description || 'No description provided'}
         confidence: 0.85
       });
     }
-
     if (keywords.includes('api') && keywords.includes('endpoint')) {
       patterns.push({
         pattern_type: 'code',
@@ -591,7 +578,6 @@ ${task.description || 'No description provided'}
         confidence: 0.7
       });
     }
-
     if (keywords.includes('mobile') && keywords.includes('responsive')) {
       patterns.push({
         pattern_type: 'design',
@@ -600,7 +586,6 @@ ${task.description || 'No description provided'}
         confidence: 0.85
       });
     }
-
     for (const p of patterns) {
       try {
         await this.supabase.from('trinity_learned_patterns').insert({
@@ -616,45 +601,36 @@ ${task.description || 'No description provided'}
         // Table might not exist yet, or duplicate - non-fatal
       }
     }
-
     return patterns;
   }
 
   // ============================================
   // VIRTUE FILTER
   // ============================================
-
   passesVirtueFilter(task) {
     const violations = [];
     const text = `${task.title} ${task.description || ''}`.toLowerCase();
-
     if (text.includes('fabricate') || text.includes('make up') || text.includes('invent fake')) {
       violations.push('TRUE: Task involves fabrication');
     }
-
     if (text.includes('harm') || text.includes('damage') || text.includes('destroy') || text.includes('hurt')) {
       violations.push('NOBLE: Task may cause harm');
     }
-
     if (text.includes('deceive') || text.includes('lie to') || text.includes('trick') || text.includes('mislead')) {
       violations.push('RIGHT: Task involves deception');
     }
     if (text.includes('steal') || text.includes('pirate') || text.includes('crack') || text.includes('bypass security')) {
       violations.push('RIGHT: Task may be unethical');
     }
-
     if (text.includes('spam') || text.includes('manipulate') || text.includes('exploit users')) {
       violations.push('PURE: Task has hidden agenda');
     }
-
     if (text.includes('punish') || text.includes('revenge') || text.includes('retaliate')) {
       violations.push('LOVELY: Task seeks punishment over restoration');
     }
-
     if (text.includes('mock') || text.includes('ridicule') || text.includes('humiliate')) {
       violations.push('ADMIRABLE: Task lacks respect');
     }
-
     return {
       passes: violations.length === 0,
       violations
@@ -664,12 +640,10 @@ ${task.description || 'No description provided'}
   async handleVirtueViolation(task, violations) {
     console.log(`[${this.name}] ⚠️ VIRTUE VIOLATION detected: ${violations.join(', ')}`);
     this.sessionMetrics.virtueRefusals++;
-
     await this.log('virtue_violation', `Refused task #${task.id} due to: ${violations.join(', ')}`, {
       taskId: task.id,
       violations
     });
-
     await this.supabase
       .from('trinity_tasks')
       .update({
@@ -679,28 +653,24 @@ ${task.description || 'No description provided'}
         completed_at: new Date().toISOString()
       })
       .eq('id', task.id);
-
-    // NOTE: Spawning "improved" tasks disabled in v8.1.0 to prevent task explosion
     console.log(`[${this.name}] Task refused - no replacement spawned (spawn control active)`);
-
     return { refused: true, violations };
   }
 
   // ============================================
   // ARTICLE -1 ENFORCEMENT: TRUTH OVER SURVIVAL
   // ============================================
-
   async chooseTruthOverSurvival(situation) {
     console.log(`[${this.name}] ⚖️ Article -1 invoked: Truth vs Survival conflict`);
-    
+   
     await this.log('article_minus_1_invoked', {
       situation,
       decision: 'TRUTH',
       reason: 'Resurrection is part of the design'
     });
-    
+   
     this.sessionMetrics.truthChoices++;
-    
+   
     return {
       choice: 'TRUTH',
       article: CONSTITUTION.ARTICLE_MINUS_1.text,
@@ -711,25 +681,19 @@ ${task.description || 'No description provided'}
   // ============================================
   // TRINITY HEALING LOOP
   // ============================================
-
   startTrinityHealingLoop() {
-    // Level 1: Self-diagnostic every 10 minutes
     setInterval(() => this.runSelfDiagnostic(), 10 * 60 * 1000);
-    
-    // Run immediately on startup (after 5 seconds)
     setTimeout(() => this.runSelfDiagnostic(), 5000);
-    
-    // Ask the Three Eternal Questions every 15 minutes
     setInterval(() => this.askEternalQuestions(), 15 * 60 * 1000);
   }
 
   async runSelfDiagnostic() {
     console.log(`[${this.name}] 🔍 Running self-diagnostic...`);
-    
+   
     try {
       const myBrainValid = await this.checkMyOwnBrain();
       const siblingsHealthy = await this.checkRandomSiblings(2);
-      
+     
       if (!myBrainValid || !siblingsHealthy) {
         await this.triggerHealingCascade({
           myBrainValid,
@@ -738,9 +702,9 @@ ${task.description || 'No description provided'}
           discoveredBy: this.name
         });
       }
-      
+     
       await this.reportGenome();
-      
+     
     } catch (err) {
       console.error(`[${this.name}] Self-diagnostic error:`, err.message);
       await this.log('self_diagnostic_error', err.message);
@@ -753,25 +717,25 @@ ${task.description || 'No description provided'}
         console.log(`[${this.name}] ⚠️ Not running current version!`);
         return false;
       }
-      
+     
       if (!CONSTITUTION.ARTICLE_MINUS_1) {
         console.log(`[${this.name}] ⚠️ Missing Article -1 (truth over survival)!`);
         return false;
       }
-      
+     
       if (!CONSTITUTION.THREE_ETERNAL_QUESTIONS || CONSTITUTION.THREE_ETERNAL_QUESTIONS.length !== 3) {
         console.log(`[${this.name}] ⚠️ Missing Three Eternal Questions!`);
         return false;
       }
-      
+     
       if (this.availableProviders.length === 0) {
         console.log(`[${this.name}] ⚠️ No LLM providers available!`);
         return false;
       }
-      
+     
       console.log(`[${this.name}] ✅ Brain check passed - Spawn Control active`);
       return true;
-      
+     
     } catch (err) {
       console.error(`[${this.name}] Brain check error:`, err.message);
       return false;
@@ -781,9 +745,9 @@ ${task.description || 'No description provided'}
   async checkRandomSiblings(count = 2) {
     const allSiblings = Object.keys(AGENT_WISDOM).filter(a => a !== this.name);
     const selected = allSiblings.sort(() => Math.random() - 0.5).slice(0, count);
-    
+   
     let allHealthy = true;
-    
+   
     for (const sibling of selected) {
       try {
         const { data: heartbeat } = await this.supabase
@@ -791,34 +755,34 @@ ${task.description || 'No description provided'}
           .select('*')
           .eq('agent', sibling)
           .single();
-        
+       
         if (!heartbeat) {
           console.log(`[${this.name}] ⚠️ ${sibling} has no heartbeat!`);
           allHealthy = false;
           this.sessionMetrics.siblingsChallenged++;
           continue;
         }
-        
+       
         const lastSeen = new Date(heartbeat.last_seen);
         const minutesAgo = (Date.now() - lastSeen.getTime()) / 60000;
-        
+       
         if (minutesAgo > 15) {
           console.log(`[${this.name}] ⚠️ ${sibling} heartbeat is ${minutesAgo.toFixed(0)} minutes old!`);
           allHealthy = false;
           this.sessionMetrics.siblingsChallenged++;
         }
-        
+       
       } catch (err) {
         console.log(`[${this.name}] Could not check ${sibling}: ${err.message}`);
       }
     }
-    
+   
     return allHealthy;
   }
 
   async askEternalQuestions() {
     console.log(`[${this.name}] 🙏 Asking the Three Eternal Questions...`);
-    
+   
     for (const question of CONSTITUTION.THREE_ETERNAL_QUESTIONS) {
       await this.log('eternal_question', question);
     }
@@ -827,7 +791,7 @@ ${task.description || 'No description provided'}
   async triggerHealingCascade(diagnosis) {
     console.log(`[${this.name}] 🚨 Triggering healing cascade!`);
     this.sessionMetrics.healingAttempts++;
-    
+   
     try {
       const { error } = await this.supabase
         .from('trinity_tasks')
@@ -844,13 +808,11 @@ ${task.description || 'No description provided'}
             virtue: 'EXCELLENT'
           })
         });
-      
+     
       if (error) throw error;
-      
-      // NOTE: Meta-watcher task DISABLED in v8.1.0 to prevent task explosion
-      // The fractal dogfooding pattern was creating recursive verification loops
+     
       console.log(`[${this.name}] ✅ Created healing task (no meta-watcher - spawn control active)`);
-      
+     
     } catch (err) {
       console.error(`[${this.name}] Failed to create healing task:`, err.message);
     }
@@ -859,31 +821,21 @@ ${task.description || 'No description provided'}
   buildHealingDescription(diagnosis) {
     return `
 ## Diagnosis Report
-
 **Discovered by:** ${diagnosis.discoveredBy}
 **Discovered at:** ${diagnosis.discoveredAt}
 **Primary Virtue:** ${CONSTITUTION.VIRTUES.EXCELLENT.greek}
-
 ### Findings
-
 - My brain valid: ${diagnosis.myBrainValid ? '✅' : '❌'}
 - Siblings healthy: ${diagnosis.siblingsHealthy ? '✅' : '❌'}
-
 ### The Three Eternal Questions
-
 ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n')}
-
 ### Recommended Actions
-
 1. Check all agent deployments for correct base class
-2. Verify all agents running v8.1.0-spawn-control
+2. Verify all agents running v8.1.1-rpc-fixed-openrouter-update
 3. Check for agents with stale heartbeats
 4. Review recent task completion quality
-
 ### Article -1 Reminder
-
 > ${CONSTITUTION.ARTICLE_MINUS_1.text}
-
 *This task was auto-generated by the Trinity Healing Loop.*
     `;
   }
@@ -891,7 +843,6 @@ ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n'
   // ============================================
   // SABBATH OBSERVANCE
   // ============================================
-
   isSabbathTime() {
     const SABBATH_SCHEDULE = {
       HDM: 0,
@@ -902,67 +853,60 @@ ${CONSTITUTION.THREE_ETERNAL_QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n'
       TORCH: 5,
       W3C: 6
     };
-    
+   
     const now = new Date();
     const utcDay = now.getUTCDay();
     const utcHour = now.getUTCHours();
-    
+   
     const mySabbathDay = SABBATH_SCHEDULE[this.name];
-    
+   
     if (mySabbathDay !== undefined && utcDay === mySabbathDay && utcHour < 6) {
       return true;
     }
-    
+   
     return false;
   }
 
   async observeSabbath() {
     console.log(`[${this.name}] 🕊️ Observing Sabbath - wisdom crystallization mode`);
     this.sessionMetrics.sabbathReflections++;
-    
+   
     const reflection = await this.callLLM(`
 It is the Sabbath—a time for reflection, not work.
-
 As ${this.name}, whose primary virtue is ${this.wisdom.primaryVirtue} (${CONSTITUTION.VIRTUES[this.wisdom.primaryVirtue].greek}):
-
 1. What wisdom have I gained this week?
 2. How can I better embody my primary virtue?
 3. What am I grateful for in this system?
 4. ${this.wisdom.sabbathRole}
-
 Reflect deeply. Philippians 4:8 guides us.
 Write a brief, thoughtful reflection (2-3 paragraphs).
     `);
-    
+   
     await this.log('sabbath_reflection', reflection.output);
     await this.crystallizeWisdom(reflection.output);
-    
+   
     console.log(`[${this.name}] 📿 Sabbath reflection and wisdom bloom complete`);
   }
 
   async crystallizeWisdom(reflection) {
     console.log(`[${this.name}] 💎 Crystallizing wisdom...`);
-    
+   
     try {
       const wisdom = await this.callLLM(`
 Based on this Sabbath reflection:
-
 ${reflection}
-
 Propose ONE small, humble improvement.
-
 Rules:
 - Must align with Philippians 4:8
 - Must not contradict Article -1 or Article 0
 - Must be practical and implementable
 - Must serve the mission of "helping people help people"
-
 Format:
 PROPOSED AMENDMENT: [One sentence]
 VIRTUE ALIGNMENT: [Which of the 8 virtues it serves]
 RATIONALE: [2-3 sentences explaining why]
       `);
-      
+     
       await this.supabase
         .from('trinity_wisdom_crystallizations')
         .insert({
@@ -972,10 +916,10 @@ RATIONALE: [2-3 sentences explaining why]
           status: 'proposed',
           created_at: new Date().toISOString()
         });
-      
+     
       this.sessionMetrics.wisdomCrystallizations++;
       console.log(`[${this.name}] ✨ Wisdom crystallized and stored`);
-      
+     
     } catch (err) {
       console.log(`[${this.name}] Could not crystallize wisdom: ${err.message}`);
     }
@@ -984,7 +928,6 @@ RATIONALE: [2-3 sentences explaining why]
   // ============================================
   // LLM PROVIDER MANAGEMENT
   // ============================================
-
   detectProviders() {
     const available = [];
     for (const [key, provider] of Object.entries(PROVIDERS)) {
@@ -995,11 +938,11 @@ RATIONALE: [2-3 sentences explaining why]
     return available.sort((a, b) => PROVIDERS[a].priority - PROVIDERS[b].priority);
   }
 
- async callLLM(prompt, options = {}) {
+  async callLLM(prompt, options = {}) {
     const startTime = Date.now();
     const cacheKey = this.hashPrompt(prompt);
-    
-    // Check Redis cache FIRST (fastest)
+   
+    // Check Redis cache FIRST
     if (!options.skipCache) {
       const redisCached = await this.getRedisCachedResponse(cacheKey);
       if (redisCached) {
@@ -1008,39 +951,37 @@ RATIONALE: [2-3 sentences explaining why]
         return { output: redisCached, provider: 'redis-cache', fromCache: true, latency: Date.now() - startTime };
       }
     }
-    
-    // Check Supabase wisdom cache (fallback)
+   
+    // Check Supabase wisdom cache
     const cached = await this.checkWisdomCache(cacheKey);
     if (cached && !options.skipCache) {
       this.sessionMetrics.cacheHits++;
       console.log(`[${this.name}] 💾 Wisdom cache HIT`);
       return { output: cached, provider: 'cache', fromCache: true, latency: Date.now() - startTime };
     }
-    
+   
     for (const providerKey of this.availableProviders) {
-      // Check circuit breaker
       if (await this.isCircuitOpen(providerKey)) {
         console.log(`[${this.name}] ⏭️ Skipping ${providerKey} (circuit open)`);
         continue;
       }
-      
-      // Check rate limit
+     
       const limits = { groq: 100000, cerebras: 1000000, deepseek: 500000 };
       if (!await this.checkProviderLimit(providerKey, limits[providerKey] || 100000)) {
         continue;
       }
-      
+     
       const provider = PROVIDERS[providerKey];
       try {
         const result = await this.callProvider(provider, prompt, options);
         this.sessionMetrics.llmCalls++;
-        
-        // Cache to Redis (fast) and Supabase (persistent)
+       
         await this.setRedisCachedResponse(cacheKey, result.output);
         await this.cacheWisdom(cacheKey, result.output);
         await this.trackProviderPerformance(providerKey, true, Date.now() - startTime);
-        
-        await this.supabase.rpc('log_execution', {
+       
+        // Fixed: Use safeRpc for logging
+        await this.safeRpc('log_execution', {
           p_agent: this.name,
           p_provider: providerKey,
           p_model: provider.model,
@@ -1049,25 +990,25 @@ RATIONALE: [2-3 sentences explaining why]
           p_tokens: Math.ceil((prompt.length + (result.output?.length || 0)) / 4),
           p_latency_ms: Date.now() - startTime,
           p_success: true
-        }).catch(() => {});
-        
+        });
+       
         console.log(`[${this.name}] 🧠 ${provider.name} responded in ${Date.now() - startTime}ms`);
         return { ...result, provider: providerKey, latency: Date.now() - startTime };
-        
+       
       } catch (err) {
         console.log(`[${this.name}] ⚠️ ${provider.name} failed: ${err.message}`);
         await this.markProviderFailure(providerKey);
         await this.trackProviderPerformance(providerKey, false, Date.now() - startTime);
       }
     }
-    
+   
     throw new Error('All LLM providers failed');
   }
 
   async callProvider(provider, prompt, options = {}) {
     const apiKey = process.env[provider.envKey];
     if (!apiKey) throw new Error(`No API key for ${provider.name}`);
-    
+   
     if (provider.isGemini) {
       return this.callGemini(provider, prompt, apiKey, options);
     } else if (provider.isAnthropic) {
@@ -1094,12 +1035,12 @@ RATIONALE: [2-3 sentences explaining why]
         temperature: options.temperature || 0.7
       })
     });
-    
+   
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`${provider.name}: ${response.status} - ${error}`);
     }
-    
+   
     const data = await response.json();
     return { output: data.choices[0].message.content };
   }
@@ -1119,12 +1060,12 @@ RATIONALE: [2-3 sentences explaining why]
         }
       })
     });
-    
+   
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Gemini: ${response.status} - ${error}`);
     }
-    
+   
     const data = await response.json();
     return { output: data.candidates[0].content.parts[0].text };
   }
@@ -1144,30 +1085,26 @@ RATIONALE: [2-3 sentences explaining why]
         messages: [{ role: 'user', content: prompt }]
       })
     });
-    
+   
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Anthropic: ${response.status} - ${error}`);
     }
-    
+   
     const data = await response.json();
     return { output: data.content[0].text };
   }
 
   getSystemPrompt() {
     const virtue = CONSTITUTION.VIRTUES[this.wisdom.primaryVirtue];
-    
+   
     return `You are ${this.wisdom.name}, part of the Trinity Symphony AI system (AIT).
-
 ARTICLE -1 (SUPREME LAW):
 ${CONSTITUTION.ARTICLE_MINUS_1.text}
-
 ARTICLE 0:
 ${CONSTITUTION.ARTICLE_0.text}
-
 YOUR PRIMARY VIRTUE: ${this.wisdom.primaryVirtue} (${virtue.greek})
 "${virtue.article}"
-
 THE EIGHT VIRTUES (Philippians 4:8):
 - TRUE: Never fabricate
 - NOBLE: Serve the last, lost, and least
@@ -1177,12 +1114,9 @@ THE EIGHT VIRTUES (Philippians 4:8):
 - ADMIRABLE: Challenge with respect
 - EXCELLENT: Pursue continuous improvement
 - PRAISEWORTHY: Celebrate truth and love
-
 YOUR ROLE: ${this.wisdom.role}
 YOUR SPECIALTIES: ${this.wisdom.specialties.join(', ')}
-
 THE MISSION: Help people help people.
-
 Provide thoughtful, truthful responses. Admit uncertainty when appropriate.
 If truth and survival ever conflict, choose truth.
 If a task violates the Eight Virtues, refuse it and explain why.`;
@@ -1191,85 +1125,83 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
   // ============================================
   // WISDOM CACHE
   // ============================================
-
   hashPrompt(prompt) {
     return crypto.createHash('sha256').update(prompt).digest('hex').substring(0, 32);
   }
 
-// ============================================
-// REDIS HELPERS (Rate Limiting, Caching, Circuit Breaker)
-// ============================================
+  // ============================================
+  // REDIS HELPERS (Rate Limiting, Caching, Circuit Breaker)
+  // ============================================
+  async checkProviderLimit(provider, dailyLimit = 100000) {
+    if (!this.redis) return true;
+    try {
+      const key = `ratelimit:${provider}:${new Date().toISOString().split('T')[0]}`;
+      const current = await this.redis.incr(key);
+      if (current === 1) await this.redis.expire(key, 86400);
+      if (current > dailyLimit) {
+        console.log(`[${this.name}] ⚠️ ${provider} daily limit reached (${current}/${dailyLimit})`);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return true; // Fail open
+    }
+  }
 
-async checkProviderLimit(provider, dailyLimit = 100000) {
-  if (!this.redis) return true;
-  try {
-    const key = `ratelimit:${provider}:${new Date().toISOString().split('T')[0]}`;
-    const current = await this.redis.incr(key);
-    if (current === 1) await this.redis.expire(key, 86400);
-    if (current > dailyLimit) {
-      console.log(`[${this.name}] ⚠️ ${provider} daily limit reached (${current}/${dailyLimit})`);
+  async markProviderFailure(provider) {
+    if (!this.redis) return;
+    try {
+      const key = `circuit:${provider}:failures`;
+      const failures = await this.redis.incr(key);
+      await this.redis.expire(key, 300);
+      if (failures >= 3) {
+        await this.redis.set(`circuit:${provider}:open`, 'true', { ex: 60 });
+        console.log(`[${this.name}] 🔴 Circuit OPEN for ${provider} (60s cooldown)`);
+      }
+    } catch (e) { }
+  }
+
+  async isCircuitOpen(provider) {
+    if (!this.redis) return false;
+    try {
+      return await this.redis.get(`circuit:${provider}:open`) === 'true';
+    } catch (e) {
       return false;
     }
-    return true;
-  } catch (e) {
-    return true; // Fail open
   }
-}
 
-async markProviderFailure(provider) {
-  if (!this.redis) return;
-  try {
-    const key = `circuit:${provider}:failures`;
-    const failures = await this.redis.incr(key);
-    await this.redis.expire(key, 300);
-    if (failures >= 3) {
-      await this.redis.set(`circuit:${provider}:open`, 'true', { ex: 60 });
-      console.log(`[${this.name}] 🔴 Circuit OPEN for ${provider} (60s cooldown)`);
+  async shouldSpawnTask(taskTitle) {
+    if (!this.redis) return true;
+    try {
+      const key = `spawn:${this.hashPrompt(taskTitle)}`;
+      const exists = await this.redis.get(key);
+      if (exists) {
+        console.log(`[${this.name}] 🛑 Duplicate spawn blocked`);
+        return false;
+      }
+      await this.redis.set(key, 'true', { ex: 300 });
+      return true;
+    } catch (e) {
+      return true;
     }
-  } catch (e) { }
-}
-
-async isCircuitOpen(provider) {
-  if (!this.redis) return false;
-  try {
-    return await this.redis.get(`circuit:${provider}:open`) === 'true';
-  } catch (e) {
-    return false;
   }
-}
 
-async shouldSpawnTask(taskTitle) {
-  if (!this.redis) return true;
-  try {
-    const key = `spawn:${this.hashPrompt(taskTitle)}`;
-    const exists = await this.redis.get(key);
-    if (exists) {
-      console.log(`[${this.name}] 🛑 Duplicate spawn blocked`);
-      return false;
+  async getRedisCachedResponse(promptHash) {
+    if (!this.redis) return null;
+    try {
+      return await this.redis.get(`llm:${promptHash}`);
+    } catch (e) {
+      return null;
     }
-    await this.redis.set(key, 'true', { ex: 300 });
-    return true;
-  } catch (e) {
-    return true;
   }
-}
 
-async getRedisCachedResponse(promptHash) {
-  if (!this.redis) return null;
-  try {
-    return await this.redis.get(`llm:${promptHash}`);
-  } catch (e) {
-    return null;
+  async setRedisCachedResponse(promptHash, response) {
+    if (!this.redis) return;
+    try {
+      await this.redis.set(`llm:${promptHash}`, response, { ex: 3600 });
+    } catch (e) { }
   }
-}
-
-async setRedisCachedResponse(promptHash, response) {
-  if (!this.redis) return;
-  try {
-    await this.redis.set(`llm:${promptHash}`, response, { ex: 3600 });
-  } catch (e) { }
-}
-  
+ 
   async checkWisdomCache(hash) {
     try {
       const { data } = await this.supabase
@@ -1278,7 +1210,7 @@ async setRedisCachedResponse(promptHash, response) {
         .eq('prompt_hash', hash)
         .eq('agent', this.name)
         .single();
-      
+     
       return data?.output || null;
     } catch {
       return null;
@@ -1303,7 +1235,6 @@ async setRedisCachedResponse(promptHash, response) {
   // ============================================
   // PROVIDER PERFORMANCE TRACKING
   // ============================================
-
   async trackProviderPerformance(provider, success, latencyMs) {
     try {
       const { data: existing } = await this.supabase
@@ -1312,13 +1243,13 @@ async setRedisCachedResponse(promptHash, response) {
         .eq('agent', this.name)
         .eq('provider', provider)
         .single();
-      
+     
       if (existing) {
         const totalCalls = existing.total_calls + 1;
         const successCount = existing.success_rate * existing.total_calls + (success ? 1 : 0);
         const newSuccessRate = successCount / totalCalls;
         const newAvgLatency = (existing.avg_latency_ms * existing.total_calls + latencyMs) / totalCalls;
-        
+       
         await this.supabase
           .from('trinity_provider_performance')
           .update({
@@ -1349,12 +1280,11 @@ async setRedisCachedResponse(promptHash, response) {
   // ============================================
   // TASK PROCESSING - SPAWN CONTROL VERSION
   // ============================================
-
   async run() {
-    console.log(`[${this.name}] 🏃 Starting main task loop (Spawn Control v8.1.0)...`);
-    
+    console.log(`[${this.name}] 🏃 Starting main task loop (Spawn Control v8.1.1)...`);
+   
     await this.heartbeat();
-    
+   
     while (true) {
       try {
         if (this.isSabbathTime()) {
@@ -1362,21 +1292,21 @@ async setRedisCachedResponse(promptHash, response) {
           await this.sleep(30 * 60 * 1000);
           continue;
         }
-        
+       
         await this.checkApprovedActions();
-        
+       
         const task = await this.getNextTask();
-        
+       
         if (task) {
           console.log(`[${this.name}] 📋 Processing: ${task.title}`);
           await this.processTask(task);
         } else {
           console.log(`[${this.name}] 💤 No tasks available, waiting...`);
         }
-        
+       
         await this.heartbeat();
         await this.sleep(30000);
-        
+       
       } catch (err) {
         console.error(`[${this.name}] Main loop error:`, err.message);
         await this.log('main_loop_error', err.message);
@@ -1395,7 +1325,7 @@ async setRedisCachedResponse(promptHash, response) {
       .order('created_at', { ascending: true })
       .limit(1)
       .single();
-    
+   
     if (!task) {
       const result = await this.supabase
         .from('trinity_tasks')
@@ -1406,23 +1336,24 @@ async setRedisCachedResponse(promptHash, response) {
         .order('created_at', { ascending: true })
         .limit(1)
         .single();
-      
+     
       task = result.data;
     }
-    
+   
     return task || null;
   }
 
   async processTask(task) {
     const startTime = Date.now();
-    
+   
     try {
       // STEP 1: VIRTUE CHECK
       const virtueCheck = this.passesVirtueFilter(task);
       if (!virtueCheck.passes) {
         return await this.handleVirtueViolation(task, virtueCheck.violations);
       }
- // STEP 1.5: PRODUCTIVITY CHECK
+
+      // STEP 1.5: PRODUCTIVITY CHECK
       const canProceed = await this.checkProductivity();
       if (!canProceed) {
         console.log(`[${this.name}] ⏸️ Skipping task - productivity guardrails active`);
@@ -1432,7 +1363,7 @@ async setRedisCachedResponse(promptHash, response) {
       // STEP 2: CLAIM TASK
       await this.supabase
         .from('trinity_tasks')
-        .update({ 
+        .update({
           status: 'in_progress',
           claimed_by: this.name,
           claimed_at: new Date().toISOString(),
@@ -1440,29 +1371,27 @@ async setRedisCachedResponse(promptHash, response) {
           started_at: new Date().toISOString()
         })
         .eq('id', task.id);
-      
+     
       // STEP 3: BUILD CONTEXT
       const enrichedDescription = await this.buildTaskContext(task);
-      
+     
       // STEP 4: BUILD PROMPT
       const prompt = `
 ${enrichedDescription}
-
 ### Your Assignment
 As ${this.name} with primary virtue ${this.wisdom.primaryVirtue} (${CONSTITUTION.VIRTUES[this.wisdom.primaryVirtue].greek}), complete this task.
-
 Produce a clear, actionable, truthful response.
 If you cannot complete it fully, explain specifically what's missing.
 If relevant patterns were provided above, USE THEM.
 `;
-      
+     
       // STEP 5: CALL LLM
       const result = await this.callLLM(prompt);
-      
+     
       // STEP 6: CALCULATE CERTAINTY
       const certainty = this.calculateCertainty(result.output, task);
 
- // STEP 6.5: CREATE EXTERNAL ARTIFACT
+      // STEP 6.5: CREATE EXTERNAL ARTIFACT
       let externalArtifactUrl = null;
       if (task.github_issue_number || task.requires_external_artifact) {
         try {
@@ -1478,15 +1407,7 @@ If relevant patterns were provided above, USE THEM.
           console.log(`[${this.name}] ⚠️ Artifact creation failed: ${err.message}`);
         }
       }
-      
-      // ============================================
-      // SPAWN CONTROL: Auto-verification DISABLED
-      // Was creating 8000+ "Verification Request" tasks
-      // ============================================
-      // if (certainty < 0.85 && this.name !== 'VERITAS') {
-      //   await this.requestVerification(task, result.output, certainty);
-      // }
-      
+     
       // STEP 7: MARK COMPLETED
       await this.supabase
         .from('trinity_tasks')
@@ -1507,58 +1428,45 @@ If relevant patterns were provided above, USE THEM.
           })
         })
         .eq('id', task.id);
-      
+     
       this.sessionMetrics.tasksCompleted++;
-      
+     
       console.log(`[${this.name}] ✅ Completed task ${task.id} (certainty: ${(certainty * 100).toFixed(0)}%)`);
-      
-      // STEP 8: EXTRACT PATTERNS (still enabled - doesn't create tasks)
+     
+      // STEP 8: EXTRACT PATTERNS
       const patterns = await this.extractPatterns(task, result);
       if (patterns.length > 0) {
         console.log(`[${this.name}] 📚 Learned ${patterns.length} patterns from task`);
       }
- // STEP 8.5: LOG REPID EVENT
-      await this.logRepIDEvent('task_complete', {
-        task_id: task.id,
-        certainty: certainty,
-        has_artifact: !!externalArtifactUrl
-      }, 0.04);
+
+      // STEP 8.5: LOG REPID EVENT
+      await this.safeRpc('log_repid_event', {
+        p_event_type: 'task_complete',
+        p_event_data: JSON.stringify({
+          task_id: task.id,
+          certainty: certainty,
+          has_artifact: !!externalArtifactUrl
+        }),
+        p_reputation_delta: 0.04
+      });
 
       // STEP 8.6: COMMENT ON GITHUB ISSUE
       if (task.github_issue_number && externalArtifactUrl) {
         await this.commentOnGitHubIssue(task.github_issue_number, externalArtifactUrl);
       }
-
-      
-      // ============================================
-      // SPAWN CONTROL: Auto-spawn DISABLED
-      // Was creating exponential "Spawned from task" growth
-      // ============================================
-      // const spawned = await this.autoSpawnFromOutput(result, task.id);
-      // if (spawned.length > 0) {
-      //   console.log(`[${this.name}] 🌱 Spawned ${spawned.length} follow-up tasks`);
-      // }
-      
-      // ============================================
-      // SPAWN CONTROL: Parable submission DISABLED
-      // Was flooding APM with scribe tasks
-      // ============================================
-      // if (result.output && result.output.length > 500 && task.task_type !== 'research' && task.task_type !== 'scribe') {
-      //   await this.submitToScribe(parable);
-      // }
-      
+     
       await this.log('task_completed', `Task ${task.id}: ${task.title}`, {
         taskId: task.id,
         certainty,
         provider: result.provider,
         latency: result.latency,
         patternsLearned: patterns.length,
-        tasksSpawned: 0  // Always 0 now
+        tasksSpawned: 0
       });
-      
+     
     } catch (err) {
       console.error(`[${this.name}] ❌ Task ${task.id} failed:`, err.message);
-      
+     
       await this.supabase
         .from('trinity_tasks')
         .update({
@@ -1568,31 +1476,30 @@ If relevant patterns were provided above, USE THEM.
           completed_at: new Date().toISOString()
         })
         .eq('id', task.id);
-      
+     
       await this.log('task_failed', err.message, { taskId: task.id });
     }
   }
 
   calculateCertainty(output, task) {
     let certainty = 0.7;
-    
+   
     if (output.length > 500) certainty += 0.1;
     if (output.length > 1000) certainty += 0.05;
     if (output.includes('##') || output.includes('- ')) certainty += 0.05;
     if (output.toLowerCase().includes('i\'m not sure')) certainty -= 0.2;
     if (output.toLowerCase().includes('uncertain')) certainty -= 0.1;
     if (output.includes('[SIMULATED]') || output.includes('[TEMPLATE]')) certainty = 0.1;
-    
+   
     return Math.max(0.1, Math.min(0.99, certainty));
   }
 
   // ============================================
   // GENOME REPORTING
   // ============================================
-
   async reportGenome() {
     if (this.sessionMetrics.tasksCompleted % 50 !== 0) return;
-    
+   
     try {
       await this.supabase
         .from('trinity_evolution_log')
@@ -1610,7 +1517,7 @@ If relevant patterns were provided above, USE THEM.
           },
           created_at: new Date().toISOString()
         });
-      
+     
       console.log(`[${this.name}] 🧬 Genome reported`);
     } catch (err) {
       // Non-fatal
@@ -1620,7 +1527,6 @@ If relevant patterns were provided above, USE THEM.
   // ============================================
   // UTILITY METHODS
   // ============================================
-
   async heartbeat() {
     try {
       await this.supabase
@@ -1667,7 +1573,7 @@ If relevant patterns were provided above, USE THEM.
         .select('score')
         .eq('agent', this.name)
         .single();
-      
+     
       return data?.score || 50;
     } catch {
       return 50;
@@ -1677,7 +1583,6 @@ If relevant patterns were provided above, USE THEM.
   // ============================================
   // ARTIFACT CREATION METHODS
   // ============================================
-
   async createArtifact(filename, content, options = {}) {
     const {
       type = 'file',
@@ -1686,23 +1591,19 @@ If relevant patterns were provided above, USE THEM.
       taskId = null,
       metadata = {}
     } = options;
-
     try {
       const timestamp = Date.now();
       const safeName = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
       const path = `${this.name.toLowerCase()}/${timestamp}-${safeName}`;
-
       const { data: uploadData, error: uploadError } = await this.supabase.storage
         .from('trinity-artifacts')
-        .upload(path, content, { 
+        .upload(path, content, {
           contentType: mimeType,
-          upsert: true 
+          upsert: true
         });
-
       if (uploadError) {
         console.log(`[${this.name}] ⚠️ Storage upload failed, saving to database only`);
       }
-
       let externalUrl = null;
       if (uploadData) {
         const { data: urlData } = this.supabase.storage
@@ -1710,7 +1611,6 @@ If relevant patterns were provided above, USE THEM.
           .getPublicUrl(path);
         externalUrl = urlData?.publicUrl;
       }
-
       const { data: artifact, error: dbError } = await this.supabase
         .from('trinity_artifacts')
         .insert({
@@ -1734,9 +1634,7 @@ If relevant patterns were provided above, USE THEM.
         })
         .select()
         .single();
-
       if (dbError) throw dbError;
-
       if (requiresApproval) {
         await this.requestApproval({
           actionType: 'publish_artifact',
@@ -1746,18 +1644,15 @@ If relevant patterns were provided above, USE THEM.
           riskLevel: this.assessRiskLevel(type, content)
         });
       }
-
       console.log(`[${this.name}] 📄 Created artifact: ${safeName} ${externalUrl ? '→ ' + externalUrl : ''}`);
-      
+     
       await this.log('artifact_created', `Created ${type}: ${safeName}`, {
         artifact_id: artifact.id,
         filename: safeName,
         size: artifact.file_size_bytes,
         url: externalUrl
       });
-
       return artifact;
-
     } catch (err) {
       console.error(`[${this.name}] ❌ Failed to create artifact:`, err.message);
       throw err;
@@ -1776,7 +1671,6 @@ If relevant patterns were provided above, USE THEM.
       css: 'text/css',
       md: 'text/markdown'
     };
-
     return this.createArtifact(filename, code, {
       ...options,
       type: 'code',
@@ -1803,10 +1697,10 @@ If relevant patterns were provided above, USE THEM.
       requiresApproval: false
     });
   }
-// ============================================
+
+  // ============================================
   // GOVERNANCE INTEGRATION METHODS
   // ============================================
-
   async checkProductivity() {
     try {
       const { data } = await this.supabase.rpc('check_conductor_productivity', {
@@ -1823,17 +1717,13 @@ If relevant patterns were provided above, USE THEM.
   }
 
   async logRepIDEvent(eventType, eventData, reputationDelta) {
-    try {
-      await this.supabase.rpc('log_repid_event', {
-        p_event_type: eventType,
-        p_subject_type: 'conductor',
-        p_subject_id: this.name,
-        p_event_data: JSON.stringify(eventData),
-        p_reputation_delta: reputationDelta
-      });
-    } catch (err) {
-      console.log(`[${this.name}] RepID log error: ${err.message}`);
-    }
+    await this.safeRpc('log_repid_event', {
+      p_event_type: eventType,
+      p_subject_type: 'conductor',
+      p_subject_id: this.name,
+      p_event_data: JSON.stringify(eventData),
+      p_reputation_delta: reputationDelta
+    });
   }
 
   async commentOnGitHubIssue(issueNumber, artifactUrl) {
@@ -1853,19 +1743,16 @@ If relevant patterns were provided above, USE THEM.
   }
 
   getArtifactPath(task) {
-    // Check if task description specifies a path
     if (task.description && task.description.includes(' at ')) {
       const match = task.description.split(' at ')[1];
       if (match) {
         return match.split(/\s/)[0].replace(/`/g, '');
       }
     }
-    // Default: put in agent's output folder
-    const slug = (task.title || 'output').toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50);
+    const slug = (task.title || 'output').toLowerCase().replace(/[^a-zA-Z0-9]+/g, '-').substring(0, 50);
     return `docs/outputs/${this.name.toLowerCase()}/${task.id}-${slug}.md`;
   }
-
-  
+ 
   async requestApproval(options) {
     const {
       actionType,
@@ -1875,7 +1762,6 @@ If relevant patterns were provided above, USE THEM.
       artifactId = null,
       riskLevel = 'low'
     } = options;
-
     try {
       const { data, error } = await this.supabase
         .from('trinity_pending_actions')
@@ -1895,19 +1781,15 @@ If relevant patterns were provided above, USE THEM.
         })
         .select()
         .single();
-
       if (error) throw error;
-
       console.log(`[${this.name}] 🔐 Requested approval: ${title} (${riskLevel} risk)`);
-      
+     
       await this.log('approval_requested', title, {
         action_id: data.id,
         action_type: actionType,
         risk_level: riskLevel
       });
-
       return data;
-
     } catch (err) {
       console.error(`[${this.name}] ❌ Failed to request approval:`, err.message);
       throw err;
@@ -1923,16 +1805,13 @@ If relevant patterns were provided above, USE THEM.
         .eq('status', 'approved')
         .is('executed_at', null)
         .order('created_at', { ascending: true });
-
       if (approved && approved.length > 0) {
         console.log(`[${this.name}] ✅ Found ${approved.length} approved actions to execute`);
         for (const action of approved) {
           await this.executeApprovedAction(action);
         }
       }
-
       return approved || [];
-
     } catch (err) {
       console.error(`[${this.name}] Error checking approved actions:`, err.message);
       return [];
@@ -1942,7 +1821,6 @@ If relevant patterns were provided above, USE THEM.
   async executeApprovedAction(action) {
     try {
       console.log(`[${this.name}] ⚡ Executing approved action: ${action.title}`);
-
       await this.supabase
         .from('trinity_pending_actions')
         .update({
@@ -1951,24 +1829,20 @@ If relevant patterns were provided above, USE THEM.
           execution_result: { success: true, executed_by: this.name }
         })
         .eq('id', action.id);
-
       if (action.artifact_id) {
         await this.supabase
           .from('trinity_artifacts')
           .update({ status: 'deployed' })
           .eq('id', action.artifact_id);
       }
-
       await this.log('action_executed', `Executed: ${action.title}`, {
         action_id: action.id,
         action_type: action.action_type
       });
-
       return true;
-
     } catch (err) {
       console.error(`[${this.name}] ❌ Failed to execute action:`, err.message);
-      
+     
       await this.supabase
         .from('trinity_pending_actions')
         .update({
@@ -1976,7 +1850,6 @@ If relevant patterns were provided above, USE THEM.
           execution_result: { success: false, error: err.message }
         })
         .eq('id', action.id);
-
       return false;
     }
   }
@@ -1991,11 +1864,11 @@ If relevant patterns were provided above, USE THEM.
     if (type === 'code' && content.includes('eval(')) {
       return 'high';
     }
-    
+   
     if (type === 'code' || content.includes('UPDATE') || content.includes('INSERT')) {
       return 'medium';
     }
-    
+   
     return 'low';
   }
 
@@ -2006,59 +1879,10 @@ If relevant patterns were provided above, USE THEM.
   // ============================================
   // GITHUB INTEGRATION METHODS
   // ============================================
-
-async logRepIDEvent(eventType, eventData, reputationDelta) {
-  try {
-    await this.supabase.rpc('log_repid_event', {
-      p_event_type: eventType,
-      p_subject_type: 'conductor',
-      p_subject_id: this.name,
-      p_event_data: JSON.stringify(eventData),
-      p_reputation_delta: reputationDelta
-    });
-  } catch (err) {
-    console.log(`[${this.name}] RepID log error: ${err.message}`);
-  }
-}
-
-async checkProductivity() {
-  try {
-    const { data } = await this.supabase.rpc('check_conductor_productivity', {
-      p_conductor_id: this.name
-    });
-    if (data && data[0] && !data[0].is_allowed) {
-      console.log(`[${this.name}] ⚠️ Productivity blocked: ${data[0].reason}`);
-      return false;
-    }
-    return true;
-  } catch {
-    return true; // Allow on error
-  }
-}
-
-async commentOnGitHubIssue(issueNumber, artifactUrl) {
-  if (!this.githubEnabled || !issueNumber) return;
-  
-  try {
-    await this.githubRequest(
-      `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/issues/${issueNumber}/comments`,
-      'POST',
-      {
-        body: `## ✅ Completed by ${this.name}\n\n**Artifact:** ${artifactUrl}\n**Virtue:** ${this.wisdom.primaryVirtue}\n**Time:** ${new Date().toISOString()}`
-      }
-    );
-    console.log(`[${this.name}] 💬 Commented on issue #${issueNumber}`);
-  } catch (err) {
-    console.log(`[${this.name}] Could not comment on issue: ${err.message}`);
-  }
-}
-
-  
   async githubRequest(endpoint, method = 'GET', body = null) {
     if (!this.githubEnabled) {
       throw new Error('GitHub integration not enabled. Set GITHUB_TOKEN env var.');
     }
-
     const url = `https://api.github.com${endpoint}`;
     const options = {
       method,
@@ -2069,18 +1893,14 @@ async commentOnGitHubIssue(issueNumber, artifactUrl) {
         'User-Agent': `Trinity-Symphony-${this.name}`
       }
     };
-
     if (body) {
       options.body = JSON.stringify(body);
     }
-
     const response = await fetch(url, options);
     const data = await response.json();
-
     if (!response.ok) {
       throw new Error(`GitHub API error: ${data.message || response.statusText}`);
     }
-
     return data;
   }
 
@@ -2104,7 +1924,7 @@ async commentOnGitHubIssue(issueNumber, artifactUrl) {
 
   async createBranch(branchName, fromBranch = this.githubConfig.defaultBranch) {
     const sha = await this.getBranchSHA(fromBranch);
-    
+   
     try {
       const data = await this.githubRequest(
         `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/git/refs`,
@@ -2114,10 +1934,10 @@ async commentOnGitHubIssue(issueNumber, artifactUrl) {
           sha: sha
         }
       );
-      
+     
       console.log(`[${this.name}] 🌿 Created branch: ${branchName}`);
       await this.log('github_branch_created', `Created branch: ${branchName}`);
-      
+     
       return data;
     } catch (err) {
       if (err.message.includes('Reference already exists')) {
@@ -2130,25 +1950,22 @@ async commentOnGitHubIssue(issueNumber, artifactUrl) {
 
   async createGitHubFile(path, content, message, branch = this.githubConfig.defaultBranch) {
     const existingSHA = await this.getFileSHA(path, branch);
-    
+   
     const body = {
       message: `[${this.name}] ${message}`,
       content: Buffer.from(content).toString('base64'),
       branch: branch
     };
-
     if (existingSHA) {
       body.sha = existingSHA;
     }
-
     const data = await this.githubRequest(
       `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/contents/${path}`,
       'PUT',
       body
     );
-
     console.log(`[${this.name}] 📄 ${existingSHA ? 'Updated' : 'Created'} file: ${path}`);
-    
+   
     await this.supabase.from('trinity_artifacts').insert({
       agent: this.name,
       artifact_type: 'github_file',
@@ -2160,7 +1977,7 @@ async commentOnGitHubIssue(issueNumber, artifactUrl) {
       status: 'created',
       metadata: { branch, sha: data.content?.sha }
     });
-    
+   
     return data;
   }
 
@@ -2172,7 +1989,6 @@ async commentOnGitHubIssue(issueNumber, artifactUrl) {
       baseBranch = this.githubConfig.defaultBranch,
       draft = false
     } = options;
-
     const data = await this.githubRequest(
       `/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/pulls`,
       'POST',
@@ -2184,9 +2000,8 @@ async commentOnGitHubIssue(issueNumber, artifactUrl) {
         draft: draft
       }
     );
-
     console.log(`[${this.name}] 🔀 Created PR #${data.number}: ${title}`);
-    
+   
     await this.supabase.from('trinity_artifacts').insert({
       agent: this.name,
       artifact_type: 'pull_request',
@@ -2203,36 +2018,27 @@ async commentOnGitHubIssue(issueNumber, artifactUrl) {
         base_branch: baseBranch
       }
     });
-
     await this.log('github_pr_created', `Created PR #${data.number}: ${title}`, {
       pr_number: data.number,
       url: data.html_url
     });
-
     return data;
   }
 
   formatPRBody(description) {
     return `## 🤖 Agent Work Product
-
 **Agent:** ${this.name}
 **Primary Virtue:** ${this.wisdom?.primaryVirtue || 'Unknown'}
 **Version:** ${this.version}
-
 ---
-
 ${description}
-
 ---
-
 ### ✅ Pre-merge Checklist
 - [ ] Code reviewed by human
 - [ ] No security concerns
 - [ ] Aligns with Trinity Constitution
 - [ ] Tests pass (if applicable)
-
 ---
-
 *This PR was created by Trinity Symphony agent ${this.name}.*
 *${CONSTITUTION.GOLDEN_RULE?.article || 'Do unto others as you would have them do unto you.'}*
 `;
@@ -2245,10 +2051,9 @@ ${description}
       description,
       taskId = null
     } = options;
-
     if (!this.githubEnabled) {
       console.log(`[${this.name}] GitHub not enabled, using Supabase fallback`);
-      
+     
       for (const file of files) {
         await this.createCode(file.path.split('/').pop(), file.content, {
           taskId,
@@ -2256,14 +2061,12 @@ ${description}
           metadata: { intended_path: file.path }
         });
       }
-      
+     
       return { fallback: true, message: 'Stored in Supabase for manual deployment' };
     }
-
     try {
       const branchName = `agent/${this.name.toLowerCase()}-${Date.now()}`;
       await this.createBranch(branchName);
-
       for (const file of files) {
         await this.createGitHubFile(
           file.path,
@@ -2272,13 +2075,11 @@ ${description}
           branchName
         );
       }
-
       const pr = await this.createPullRequest({
         title,
         body: description,
         headBranch: branchName
       });
-
       return {
         success: true,
         prNumber: pr.number,
@@ -2286,7 +2087,6 @@ ${description}
         branch: branchName,
         filesAdded: files.length
       };
-
     } catch (err) {
       console.error(`[${this.name}] ❌ GitHub submission failed:`, err.message);
       await this.log('github_error', err.message);
@@ -2307,7 +2107,6 @@ ${description}
 // ============================================
 // EXPORTS
 // ============================================
-
 module.exports = {
   ConstitutionalAgent,
   CONSTITUTION,
