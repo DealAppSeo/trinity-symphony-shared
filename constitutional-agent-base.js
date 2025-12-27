@@ -302,7 +302,7 @@ const PROVIDERS = {
     model: 'gemini-1.5-flash',
     envKey: 'GEMINI_API_KEY',
     tier: 'free',
-    priority: 5
+    priority: 5,
     isGemini: true
   },
   anthropic: {
