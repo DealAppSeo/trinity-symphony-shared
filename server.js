@@ -1,6 +1,6 @@
 const express = require('express');
 const { ConstitutionalAgent } = require('./constitutional-agent-base.js');
-
+const analyzeRoutes = require('./routes/analyze');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const AGENT_NAME = process.env.AGENT_NAME || 'HDM';
@@ -34,6 +34,8 @@ app.get('/trigger', async (req, res) => {
     res.status(500).json({ status: 'error', error: err.message });
   }
 });
+// Mount analyze routes for AISocialMirror
+app.use(analyzeRoutes);
 
 // Start server
 app.listen(PORT, () => {
