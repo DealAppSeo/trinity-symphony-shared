@@ -39,7 +39,7 @@ app.get('/trigger', async (req, res) => {
 });
 
 // Mount analyze routes for AISocialMirror
-app.use(analyzeRoutes);
+app.use('/analyze', analyzeRoutes);
 
 // Start server
 app.listen(PORT, () => {
