@@ -3,8 +3,7 @@
 import { Card } from "@/components/ui/card"
 
 export function QRCodeComponent() {
-  // Generate QR code URL using a QR code API
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(typeof window !== "undefined" ? window.location.href : "https://aisocialmirror.app")}`
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent("https://www.aisocialmirror.com")}`
 
   return (
     <Card className="bg-white/[0.03] backdrop-blur-xl border-white/[0.08] rounded-2xl p-6 space-y-4">
