@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { ArrowLeft, Share2, Twitter, Linkedin, MessageCircle, Copy, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -8,35 +8,88 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
-// Placeholder data
-const results = {
+// Default fallback data
+const defaultResults = {
   archetype: {
     emoji: "💜",
-    name: "Strategic Empath",
-    match: 87,
-    description:
-      "You blend analytical thinking with deep emotional awareness, seeing patterns in both data and human behavior.",
+    name: "Reflective Soul",
+    match: 75,
+    description: "Your analysis is being processed...",
   },
   scores: {
-    iq: { value: 82, label: "Analytical Intelligence", color: "green" },
-    eq: { value: 91, label: "Emotional Intelligence", color: "amber" },
-    sq: { value: 76, label: "Social Intelligence", color: "blue" },
+    iq: { value: 70, label: "Analytical Intelligence", color: "green" },
+    eq: { value: 70, label: "Emotional Intelligence", color: "amber" },
+    sq: { value: 70, label: "Spiritual Intelligence", color: "blue" },
   },
   blindSpot: {
-    trait: "Secretly Competitive",
-    insight:
-      "While you present yourself as collaborative and supportive, your posts reveal a subtle drive to outperform others. You often frame achievements as casual updates, but they're strategically timed. This isn't bad—just something your close circle might notice but won't mention.",
-    evidence: "Just wrapped up another project ahead of schedule 🙃",
+    trait: "Still Discovering",
+    insight: "Your reflection is being prepared with care...",
+    evidence: "",
   },
   habit: {
-    trigger: "feel jealous of someone's post",
-    action: "send them a genuine compliment within 60 seconds",
+    trigger: "notice something about yourself",
+    action: "take a moment to reflect on it",
   },
 }
 
 export default function ResultsPage() {
   const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [results, setResults] = useState(defaultResults)
+  const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
+
+  useEffect(() => {
+    // Read analysis results from sessionStorage
+    if (typeof window !== "undefined") {
+      const stored = sessionStorage.getItem("analysisResults")
+      if (stored) {
+        try {
+          const data = JSON.parse(stored)
+          
+          // Map API response to display format
+          const mappedResults = {
+            archetype: {
+              emoji: data.mirrorType?.emoji || "💜",
+              name: data.mirrorType?.name || "Thoughtful Mind",
+              match: Math.round((data.iq?.score + data.eq?.score + data.sq?.score) / 3) || 75,
+              description: data.mirrorType?.description || data.summary || "A unique blend of qualities.",
+            },
+            scores: {
+              iq: { 
+                value: data.iq?.score || 70, 
+                label: "Analytical Intelligence", 
+                color: "green" as const 
+              },
+              eq: { 
+                value: data.eq?.score || 70, 
+                label: "Emotional Intelligence", 
+                color: "amber" as const 
+              },
+              sq: { 
+                value: data.sq?.score || 70, 
+                label: "Spiritual Intelligence", 
+                color: "blue" as const 
+              },
+            },
+            blindSpot: {
+              trait: data.quickInsights?.quickInsights?.[0] || data.insight || "Hidden Depth",
+              insight: data.analysis || data.insight || "There's more beneath the surface worth exploring.",
+              evidence: data.engagementQuestion || "",
+            },
+            habit: {
+              trigger: "reflect on your writing",
+              action: data.closing || "consider what it reveals about your growth",
+            },
+          }
+          
+          setResults(mappedResults)
+        } catch (e) {
+          console.error("Failed to parse results:", e)
+        }
+      }
+      setIsLoading(false)
+    }
+  }, [])
 
   const handleShare = () => {
     setShareModalOpen(true)
@@ -65,6 +118,21 @@ export default function ResultsPage() {
     }
   }
 
+  const handleBack = () => {
+    window.location.href = "/"
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-6xl animate-pulse">🪞</div>
+          <p className="text-zinc-400">Preparing your reflection...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <Toaster />
@@ -76,7 +144,7 @@ export default function ResultsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
-        <Button variant="ghost" size="sm" className="text-white hover:bg-white/10">
+        <Button variant="ghost" size="sm" className="text-white hover:bg-white/10" onClick={handleBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -115,7 +183,6 @@ export default function ResultsPage() {
             >
               <h2 className="text-sm font-semibold text-zinc-400 mb-4 tracking-wider">YOUR QUOTIENTS</h2>
               <div className="space-y-4">
-                {/* IQ Score */}
                 <ScoreBar
                   icon="🧠"
                   label={results.scores.iq.label}
@@ -123,8 +190,6 @@ export default function ResultsPage() {
                   color="green"
                   delay={0}
                 />
-
-                {/* EQ Score */}
                 <ScoreBar
                   icon="💝"
                   label={results.scores.eq.label}
@@ -132,8 +197,6 @@ export default function ResultsPage() {
                   color="amber"
                   delay={0.2}
                 />
-
-                {/* SQ Score */}
                 <ScoreBar
                   icon="🤝"
                   label={results.scores.sq.label}
@@ -160,7 +223,9 @@ export default function ResultsPage() {
               </div>
               <h3 className="text-xl font-bold">{results.blindSpot.trait}</h3>
               <p className="text-zinc-300 leading-relaxed">{results.blindSpot.insight}</p>
-              <p className="text-zinc-400 italic text-sm">"{results.blindSpot.evidence}"</p>
+              {results.blindSpot.evidence && (
+                <p className="text-zinc-400 italic text-sm">"{results.blindSpot.evidence}"</p>
+              )}
             </motion.div>
 
             {/* Tiny Habits Card */}
@@ -219,7 +284,6 @@ export default function ResultsPage() {
           <div className="space-y-6">
             <h2 className="text-xl font-bold">Share Your Results</h2>
 
-            {/* Preview Card */}
             <div className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 space-y-4">
               <div className="text-center space-y-2">
                 <div className="text-4xl">{results.archetype.emoji}</div>
@@ -242,7 +306,6 @@ export default function ResultsPage() {
               </div>
             </div>
 
-            {/* Platform Buttons */}
             <div className="grid grid-cols-2 gap-3">
               <Button
                 variant="outline"
@@ -289,7 +352,6 @@ export default function ResultsPage() {
   )
 }
 
-// Score Bar Component with Animation
 function ScoreBar({
   icon,
   label,
