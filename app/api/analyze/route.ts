@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 // CONFIGURATION
 // ============================================
 
-const TRINITY_SYMPHONY_URL = "https://mcp-production-d0c6.up.railway.app";
+const TRINITY_SYMPHONY_URL = "https://trinity-mel-production.up.railway.app";
 
 // Brand terms to weave into responses
 const BRAND_TERMS = {
