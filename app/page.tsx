@@ -148,7 +148,7 @@ const handleAnalyze = async () => {
     sessionStorage.setItem('analyzedText', text)
     
     // Route to results page
-    window.location.href = '/reveal/results'
+    window.location.href = '/results'
     
   } catch (error) {
     console.error('Analysis failed:', error)
