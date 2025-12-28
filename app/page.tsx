@@ -127,28 +127,34 @@ export default function Home() {
     }
   }, [charCount])
 
-  const handleAnalyze = async () => {
-    if (!isValid) return
+const handleAnalyze = async () => {
+  if (!isValid) return
 
-    setIsLoading(true)
-    setSanctuaryMessage(getRandomSanctuaryMessage())
-    setOriginalText(text)
+  setIsLoading(true)
+  setSanctuaryMessage(getRandomSanctuaryMessage())
+  setOriginalText(text)
 
-    // TODO: Call actual API endpoint
-    // const response = await fetch('/api/analyze', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ text, mode })
-    // })
-
-    // Simulate analysis
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, mode })
+    })
+    
+    const data = await response.json()
+    
+    // Store results for results page
+    sessionStorage.setItem('analysisResults', JSON.stringify(data))
+    sessionStorage.setItem('analyzedText', text)
+    
+    // Route to results page
+    window.location.href = '/reveal/results'
+    
+  } catch (error) {
+    console.error('Analysis failed:', error)
     setIsLoading(false)
-    setHasAnalyzed(true)
-    setIsTextCollapsed(true)
-    clearDraft()
   }
+}
 
   const handleCopy = async (content: string, buttonId: string) => {
     if (typeof window !== "undefined" && navigator.clipboard) {
