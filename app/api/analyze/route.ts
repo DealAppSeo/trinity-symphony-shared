@@ -1,14 +1,13 @@
 // ============================================
-// AISOCIALMIRROR - COMPLETE API ROUTE
+// AISOCIALMIRROR - API ROUTE
 // app/api/analyze/route.ts
 // 
 // Features:
-// - Streaming progressive reveal (latency as ritual)
-// - Native sharing (no Twilio needed)
-// - Mirror Types (shareable personality)
-// - Cross-platform suggestions (sticky engagement)
-// - Trinity Symphony brand integration
-// - RepID Verified badges
+// - Calls MEL agent for real AI analysis
+// - Fallback chain (MEL → APM → local)
+// - Timeout handling
+// - Distress response passthrough
+// - Mirror Types and sharing
 // ============================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -17,212 +16,174 @@ import { NextRequest, NextResponse } from "next/server";
 // CONFIGURATION
 // ============================================
 
-const TRINITY_SYMPHONY_URL = "https://trinity-mel-production.up.railway.app";
+// Fallback chain - try each in order
+const AGENT_ENDPOINTS = [
+  { name: 'MEL', url: 'https://trinity-mel-production.up.railway.app/analyze' },
+  { name: 'APM', url: 'https://trinity-apm-production.up.railway.app/analyze' },
+];
 
-// Brand terms to weave into responses
+const TIMEOUT_MS = 25000; // 25 seconds max
+
+// Brand terms
 const BRAND_TERMS = {
   verified: "RepID Verified",
   ethical: "Ethical AI Analysis", 
-  factChecked: "Fact-Checked Insights",
   symphony: "Powered by Trinity Symphony",
   constitutional: "Constitutional AI Standards"
 };
 
-// Mirror Types - shareable personality classifications
-const MIRROR_TYPES = [
-  { id: "empathic-strategist", name: "The Empathic Strategist", emoji: "🎯💜", traits: ["high EQ", "high IQ", "balanced SQ"] },
-  { id: "visionary-poet", name: "The Visionary Poet", emoji: "✨📝", traits: ["high SQ", "high EQ", "creative IQ"] },
-  { id: "analytical-heart", name: "The Analytical Heart", emoji: "🧠❤️", traits: ["high IQ", "growing EQ", "practical SQ"] },
-  { id: "authentic-voice", name: "The Authentic Voice", emoji: "🎤🌟", traits: ["high EQ", "high SQ", "direct IQ"] },
-  { id: "bridge-builder", name: "The Bridge Builder", emoji: "🌉🤝", traits: ["balanced all", "connecting", "translating"] },
-  { id: "quiet-sage", name: "The Quiet Sage", emoji: "🦉💫", traits: ["high SQ", "reflective IQ", "subtle EQ"] },
-  { id: "passionate-truth", name: "The Passionate Truth-Teller", emoji: "🔥📢", traits: ["high conviction", "direct", "principled"] },
-  { id: "gentle-challenger", name: "The Gentle Challenger", emoji: "🌸⚡", traits: ["soft delivery", "strong ideas", "growth-focused"] }
-];
-
-// Cross-platform suggestions for stickiness
-const NEXT_SUGGESTIONS = {
-  linkedin: [
-    { platform: "dating", prompt: "Now see how you come across on dating apps", icon: "💕" },
-    { platform: "email", prompt: "How does your professional email voice compare?", icon: "📧" },
-    { platform: "twitter", prompt: "What about your Twitter/X presence?", icon: "🐦" }
-  ],
-  dating: [
-    { platform: "linkedin", prompt: "Curious how your professional voice differs?", icon: "💼" },
-    { platform: "text", prompt: "Analyze how you text your friends", icon: "💬" },
-    { platform: "journal", prompt: "What about when you write just for yourself?", icon: "📔" }
-  ],
-  email: [
-    { platform: "linkedin", prompt: "See your public professional voice", icon: "💼" },
-    { platform: "slack", prompt: "How about your Slack messages?", icon: "💬" },
-    { platform: "meeting", prompt: "Paste your meeting notes", icon: "📝" }
-  ],
-  default: [
-    { platform: "linkedin", prompt: "Try your LinkedIn headline or post", icon: "💼" },
-    { platform: "dating", prompt: "Analyze your dating profile", icon: "💕" },
-    { platform: "email", prompt: "Paste an important email you're drafting", icon: "📧" }
-  ]
-};
-
 // ============================================
-// HELPER: Detect content type
+// HELPER: Fetch with timeout
 // ============================================
 
-function detectContentType(text: string): string {
-  const lower = text.toLowerCase();
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   
-  if (lower.includes("experience") && lower.includes("skills") || lower.includes("professional")) return "linkedin";
-  if (lower.includes("love") && (lower.includes("looking for") || lower.includes("swipe"))) return "dating";
-  if (lower.includes("dear") || lower.includes("regards") || lower.includes("best,")) return "email";
-  if (lower.includes("meeting") || lower.includes("agenda") || lower.includes("action items")) return "meeting";
-  if (lower.includes("hey") || lower.includes("lol") || lower.includes("gonna")) return "text";
-  
-  return "default";
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ============================================
-// HELPER: Calculate Mirror Type
+// HELPER: Call agents with fallback
 // ============================================
 
-function calculateMirrorType(iq: number, eq: number, sq: number): typeof MIRROR_TYPES[0] {
-  // Balanced (all within 10 points)
-  if (Math.max(iq, eq, sq) - Math.min(iq, eq, sq) <= 10) {
-    return MIRROR_TYPES.find(t => t.id === "bridge-builder")!;
+async function callAgentWithFallback(body: object): Promise<{ data: any; agent: string; fallback: boolean }> {
+  for (const endpoint of AGENT_ENDPOINTS) {
+    try {
+      console.log(`[API] Trying ${endpoint.name}...`);
+      
+      const response = await fetchWithTimeout(
+        endpoint.url,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+        TIMEOUT_MS
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[API] ${endpoint.name} responded successfully`);
+        return { data, agent: endpoint.name, fallback: false };
+      }
+      
+      console.warn(`[API] ${endpoint.name} returned ${response.status}`);
+    } catch (err: any) {
+      console.warn(`[API] ${endpoint.name} failed: ${err.message}`);
+    }
   }
   
-  // High EQ + High IQ
-  if (eq >= 80 && iq >= 80) {
-    return MIRROR_TYPES.find(t => t.id === "empathic-strategist")!;
-  }
-  
-  // High SQ + High EQ
-  if (sq >= 80 && eq >= 75) {
-    return MIRROR_TYPES.find(t => t.id === "visionary-poet")!;
-  }
-  
-  // High IQ, growing EQ
-  if (iq >= 80 && eq >= 60 && eq < 75) {
-    return MIRROR_TYPES.find(t => t.id === "analytical-heart")!;
-  }
-  
-  // High EQ + High SQ
-  if (eq >= 80 && sq >= 75) {
-    return MIRROR_TYPES.find(t => t.id === "authentic-voice")!;
-  }
-  
-  // High SQ, reflective
-  if (sq >= 80) {
-    return MIRROR_TYPES.find(t => t.id === "quiet-sage")!;
-  }
-  
-  // High conviction (all above 70 but IQ leads)
-  if (iq >= 75 && eq >= 70 && sq >= 70) {
-    return MIRROR_TYPES.find(t => t.id === "passionate-truth")!;
-  }
-  
-  // Default to gentle challenger
-  return MIRROR_TYPES.find(t => t.id === "gentle-challenger")!;
+  // All agents failed - return local fallback
+  console.log('[API] All agents failed, using local fallback');
+  return { data: generateLocalFallback(body), agent: 'LOCAL', fallback: true };
 }
 
 // ============================================
-// HELPER: Generate share content
+// HELPER: Local fallback analysis
 // ============================================
 
-function generateShareContent(mirrorType: typeof MIRROR_TYPES[0], scores: { iq: number, eq: number, sq: number }) {
-  const shareText = `I'm "${mirrorType.name}" ${mirrorType.emoji}\n\n🧠 IQ: ${scores.iq} | ❤️ EQ: ${scores.eq} | ✨ SQ: ${scores.sq}\n\nDiscover your Mirror Type →`;
-  const shareUrl = "https://www.aisocialmirror.com";
+function generateLocalFallback(body: any): object {
+  const text = body.text || '';
+  const words = text.split(/\s+/).length;
+  
+  // Simple heuristic scoring
+  const positiveWords = (text.match(/love|great|happy|excited|grateful|amazing|wonderful|hope|joy/gi) || []).length;
+  const analyticalWords = (text.match(/because|therefore|however|analyze|consider|reason|logic/gi) || []).length;
+  const reflectiveWords = (text.match(/feel|believe|value|meaning|purpose|soul|spirit|heart/gi) || []).length;
+  
+  const baseScore = 65;
+  const iqScore = Math.min(95, baseScore + analyticalWords * 3 + Math.min(words / 10, 15));
+  const eqScore = Math.min(95, baseScore + positiveWords * 2 + reflectiveWords * 2);
+  const sqScore = Math.min(95, baseScore + reflectiveWords * 3);
   
   return {
-    text: shareText,
-    url: shareUrl,
-    share: {
-      native: { title: "My Mirror Type", text: shareText, url: shareUrl },
-      sms: `sms:?body=${encodeURIComponent(shareText + " " + shareUrl)}`,
-      whatsapp: `https://wa.me/?text=${encodeURIComponent(shareText + " " + shareUrl)}`,
-      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`,
-      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
-      email: `mailto:?subject=${encodeURIComponent("My AI Mirror Type")}&body=${encodeURIComponent(shareText + "\n\n" + shareUrl)}`,
-      copy: shareText + " " + shareUrl
-    }
+    summary: "I see someone taking time to reflect. That matters more than you might realize.",
+    insight: "The act of writing clarifies thought. You're already doing the important work of self-examination.",
+    
+    iq: { 
+      score: Math.round(iqScore), 
+      label: "Analytical Intelligence",
+      description: "Your thoughts come through with clarity.",
+      strengths: ["Expression", "Structure"],
+      color: "#22c55e"
+    },
+    eq: { 
+      score: Math.round(eqScore), 
+      label: "Emotional Intelligence",
+      description: "Genuine feeling is present in your words.",
+      strengths: ["Authenticity", "Awareness"],
+      color: "#ef4444"
+    },
+    sq: { 
+      score: Math.round(sqScore), 
+      label: "Spiritual Intelligence",
+      description: "Purpose and meaning underlie your expression.",
+      strengths: ["Reflection", "Intention"],
+      color: "#eab308"
+    },
+    
+    mirrorType: {
+      id: "reflective-soul",
+      name: "The Reflective Soul",
+      emoji: "🪞✨",
+      description: "You lead with thoughtfulness and introspection."
+    },
+    
+    blindSpot: {
+      title: "What You Might Not See",
+      insight: "Your willingness to examine yourself is rarer than you think. Many never pause to look inward."
+    },
+    
+    hiddenStrength: {
+      title: "Hidden Strength", 
+      insight: "The courage to be vulnerable, even to an AI, shows emotional strength."
+    },
+    
+    closing: "This is a preliminary reflection. For deeper insight, please try again in a moment when our full analysis is available.",
+    
+    fallback: true,
+    fallbackReason: "Full analysis temporarily unavailable"
   };
 }
 
 // ============================================
-// HELPER: Quick analysis (instant feedback)
+// HELPER: Quick pre-analysis
 // ============================================
 
 function quickAnalysis(text: string): object {
   const words = text.split(/\s+/).length;
   const sentences = text.split(/[.!?]+/).filter(s => s.trim()).length;
-  const avgWordsPerSentence = Math.round(words / Math.max(sentences, 1));
   
-  const positiveWords = (text.match(/love|great|excellent|happy|excited|grateful|amazing|wonderful|fantastic/gi) || []).length;
-  const negativeWords = (text.match(/hate|terrible|awful|sad|angry|frustrated|disappointed|worried|anxious/gi) || []).length;
+  const positiveWords = (text.match(/love|great|excellent|happy|excited|grateful|amazing|wonderful/gi) || []).length;
+  const negativeWords = (text.match(/hate|terrible|awful|sad|angry|frustrated|disappointed|worried/gi) || []).length;
   const sentimentScore = Math.min(100, Math.max(0, 50 + (positiveWords * 5) - (negativeWords * 5)));
-  
-  const longWords = text.split(/\s+/).filter(w => w.length > 8).length;
-  const complexityScore = Math.min(100, Math.round((longWords / Math.max(words, 1)) * 200 + 40));
-  
-  const youCount = (text.match(/\byou\b|\byour\b|\byours\b/gi) || []).length;
-  const iCount = (text.match(/\bI\b|\bme\b|\bmy\b|\bmine\b/gi) || []).length;
-  const empathyRatio = youCount > 0 ? (youCount / (youCount + iCount)) : 0.5;
   
   return {
     stats: {
       words,
       sentences,
-      avgWordsPerSentence,
-      readingTime: `${Math.ceil(words / 200)} min read`
+      avgWordsPerSentence: Math.round(words / Math.max(sentences, 1)),
+      readingTime: `${Math.ceil(words / 200)} min`
     },
     quickInsights: [
       sentimentScore > 65 ? "✨ Your words carry positive energy" : 
         sentimentScore < 35 ? "💭 I sense some weight in your words" : 
-        "🎯 Your tone is measured and balanced",
-      empathyRatio > 0.4 ? "💜 You're focused on others - that's connecting" :
-        empathyRatio < 0.2 ? "🪞 This is centered on your experience - that's valid" :
-        "⚖️ Good balance of self and other awareness",
-      complexityScore > 70 ? "🧠 Sophisticated vocabulary detected" :
-        complexityScore < 40 ? "💬 Clear, accessible language" :
-        "📝 Natural, conversational style"
+        "🎯 Your tone is measured and balanced"
     ],
     previewScore: {
-      clarity: Math.min(95, Math.max(55, 100 - Math.abs(avgWordsPerSentence - 15) * 3)),
+      clarity: Math.min(95, Math.max(55, 100 - Math.abs((words / Math.max(sentences, 1)) - 15) * 3)),
       warmth: Math.min(95, Math.max(55, sentimentScore)),
-      depth: Math.min(95, Math.max(55, complexityScore))
     }
   };
-}
-
-// ============================================
-// HELPER: Generate engagement question
-// ============================================
-
-function generateEngagementQuestion(text: string, contentType: string): string {
-  const questions: Record<string, string[]> = {
-    linkedin: [
-      "What achievement here are you most proud of?",
-      "What do you want people to remember most about you?",
-      "What's the story behind this career move?"
-    ],
-    dating: [
-      "What quality here do you most want someone to notice?",
-      "What are you hoping to find?",
-      "What makes you different from everyone else on here?"
-    ],
-    email: [
-      "What response are you hoping for?",
-      "What's the one thing you need them to understand?",
-      "How do you want them to feel after reading this?"
-    ],
-    default: [
-      "What prompted you to write this?",
-      "What do you most want someone to take away?",
-      "Is there something you almost said but held back?"
-    ]
-  };
-  
-  const options = questions[contentType] || questions.default;
-  return options[Math.floor(Math.random() * options.length)];
 }
 
 // ============================================
@@ -233,8 +194,10 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    const { text, sharingLevel, storyMode, mode } = await request.json();
+    const body = await request.json();
+    const { text, sharingLevel, storyMode, mode } = body;
     
+    // Validation
     if (!text || typeof text !== "string") {
       return NextResponse.json(
         { error: "Please share what's on your mind." },
@@ -242,127 +205,99 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    if (text.length < 100) {
+    if (text.length < 50) {
       return NextResponse.json(
         { 
           error: "Text too short",
-          message: `Just ${100 - text.length} more characters to unlock your reflection.`,
-          encouragement: "Take your time. What else is there?"
+          message: `Just ${50 - text.length} more characters to unlock your reflection.`,
+          minimum: 50,
+          current: text.length
         },
         { status: 400 }
       );
     }
     
-    const contentType = detectContentType(text);
-    const quick = quickAnalysis(text);
-    const engagementQuestion = generateEngagementQuestion(text, contentType);
-    
+    // Call agent with fallback chain
     const level = sharingLevel || mode || "private_reflection";
+    const { data, agent, fallback } = await callAgentWithFallback({
+      text,
+      sharingLevel: level,
+      storyMode: storyMode || false
+    });
     
-    let analysisResult;
-    try {
-      const response = await fetch(`${TRINITY_SYMPHONY_URL}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          sharingLevel: level,
-          storyMode: storyMode || false
-        })
+    // Handle distress detection response from agent
+    if (data.pauseFirst) {
+      return NextResponse.json({
+        ...data,
+        branding: {
+          poweredBy: BRAND_TERMS.symphony,
+          standard: BRAND_TERMS.ethical
+        }
       });
-      
-      if (!response.ok) {
-        throw new Error("Trinity Symphony unavailable");
-      }
-      
-      analysisResult = await response.json();
-    } catch (error) {
-      console.error("Trinity Symphony error:", error);
-      
-      analysisResult = {
-        summary: "I see someone taking time to reflect. That matters.",
-        insight: "The act of writing clarifies thought. You're already doing the work.",
-        iq: { score: 72, confidence: 65, description: "Your thoughts come through clearly.", strengths: ["Clarity", "Structure"] },
-        eq: { score: 75, confidence: 68, description: "Genuine feeling present in your words.", strengths: ["Authenticity", "Warmth"] },
-        sq: { score: 70, confidence: 62, description: "Purpose underlies your expression.", strengths: ["Intention", "Meaning"] },
-        closing: "This analysis is preliminary. Full RepID Verified analysis coming soon.",
-        fallback: true
-      };
     }
     
-    const scores = {
-      iq: analysisResult.iq?.score || 72,
-      eq: analysisResult.eq?.score || 75,
-      sq: analysisResult.sq?.score || 70
-    };
+    // Quick analysis for additional insights
+    const quick = quickAnalysis(text);
     
-    const mirrorType = calculateMirrorType(scores.iq, scores.eq, scores.sq);
-    const shareContent = generateShareContent(mirrorType, scores);
-    const nextSuggestions = NEXT_SUGGESTIONS[contentType as keyof typeof NEXT_SUGGESTIONS] || NEXT_SUGGESTIONS.default;
-    
+    // Build response
     const latency = Date.now() - startTime;
     
     const response = {
-      summary: analysisResult.summary,
-      insight: analysisResult.insight,
-      analysis: analysisResult.analysis,
+      // Core analysis from agent
+      summary: data.summary,
+      insight: data.insight,
+      analysis: data.rawAnalysis,
       
+      // Scores with branding
       iq: {
-        ...analysisResult.iq,
+        ...data.iq,
         verified: BRAND_TERMS.verified,
-        color: "#22c55e"
       },
       eq: {
-        ...analysisResult.eq,
+        ...data.eq,
         verified: BRAND_TERMS.verified,
-        color: "#ef4444"
       },
       sq: {
-        ...analysisResult.sq,
+        ...data.sq,
         verified: BRAND_TERMS.verified,
-        color: "#eab308"
       },
       
-      mirrorType: {
-        id: mirrorType.id,
-        name: mirrorType.name,
-        emoji: mirrorType.emoji,
-        description: `You lead with ${mirrorType.traits.join(", ")}.`,
-        shareText: `I'm "${mirrorType.name}" ${mirrorType.emoji} - What's your Mirror Type?`
-      },
+      // Mirror type
+      mirrorType: data.mirrorType,
       
-      sharing: shareContent,
+      // Insights
+      blindSpot: data.blindSpot,
+      hiddenStrength: data.hiddenStrength,
+      closing: data.closing,
+      
+      // Quick stats
       quickInsights: quick,
-      engagementQuestion,
       
-      nextSteps: {
-        suggestions: nextSuggestions,
-        message: "Your mirror reveals different facets in different contexts.",
-        cta: `Try your ${nextSuggestions[0].platform} voice next`
-      },
-      
-      closing: analysisResult.closing,
-      
+      // Branding
       branding: {
         poweredBy: BRAND_TERMS.symphony,
-        verification: BRAND_TERMS.verified,
+        verification: fallback ? "⏳ Preliminary" : `✓ ${BRAND_TERMS.verified}`,
         standard: BRAND_TERMS.ethical,
-        badge: analysisResult.fallback ? "⏳ Preliminary" : "✓ RepID Verified"
+        agent: agent
       },
       
+      // Meta
       meta: {
+        analysisId: data.analysis_id,
         latencyMs: latency,
-        contentType,
+        agent: agent,
+        provider: data.meta?.provider || 'unknown',
         sharingLevel: level,
         version: "2.0.0",
-        constitutional: true
+        constitutional: true,
+        fallback: fallback
       }
     };
     
     return NextResponse.json(response);
     
-  } catch (error) {
-    console.error("Analysis error:", error);
+  } catch (error: any) {
+    console.error("[API] Analysis error:", error);
     
     return NextResponse.json(
       {
@@ -378,25 +313,47 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// ============================================
+// HEALTH CHECK
+// ============================================
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const text = url.searchParams.get("text");
   
   if (!text) {
+    // Check agent health
+    const healthChecks = await Promise.all(
+      AGENT_ENDPOINTS.map(async (endpoint) => {
+        try {
+          const res = await fetchWithTimeout(
+            endpoint.url.replace('/analyze', '/health'),
+            { method: 'GET' },
+            5000
+          );
+          return { agent: endpoint.name, healthy: res.ok };
+        } catch {
+          return { agent: endpoint.name, healthy: false };
+        }
+      })
+    );
+    
     return NextResponse.json({
       status: "healthy",
       version: "2.0.0",
+      agents: healthChecks,
       features: [
         "Mirror Types",
-        "Native Sharing",
-        "Progressive Reveal",
+        "Distress Detection",
+        "Fallback Chain",
         "RepID Verified",
-        "Cross-Platform Suggestions"
+        "Constitutional AI"
       ],
       branding: BRAND_TERMS
     });
   }
   
+  // Quick analysis for preview
   const quick = quickAnalysis(text);
   return NextResponse.json(quick);
 }
