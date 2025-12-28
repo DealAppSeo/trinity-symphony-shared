@@ -1,23 +1,29 @@
 {
   "name": "trinity-symphony-shared",
-  "version": "7.0.0",
+  "version": "7.2.0",
   "description": "Trinity Symphony - Constitutional Multi-Agent AI System with Artifact Creation",
-  "main": "trinity-worker.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node trinity-worker.js",
-    "hdm": "AGENT_NAME=HDM node trinity-worker.js",
-    "apm": "AGENT_NAME=APM node trinity-worker.js",
-    "mel": "AGENT_NAME=MEL node trinity-worker.js",
-    "gcm": "AGENT_NAME=GCM node trinity-worker.js",
-    "veritas": "AGENT_NAME=VERITAS node trinity-worker.js",
-    "torch": "AGENT_NAME=TORCH node trinity-worker.js",
-    "w3c": "AGENT_NAME=W3C node trinity-worker.js"
+    "start": "node server.js",
+    "hdm": "AGENT_NAME=HDM node server.js",
+    "apm": "AGENT_NAME=APM node server.js",
+    "mel": "AGENT_NAME=MEL node server.js",
+    "gcm": "AGENT_NAME=GCM node server.js",
+    "veritas": "AGENT_NAME=VERITAS node server.js",
+    "torch": "AGENT_NAME=TORCH node server.js",
+    "w3c": "AGENT_NAME=W3C node server.js",
+    "mcp": "AGENT_NAME=MCP node server.js",
+    "worker": "node trinity-worker.js",
+    "dev": "node --watch server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
-     "@upstash/redis": "^1.28.0",
+    "@upstash/redis": "^1.28.0",
     "express": "^4.18.2",
-    "groq-sdk": "^0.3.2"
+    "express-rate-limit": "^7.1.5",
+    "groq-sdk": "^0.3.2",
+    "helmet": "^7.1.0",
+    "uuid": "^9.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -28,7 +34,5 @@
     "constitutional-ai",
     "trinity-symphony",
     "autonomous-agents"
-  ],
-  "author": "HyperDAG",
-  "license": "MIT"
+  ]
 }
