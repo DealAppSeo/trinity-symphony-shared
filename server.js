@@ -458,8 +458,25 @@ Format your response as clear sections. Be warm, be wise, be specific.`;
 }
 
 // ============================================
+// HELPER: Strip Markdown from LLM output
+// ============================================
+
+function stripMarkdown(text) {
+  if (!text) return '';
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')  // **bold** → bold
+    .replace(/\*([^*]+)\*/g, '$1')       // *italic* → italic
+    .replace(/#{1,6}\s?/g, '')           // ### headers
+    .replace(/`([^`]+)`/g, '$1')         // `code`
+    .replace(/\n-\s/g, '\n• ')           // - bullets → •
+    .replace(/\n\d+\.\s/g, '\n• ')       // 1. numbered → •
+    .trim();
+}
+
+// ============================================
 // HELPER: Parse Analysis Response
 // ============================================
+
 
 function parseAnalysisResponse(output, originalText) {
   // Extract scores using regex (flexible parsing)
@@ -481,12 +498,12 @@ function parseAnalysisResponse(output, originalText) {
   const closingMatch = output.match(/closing[^:]*:(.*?)$/is);
   
   return {
-    summary: summaryMatch ? summaryMatch[1].trim() : "I see someone taking time to reflect. That matters.",
+   summary: stripMarkdown(summaryMatch ? summaryMatch[1].trim() : "I see someone taking time to reflect. That matters."),
     
     iq: {
       score: iqScore,
       label: "Analytical Intelligence",
-      description: extractDescription(output, 'IQ'),
+      description: stripMarkdown(extractDescription(output, 'IQ')),
       strengths: extractStrengths(output, 'IQ'),
       color: "#22c55e"
     },
@@ -494,7 +511,7 @@ function parseAnalysisResponse(output, originalText) {
     eq: {
       score: eqScore,
       label: "Emotional Intelligence", 
-      description: extractDescription(output, 'EQ'),
+      description: stripMarkdown(extractDescription(output, 'EQ')),
       strengths: extractStrengths(output, 'EQ'),
       color: "#ef4444"
     },
@@ -502,7 +519,7 @@ function parseAnalysisResponse(output, originalText) {
     sq: {
       score: sqScore,
       label: "Spiritual Intelligence",
-      description: extractDescription(output, 'SQ'),
+      description: stripMarkdown(extractDescription(output, 'SQ')),
       strengths: extractStrengths(output, 'SQ'),
       color: "#eab308"
     },
@@ -511,15 +528,15 @@ function parseAnalysisResponse(output, originalText) {
     
     blindSpot: {
       title: "What You Might Not See",
-      insight: blindSpotMatch ? blindSpotMatch[1].trim() : "There's more beneath the surface worth exploring."
+     insight: stripMarkdown(blindSpotMatch ? blindSpotMatch[1].trim() : "There's more beneath the surface worth exploring.")
     },
     
     hiddenStrength: {
       title: "Hidden Strength",
-      insight: strengthMatch ? strengthMatch[1].trim() : "Your willingness to reflect is itself a gift."
+     insight: stripMarkdown(strengthMatch ? strengthMatch[1].trim() : "Your willingness to reflect is itself a gift.")
     },
     
-    closing: closingMatch ? closingMatch[1].trim() : "Keep reflecting. Growth happens in the looking.",
+   closing: stripMarkdown(closingMatch ? closingMatch[1].trim() : "Keep reflecting. Growth happens in the looking."),
     
     rawAnalysis: output
   };
