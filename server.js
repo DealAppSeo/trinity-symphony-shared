@@ -13,7 +13,11 @@
 // - Graceful shutdown with final heartbeat
 // ============================================
 
-require('dotenv').config();
+// dotenv only needed for local dev - Railway injects env vars directly
+if (process.env.NODE_ENV !== 'production') {
+  try { require('dotenv').config(); } catch (e) { /* optional */ }
+}
+
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
