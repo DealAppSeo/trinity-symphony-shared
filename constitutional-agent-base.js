@@ -2020,7 +2020,7 @@ Claude's analysis is **pragmatic and aligned** — he emphasizes technical found
 - **Identity Proof Sales**: SBT/DBT → verified creds for freelancing. **Week 2**: Agents verify skills → 5% cut.
 - **Not Viable**: Bacon.work (niche) — use Akash spot if GPU needed (defer Phase 4).
 
-**Other ANFIS/Agentic AIs**
+**Other ANFIS/Agentic AIs to Integrate**
 1. **LangGraph**: Self-healing flows. **Integrate now**: For ANFIS loops.
 2. **CrewAI**: Role-based swarms. **Week 2**: For Lean Startup crews.
 3. **AutoGen**: Failure recovery. **This week**: For healing.
