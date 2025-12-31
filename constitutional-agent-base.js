@@ -2005,7 +2005,7 @@ module.exports = {
   VERSION: CONSTITUTION.VERSION
 }; 
 
-**Claude's Thoughts vs. Ours (Differences + Opportunities)**
+// Claude's Thoughts vs. Ours (Differences + Opportunities)
 Claude's analysis is **pragmatic and aligned** — he emphasizes technical foundation (ANFIS wiring first) + phased rollout, which matches our priority to build the universal server + bidder stub tonight. No conflict; his questions push us to refine without delay.
 
 **Differences I See:**
