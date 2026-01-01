@@ -344,9 +344,7 @@ class ConstitutionalAgent {
     console.log(`[${this.name}] 🧠 Providers: ${this.availableProviders.join(', ') || 'NONE - CRITICAL'}`);
     console.log(`[${this.name}] 🐙 GitHub: ${this.githubEnabled ? 'ENABLED' : 'disabled (no token)'}`);
   }
-  // 
-   * Safe RPC call - swallows errors for non-critical operations (logging, metrics, etc.)
-   */
+  // Safe RPC call - swallows errors for non-critical operations (logging, metrics, etc.)
   async safeRpc(functionName, params) {
     try {
       const { error } = await this.supabase.rpc(functionName, params);
