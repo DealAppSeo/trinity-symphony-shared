@@ -1,19 +1,14 @@
-// 
 // TRINITY SYMPHONY - CONSTITUTIONAL AGENT BASE
-// 
 // VERSION 8.1.3 - ANFIS + RAG WIRED + BIDDER/ZKP STUBS
-// 
 // Filtered through Philippians 4:8:
 // "Whatever is TRUE, NOBLE, RIGHT, PURE, LOVELY,
 // ADMIRABLE, EXCELLENT, or PRAISEWORTHY—think about such things."
-// 
 // CHANGELOG v8.1.3:
 // - ADDED: ANFIS routing with virtue weighting (HyperDAG WP 5.1)
 // - ADDED: Semantic RAG for grounding (Bible/WP in rules)
 // - ADDED: Bidder arbitrage stub (tied to RepID)
 // - ADDED: Web3 ZKP RepID stub (for weighted proofs)
 // - RESULT: Ethical, grounded, cost-efficient routing
-// 
 
 const { createClient } = require('@supabase/supabase-js');
 const { Redis } = require('@upstash/redis');
@@ -349,7 +344,7 @@ class ConstitutionalAgent {
     console.log(`[${this.name}] 🧠 Providers: ${this.availableProviders.join(', ') || 'NONE - CRITICAL'}`);
     console.log(`[${this.name}] 🐙 GitHub: ${this.githubEnabled ? 'ENABLED' : 'disabled (no token)'}`);
   }
-  ///
+  // 
    * Safe RPC call - swallows errors for non-critical operations (logging, metrics, etc.)
    */
   async safeRpc(functionName, params) {
@@ -644,7 +639,7 @@ ${task.description || 'No description provided'}
     try {
       const myBrainValid = await this.checkMyOwnBrain();
       const siblingsHealthy = await this.checkRandomSiblings(2);
-    
+     
       if (!myBrainValid || !siblingsHealthy) {
         await this.triggerHealingCascade({
           myBrainValid,
@@ -653,9 +648,9 @@ ${task.description || 'No description provided'}
           discoveredBy: this.name
         });
       }
-    
+     
       await this.reportGenome();
-    
+     
     } catch (err) {
       console.error(`[${this.name}] Self-diagnostic error:`, err.message);
       await this.log('self_diagnostic_error', err.message);
