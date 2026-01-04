@@ -1,7 +1,7 @@
 /**
- * TRANSMISSION: VERITAS (V4 UNIFIED)
+ * TRANSMISSION: VERITAS (V4 INJECTED)
  */
-const ConstitutionalAgentV4 = require('../lib/ConstitutionalAgentV4');
+const ConstitutionalAgentV4 = require('./ConstitutionalAgentV4');
 
 const agent = new ConstitutionalAgentV4({
   name: process.env.AGENT_NAME || 'VERITAS'
