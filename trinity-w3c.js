@@ -1,1 +1,1 @@
-require('child_process').spawn('npx', ['ts-node', 'scripts/run-agent.ts', 'trinity-w3c'], { stdio: 'inherit', shell: true });
+require('child_process').spawn('node', ['scripts/run-agent.js', 'W3C'], { stdio: 'inherit', shell: true });
