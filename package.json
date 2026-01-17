@@ -17,7 +17,6 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
-    "@trinity/agent-core": "file:../trinity-ecosystem/trinity-ecosystem/packages/agent-core",
     "@supabase/supabase-js": "^2.45.0",
     "@upstash/redis": "^1.28.0",
     "dotenv": "^16.4.5",

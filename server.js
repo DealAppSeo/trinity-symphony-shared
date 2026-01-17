@@ -5,10 +5,10 @@
  */
 
 require('dotenv').config();
-const { ConstitutionalAgent } = require('@trinity/agent-core');
+const ConstitutionalAgent = require('./lib/ConstitutionalAgentV4');
 
 const agent = new ConstitutionalAgent({
-  name: process.env.AGENT_NAME || 'MCP_SERVER'
+  name: process.env.AGENT_NAME || 'trinity-orch'
 });
 
-agent.startTrinityHealingLoop();
+agent.start();
