@@ -4,10 +4,11 @@
  * Uses shared ConstitutionalAgentV4 core.
  */
 
-const ConstitutionalAgentV4 = require('./lib/ConstitutionalAgentV4');
+require('dotenv').config();
+const { ConstitutionalAgent } = require('@trinity/agent-core');
 
-const agent = new ConstitutionalAgentV4({
+const agent = new ConstitutionalAgent({
   name: process.env.AGENT_NAME || 'MCP_SERVER'
 });
 
-agent.start();
+agent.startTrinityHealingLoop();
