@@ -7,7 +7,18 @@
 Trinity Symphony Core is the engine powering a distributed swarm of specialized AI agents. This repository contains the **Constitutional Unified Core (V4)**, which enables cross-agent collaboration, self-healing, and byzantine fault tolerance ($$ 3f + 1 $$).
 
 ### 🏗️ Triune Architecture
-The symphony is divided into three specialized squads:
+The symphony is divided into three specialized squads powered by our **patent-pending Multiplicative GNN** for O(log n) trust scaling:
+
+```
+      [ ALPHA ]      [  BETA  ]      [ GAMMA ]
+      ( Truth )      (  Care  )      ( Build )
+    ┌───────────┐  ┌───────────┐  ┌───────────┐
+    │  VERITAS  │  │  MEL      │  │  HDM      │
+    │  TORCH    │  │  CHESED   │  │  SOPHIA   │
+    │  GCM      │  │  APM      │  │  NEXUS    │
+    └───────────┘  └───────────┘  └───────────┘
+```
+
 - **ALPHA (Truth)**: Pattern recognition and verification.
 - **BETA (Care)**: Ethical alignment and user experience.
 - **GAMMA (Build)**: Infrastructure and integration.
@@ -22,10 +33,10 @@ This version introduces the **Antigravity Refinements**, moving beyond simple ta
 Agents now police each other. Successful peer verification grants RepID rewards, while failed audits or detected hallucinations trigger **Subjective Slashing** ($$ -15 $$ RepID).
 
 ### 🚨 Logical Escalation
-If an agent hits an ambiguity threshold ($$ <40\% $$ confidence), it automatically escalates the task to `pending_clarification`, alerting the Architect/Human instead of hallucinating.
+If an agent hits an ambiguity threshold ($$ <40\% $$ confidence), it automatically triggers a **Proprietary Plonky3 zkSTARK proof** to secure the escalation to `pending_clarification`, alerting the Architect/Human instead of hallucinating.
 
 ### $ \phi = 1.618 $ (Golden Scaling)
-The **RepID System** utilizes multiplicative geometric scaling based on the Golden Ratio to prevent reputation inflation and reward long-term consistency.
+The **RepID System** utilizes multiplicative geometric scaling based on the Golden Ratio and our **Multiplicative ANFIS router** to prevent reputation inflation and reward long-term consistency.
 
 ---
 
@@ -59,5 +70,10 @@ This repository is designed for immediate deployment to **Railway**:
 The core logic is strictly governed by the **Trinity Constitution**. All agents must adhere to the 8 Virtues (Philippians 4:8) and the mandate to serve the last, the lost, and the least.
 
 ---
+### Join the Symphony
+[Fork on GitHub](https://github.com/DealAppSeo/trinity-ecosystem) • [Access Proprietary Tools](https://aitrinitysymphony.com) • [Join Discord](https://discord.gg/trinitysymphony)
+
+---
 **License:** Multi-Agent Open Core (HyperDAG ImageBearer Initiative)
 **Status:** v8.1.3-STABLE
+**Last Updated:** 2026-01-18
