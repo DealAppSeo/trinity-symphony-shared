@@ -441,6 +441,13 @@ export class ConstitutionalAgent {
 
         while (true) {
             try {
+                // [PHASE 21] 1-TASK busy lock
+                const { data: activeClaims, count: activeCount } = await this.supabase
+                    .from('trinity_tasks')
+                    .select('id, status', { count: 'exact' })
+                    .eq('claimed_by', this.name)
+                    .in('status', ['doing', 'in_progress', 'running', 'pending_clarification']);
+
                 if (activeCount && activeCount > 0) {
                     const firstBusy = activeClaims![0];
                     if (activeCount > 1) {
@@ -700,14 +707,20 @@ export class ConstitutionalAgent {
             return { success: false, error: 'Already claimed' };
         }
 
-        // TRY LOCAL FIRST
-        if (this.canHandleLocally(task)) {
-            console.log(`[LOCAL] ⚡ Handling ${task.id} without LLM (Tier 1)`);
-            return await this.handleLocal(task);
-        }
+        try {
+            // TRY LOCAL FIRST
+            if (this.canHandleLocally(task)) {
+                console.log(`[LOCAL] ⚡ Handling ${task.id} without LLM (Tier 1)`);
+                return await this.handleLocal(task);
+            }
 
-        // ONLY THEN use LLM
-        return await this.processWithLLM(task);
+            // ONLY THEN use LLM
+            return await this.processWithLLM(task);
+        } catch (error) {
+            console.error(`[${this.name}] 🚨 Process failed for task ${task.id}:`, error);
+            await this.releaseClaim(task.id);
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
+        }
     }
 
     async claimTask(taskId: number | string): Promise<boolean> {
@@ -734,6 +747,23 @@ export class ConstitutionalAgent {
             console.log(`[${this.name}] 🛡️ Atomic claim SECURED for task ${taskId}`);
         }
         return success;
+    }
+
+    async releaseClaim(taskId: number | string) {
+        const { error } = await this.supabase
+            .from('trinity_tasks')
+            .update({
+                status: 'pending',
+                claimed_by: null
+            })
+            .eq('id', taskId)
+            .eq('claimed_by', this.name);
+
+        if (error) {
+            console.error(`[${this.name}] 🚨 Failed to release claim for task ${taskId}:`, error.message);
+        } else {
+            console.log(`[${this.name}] 🔓 Released claim on task ${taskId}`);
+        }
     }
 
     canHandleLocally(task: Task) {
@@ -952,6 +982,34 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
             return;
         }
 
+        // [GROK: WAKE SLEEPING AGENTS]
+        // 50% chance to check for pending evergreen tasks if idle
+        if (Math.random() < 0.5) {
+            console.log(`[IDLE] 🔍 Checking for pending evergreens...`);
+            const { data: evergreens } = await this.supabase
+                .from('trinity_tasks')
+                .select('*')
+                .eq('status', 'pending')
+                .ilike('title', '[EVERGREEN]%')
+                .limit(1);
+
+            if (evergreens && evergreens.length > 0) {
+                console.log(`[IDLE] 🌿 Resuming evergreen task: ${evergreens[0].title}`);
+                await this.processTask(evergreens[0]);
+                return;
+            } else {
+                // If NO evergreens exist, seed a high-priority system task to wake the swarm
+                console.log(`[IDLE] 🕯️ Swarm dormant. Seeding wake-up evergreen...`);
+                await this.supabase.from('trinity_tasks').insert({
+                    title: `[EVERGREEN] System Oversight & Swarm Health Audit`,
+                    description: `Automated maintenance run by ${this.name} to ensure ecosystem stability.`,
+                    task_type: 'maintenance',
+                    priority: 25,
+                    status: 'pending'
+                });
+            }
+        }
+
         // 3. Auto-Seed Evergreen Task (Legacy "Internal Auction") - 30% chance if idle
         // [ANTIGRAVITY] Shifted from "Internal Optimization" to "Visible Artifact Generation"
         if (Math.random() < 0.3) {
@@ -1108,34 +1166,44 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
             // [ANTIGRAVITY] PERSISTENT ACTIVITY LOGGING
             await this.log('verification_spawned', `Spawned peer review for task: ${originalTask.title}`, { parentTaskId: originalTask.id });
 
-            // [ANTIGRAVITY] SQUAD-AWARE ROTATION (Anti-Bottleneck)
-            const allAgents = Object.keys(AGENT_WISDOM);
-            const squadPeers = allAgents.filter(name =>
-                name !== this.name &&
-                AGENT_WISDOM[name].squad === (this.wisdom as any)?.squad
-            );
+            // [PHASE 26] MULTI-VERIFIER BFT CONSENSUS (Grok's Recommendation #2)
+            // Strategy: Spawn 3 verifiers (Alpha, Beta, Gamma) to ensure 2/3 majority robustness.
+            const squads = ['ALPHA', 'BETA', 'GAMMA'];
 
-            // Strategy: 70% chance to pick from squad, 30% from the whole swarm to avoid Veritas bottleneck
-            let targetPool = (Math.random() < 0.7 && squadPeers.length > 0) ? squadPeers : allAgents.filter(n => n !== this.name);
+            // Map agents to squads (Hardcoded fallback for O(1) during build)
+            const squadMap: Record<string, string[]> = {
+                'ALPHA': ['trinity-veritas', 'trinity-torch', 'trinity-gcm'],
+                'BETA': ['trinity-mel', 'trinity-chesed', 'trinity-apm'],
+                'GAMMA': ['trinity-hdm', 'trinity-sophia', 'trinity-nexus']
+            };
 
-            // Explicitly de-prioritize over-active agents (simulated by random roll weight or just pure random)
-            const verifier = targetPool[Math.floor(Math.random() * targetPool.length)];
+            for (const squad of squads) {
+                // EXCLUDE BOTH: (1) Self (the verifier spawner) and (2) The original task claimer
+                const originalAgent = originalTask.claimed_by || this.name;
+                const pool = squadMap[squad].filter(name => name !== this.name && name !== originalAgent);
 
-            console.log(`[VERIFY] 🤝 Assigning verification of ${originalTask.id} to: ${verifier}`);
+                // Fallback to squad peers if the pool is empty after filtering
+                const verifier = pool.length > 0
+                    ? pool[Math.floor(Math.random() * pool.length)]
+                    : squadMap[squad][0];
 
-            await this.supabase.from('trinity_tasks').insert({
-                title: `[VERIFY] ${originalTask.title}`,
-                description: `PEER REVIEW MISSION.\n\n1. Review artifact for Task ${originalTask.id} (Created by ${this.name}).\n2. Verify it meets the requirements and quality standards.\n3. If it is what it claims to be, mark as VALID. Otherwise challenge it.\n\nArtifact Context: ${result.substring(0, 300)}...`,
-                task_type: 'review',
-                assigned_to: verifier, // Decentralized Assignment
-                priority: 85, // Higher than research to ensure loop closure
-                status: 'pending',
-                metadata: {
-                    parent_task_id: originalTask.id,
-                    evidence: result.substring(0, 1000),
-                    creator_agent: this.name
-                }
-            });
+                console.log(`[VERIFY] 🤝 Assigning squad ${squad} verification of ${originalTask.id} to: ${verifier}`);
+
+                await this.supabase.from('trinity_tasks').insert({
+                    title: `[VERIFY] ${originalTask.title}`,
+                    description: `PEER REVIEW MISSION (SQUAD: ${squad}).\n\n1. Review artifact for Task ${originalTask.id}.\n2. Verify it meets requirements.\n3. Mark VALID/CHALLENGED.\n\nContext: ${result.substring(0, 300)}...`,
+                    task_type: 'review',
+                    assigned_to: verifier,
+                    priority: 85,
+                    status: 'pending',
+                    metadata: {
+                        parent_task_id: originalTask.id,
+                        evidence: result.substring(0, 1000),
+                        creator_agent: this.name,
+                        squad_verification: squad
+                    }
+                });
+            }
         }
     }
 
