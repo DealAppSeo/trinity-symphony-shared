@@ -16,8 +16,8 @@ const fs = require('fs');
 const path = require('path');
 
 // Initialize Supabase
-const supabaseUrl = process.env.SUPABASE_URL || 'https://qnnpjhlxljtqyigedwkb.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 let supabase = null;
 
@@ -181,7 +181,7 @@ async function applyPatch(update) {
   }
 
   let content = fs.readFileSync(targetPath, 'utf8');
-  
+
   if (!content.includes(findText)) {
     throw new Error(`Patch target text not found in ${targetPath}`);
   }

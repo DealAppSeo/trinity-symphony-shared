@@ -4,8 +4,13 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://qnnpjhlxljtqyigedwkb.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('❌ Missing Supabase environment variables.');
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -28,16 +33,16 @@ async function syncDocs() {
 
   for (const doc of docs) {
     const githubUrl = `https://raw.githubusercontent.com/DealAppSeo/trinity-symphony-shared/main/${doc.path}`;
-    
+
     try {
       // Fetch from GitHub
       const response = await fetch(githubUrl);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      
+
       const content = await response.text();
-      
+
       // Upsert to Supabase
       const { error } = await supabase
         .from('system_docs')
@@ -52,14 +57,14 @@ async function syncDocs() {
       if (error) throw error;
 
       console.log(`✅ ${doc.id.padEnd(25)} (${(content.length / 1024).toFixed(1)}KB)`);
-      
+
     } catch (error) {
       console.log(`❌ ${doc.id.padEnd(25)} - ${error.message}`);
     }
   }
 
   console.log('\n🎉 Sync complete!');
-  
+
   // Verify
   const { data, error } = await supabase
     .from('system_docs')
