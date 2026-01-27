@@ -957,6 +957,9 @@ RATIONALE: [2-3 sentences explaining why]
     }
 
     const data = await response.json();
+    if (data.error) throw new Error(`${provider.name} API Error: ${JSON.stringify(data.error)}`);
+    if (!data.choices || data.choices.length === 0) throw new Error(`${provider.name} returned no choices`);
+
     return { output: data.choices[0].message.content };
   }
   async callGemini(provider, prompt, apiKey, options = {}) {
@@ -981,7 +984,15 @@ RATIONALE: [2-3 sentences explaining why]
     }
 
     const data = await response.json();
-    return { output: data.candidates[0].content.parts[0].text };
+    if (data.error) throw new Error(`Gemini API Error: ${JSON.stringify(data.error)}`);
+    if (!data.candidates || data.candidates.length === 0) throw new Error("Gemini returned no candidates");
+
+    const candidate = data.candidates[0];
+    if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+      throw new Error("Gemini candidate missing content parts");
+    }
+
+    return { output: candidate.content.parts[0].text };
   }
   async callAnthropic(provider, prompt, apiKey, options = {}) {
     const response = await fetch(provider.baseUrl, {
@@ -1005,6 +1016,9 @@ RATIONALE: [2-3 sentences explaining why]
     }
 
     const data = await response.json();
+    if (data.error) throw new Error(`Anthropic API Error: ${JSON.stringify(data.error)}`);
+    if (!data.content || data.content.length === 0) throw new Error("Anthropic returned no content");
+
     return { output: data.content[0].text };
   }
   getSystemPrompt() {

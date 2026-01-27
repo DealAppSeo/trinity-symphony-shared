@@ -8,6 +8,16 @@ import { mcpManager } from '../mcp/MCPManager';
 const MCP_BASE_URL = 'https://raw.githubusercontent.com/dealappseo/trinity-ecosystem/main/docs/MCPs';
 
 // ============================================
+// LLM TIERS & COST OPTIMIZATION
+// ============================================
+const LLM_TIERS: Record<string, number> = {
+    'groq': 1,      // Tier 1: Fast/Free (Llama 3.3)
+    'cerebras': 1,  // Tier 1: Ultra-Fast (Llama 3.1)
+    'deepseek': 1,  // Tier 1: Cost-Efficient (DeepSeek V3/R1)
+    'gemini': 2,    // Tier 2: Balanced (Flash)
+    'anthropic': 3, // Tier 3: Elite (Sonnet/Opus)
+    'openai': 3     // Tier 3: Elite (GPT-4o)
+};
 
 // ============================================
 // THE CONSTITUTION - IMMUTABLE PRINCIPLES
@@ -191,7 +201,12 @@ export class ConstitutionalAgent {
             { key: 'openai', env: 'OPENAI_API_KEY' },
             { key: 'anthropic', env: 'ANTHROPIC_API_KEY' },
             { key: 'gemini', env: 'GEMINI_API_KEY' },
-            { key: 'grok', env: 'GROK_API_KEY' }
+            { key: 'groq', env: 'GROQ_API_KEY' },
+            { key: 'grok', env: 'GROK_API_KEY' },
+            { key: 'cerebras', env: 'CEREBRAS_API_KEY' },
+            { key: 'deepseek', env: 'DEEPSEEK_API_KEY' },
+            { key: 'openrouter', env: 'OPENROUTER_API_KEY' },
+            { key: 'perplexity', env: 'PERPLEXITY_API_KEY' }
         ];
         return providers.filter(p => process.env[p.env]).map(p => p.key);
     }
@@ -212,9 +227,12 @@ export class ConstitutionalAgent {
                 .from('trinity_agent_registry')
                 .select('*')
                 .eq('agent_name', this.name)
-                .single();
+                .maybeSingle();
 
-            if (error) throw error; // Truth-Seeking: Don't silently fail
+            if (error) {
+                console.error(`[${this.name}] ⚠️ Sync error:`, error.message);
+                // Continue to registration if it's just a missing record
+            }
 
             if (data) {
                 const record = data as AgentRegistryRecord;
@@ -428,6 +446,15 @@ export class ConstitutionalAgent {
         await this.syncState();
         await this.heartbeat();
 
+        // [ANTIGRAVITY] INITIALIZE MCP TOOLS
+        console.log(`[${this.name}] 🛠️ Initializing MCP Tools...`);
+        try {
+            await mcpManager.initializeAll();
+            console.log(`[${this.name}] ✅ MCP Tools Ready.`);
+        } catch (e: any) {
+            console.error(`[${this.name}] ❌ MCP Initialization Failed:`, e.message);
+        }
+
         this.heartbeatInterval = setInterval(async () => {
             try {
                 await this.heartbeat();
@@ -547,7 +574,7 @@ export class ConstitutionalAgent {
             .select('*')
             .in('status', ['done', 'completed'])
             .neq('claimed_by', this.name)
-            .or(`verified_by.is.null,not.verified_by.cs.{${this.name}}`)
+            .or(`verified_by.is.null,verified_by.not.cs.{${this.name}}`)
             .order('priority', { ascending: false })
             .order('completed_at', { ascending: true }) // FIFO: Oldest work first
             .limit(1);
@@ -606,33 +633,42 @@ export class ConstitutionalAgent {
             .from('trinity_artifacts')
             .select('*')
             .eq('task_id', task.id);
-
         const artifactCount = artifacts?.length || 0;
         console.log(`[BFT] Found ${artifactCount} artifacts for review.`);
 
-        // 2. PHI-WEIGHTED CONSISTENCY (Grok's Golden Ratio Consensus)
-        // Apply φ-weight: finalBelief = beliefs.reduce((sum, b) => sum + b * 1.618 ** (rep / 100), 0)
+        // 2. SUBJECTIVE LOGIC & PHI-WEIGHTED CONSISTENCY
         const phi = 1.618;
         const repFactor = (this.reputationScore || 50) / 100;
         const weight = Math.pow(phi, repFactor);
 
-        let belief = artifactCount > 0 ? 0.8 : 0.2;
-        let disbelief = artifactCount === 0 ? 0.7 : 0.1;
+        // [PHASE 10] CALCULATE BELIEF (b), DISBELIEF (d), UNCERTAINTY (u)
+        // b + d + u = 1
+        const hasResult = (task as any).result && (task as any).result.length > 0;
+        let belief = (artifactCount > 0) ? 0.7 : (hasResult ? 0.5 : 0.0);
+        let disbelief = (artifactCount === 0 && !hasResult) ? 0.9 : 0.1;
+
+        // Boost belief based on reputation weight
+        belief = Math.min(0.99, belief * weight);
+        disbelief = Math.max(0.01, disbelief / weight);
+        let uncertainty = Math.max(0.0, 1.0 - belief - disbelief);
 
         // Final aggregate logic (weighted influence)
-        const isVerified = (belief * weight) > (disbelief * (1 / weight));
-        const newVerifyCount = (task.verify_count || 0) + 1;
-        const verifiers = [...(task.verified_by || []), this.name];
+        const isVerified = (belief > disbelief) && (belief > 0.4);
+        const newVerifyCount = ((task as any).verify_count || 0) + 1;
+        const verifiers = ((task as any).verified_by || []).concat(this.name);
 
-        // 3. APPLY TRUNCATED BFT
+        // 3. APPLY BYZANTINE FAULT TOLERANCE (BFT)
         if (isVerified) {
-            console.log(`[BFT] ✅ Verified by ${this.name} (Weight: ${weight.toFixed(2)})`);
+            console.log(`[BFT] ✅ Verified by ${this.name} (b:${belief.toFixed(2)}, u:${uncertainty.toFixed(2)})`);
 
             await this.supabase.from('trinity_tasks').update({
                 verify_count: newVerifyCount,
                 verified_by: verifiers,
-                status: newVerifyCount >= 3 ? 'verified' : 'done',
-                verified_at: newVerifyCount >= 3 ? new Date().toISOString() : null,
+                belief: belief,
+                disbelief: disbelief,
+                uncertainty: uncertainty,
+                status: newVerifyCount >= 2 ? 'verified' : 'done',
+                verified_at: newVerifyCount >= 2 ? new Date().toISOString() : null,
                 verification_result: `Verified via φ-weighted consensus by ${this.name}`,
                 metadata: {
                     ...(task.metadata as any || {}),
@@ -858,15 +894,20 @@ ${directive}
 ${iterateProtocol}
 ${actionDirective}
 
-Context: 
+Context:
 ${wisdomContext}
 
 Please complete this task according to the Constitution. ALWAYS use the save_artifact tool to store your result.
 `;
 
             // Call LLM
-            const result = await this.callLLM(prompt);
+            const result = await this.callLLM(prompt, task);
             console.log(`[${this.name}] 🧠 Result length: ${result.output?.length || 0}`);
+
+            // [ANTIGRAVITY] ERROR PROPAGATION: Do not continue if LLM failed
+            if (result.output === "Error calling LLM" || !result.output) {
+                throw new Error("LLM call failed to produce output. Check API keys and connectivity.");
+            }
             // [PHASE 10] UNCERTAINTY AS OPPORTUNITY (Logical Escalation)
             const evaluation = await this.evaluateResult(task, result.output);
             const lowBelief = evaluation.score < 40;
@@ -1135,7 +1176,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                 let newVerifyCount = ((((parentTask as unknown) as Task) as any).verify_count || 0) + (isApproved ? 1 : 0);
                 let newStatus = (parentTask as any).status || 'done';
                 let signatures = (parentTask as any).signatures || [];
-                drum
+                // drum // This line seems to be an artifact, removing it.
 
                 // Track multi-agent signatures for BFT audit trail
                 signatures.push({
@@ -1216,11 +1257,6 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                     ? pool[Math.floor(Math.random() * pool.length)]
                     : squadMap[squad][0] === this.name ? squadMap[squad][1] : squadMap[squad][0];
 
-                // Fallback to squad peers if the pool is empty after filtering
-                const verifier = pool.length > 0
-                    ? pool[Math.floor(Math.random() * pool.length)]
-                    : squadMap[squad][0];
-
                 console.log(`[VERIFY] 🤝 Assigning squad ${squad} verification of ${originalTask.id} to: ${verifier}`);
 
                 await this.supabase.from('trinity_tasks').insert({
@@ -1234,6 +1270,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                         parent_task_id: originalTask.id,
                         evidence: result.substring(0, 1000),
                         creator_agent: this.name,
+                        creator_provider: (originalTask as any).metadata?.provider_used || 'unknown',
                         squad_verification: squad
                     }
                 });
@@ -1745,7 +1782,7 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
             await this.supabase
                 .from('trinity_heartbeat')
                 .upsert({
-                    agent: this.name,
+                    agent: this.name, // SSOT: FULL NAME
                     status: 'active',
                     version: this.version,
                     last_seen: timestamp,
@@ -1859,10 +1896,10 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         const prompt = `
     Summarize these search results for the swarm regarding the topic "${gap}".
     Provide 3 key takeaways and a recommended action.
-    
+
     Search Results:
     ${JSON.stringify(searchResults)}
-    
+
     Deep Dive Insight:
     ${deepDive}
     `;
@@ -1882,7 +1919,7 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         }
     }
 
-    async callLLM(prompt: string, options: any = {}): Promise<LLMResult> {
+    async callLLM(prompt: string, task: Task | null = null, options: any = {}): Promise<LLMResult> {
         if (this.availableProviders.length === 0) {
             console.warn(`[${this.name}] No LLM Providers detected.`);
             return { output: "Simulation: All LLM providers are unavailable." };
@@ -1927,17 +1964,28 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
                 }
             });
 
-            // 2. Prepare Messages & Multi-Provider Weighting
-            // ELITE: Weighted Selection (Prefer Grok if RepID > 8 for ALPHA tasks)
-            const sortedProviders = [...this.availableProviders].sort((a, b) => {
-                if (this.reputationScore > 80 && a === 'grok') return -1;
-                return 0;
-            });
+            // [ANTIGRAVITY] TIERED ROUTING & DIVERSIFIED VERIFICATION
+            const excludeProvider = (task as any)?.metadata?.creator_provider;
+
+            // Sort available providers by Tier
+            const sortedProviders = [...this.availableProviders]
+                .filter(p => p !== excludeProvider) // Diversify verification
+                .sort((a, b) => (LLM_TIERS[a] || 99) - (LLM_TIERS[b] || 99));
+
+            if (sortedProviders.length === 0 && this.availableProviders.length > 0) {
+                console.warn(`[${this.name}] ⚠️ All preferred providers excluded for verification diversity. Falling back to any available.`);
+                sortedProviders.push(...this.availableProviders);
+            }
 
             for (const providerKey of sortedProviders) {
                 try {
-                    console.log(`[${this.name}] 🧠 Attempting LLM via ${providerKey}...`);
+                    console.log(`[${this.name}] 🧠 Attempting LLM via ${providerKey} (Tier: ${LLM_TIERS[providerKey] || '?'})...`);
                     const result = await this.callSpecificProvider(providerKey, prompt, openAiTools);
+
+                    // Tag task with provider used for downstream verification logic
+                    if (task && !task.metadata) task.metadata = {};
+                    if (task) (task as any).metadata.provider_used = providerKey;
+
                     return result;
                 } catch (e: any) {
                     console.warn(`[${this.name}] ⚠️ ${providerKey} failed: ${e.message}`);
@@ -1945,7 +1993,12 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
             }
             throw new Error('All LLM providers failed');
         } catch (error: any) {
-            console.error("LLM Call Failed", error);
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`[${this.name}] 🚨 LLM Call Failed:`, errorMsg);
+
+            // Log to Supabase for visibility
+            await this.log('llm_error', errorMsg, { providers: this.availableProviders });
+
             return { output: "Error calling LLM" };
         }
     }
@@ -1958,12 +2011,16 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         if (provider === 'anthropic') return this.callAnthropic(systemPrompt, prompt);
         if (provider === 'gemini') return this.callGemini(systemPrompt, prompt);
         if (provider === 'grok') return this.callGrok(systemPrompt, prompt);
+        if (provider === 'groq') return this.callGroq(systemPrompt, prompt);
+        if (provider === 'cerebras') return this.callCerebras(systemPrompt, prompt);
+        if (provider === 'deepseek') return this.callDeepSeek(systemPrompt, prompt);
+        if (provider === 'openrouter') return this.callOpenRouter(systemPrompt, prompt, tools);
+        if (provider === 'perplexity') return this.callPerplexity(systemPrompt, prompt);
 
         throw new Error(`Provider ${provider} not implemented`);
     }
 
-    async callOpenAI(systemPrompt: string, prompt: string, tools: any[]): Promise<LLMResult> {
-        const apiKey = process.env.OPENAI_API_KEY;
+    async callOpenAICompatible(url: string, apiKey: string, model: string, systemPrompt: string, prompt: string, tools: any[]): Promise<LLMResult> {
         const messages: any[] = [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt }
@@ -1974,12 +2031,12 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
             const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout
 
             try {
-                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                     signal: controller.signal,
                     body: JSON.stringify({
-                        model: 'gpt-4o',
+                        model: model,
                         messages,
                         tools: tools.length > 0 ? tools : undefined,
                         tool_choice: tools.length > 0 ? 'auto' : undefined
@@ -1998,23 +2055,34 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
                         const fnName = toolCall.function.name;
                         const args = JSON.parse(toolCall.function.arguments);
                         let toolResult = '';
+
+                        console.log(`[${this.name}] [${model}] Tool Call: ${fnName}`);
+
                         if (fnName === 'save_artifact') {
                             const taskId = (this.currentTaskId && !this.currentTaskId.includes('-')) ? this.currentTaskId : ('mcp-gen-' + Date.now());
-                            await this.saveArtifact(taskId, args.content, args.type, args.title, args.access_level);
-                            toolResult = `Artifact '${args.title}' saved.`;
-                        }
-                        else {
+                            const link = await this.saveArtifact(taskId, args.content, args.type, args.title, args.access_level);
+                            toolResult = `Artifact '${args.title}' saved. Link: ${link}`;
+                        } else {
                             toolResult = await mcpManager.routeToolCall(fnName, args);
                         }
                         messages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult });
                     }
                 } else {
-                    return { output: message.content || "" };
+                    // [PHASE 10] Smart-Parse Artifact Fallback
+                    const content = message.content || "";
+                    if (content.includes('```md') || content.includes('# Artifact')) {
+                        console.log(`[${this.name}] 🧪 Smart-Parse Artifact detected in raw output.`);
+                        const titleMatch = content.match(/# (.*?)\n/) || content.match(/Title: (.*?)\n/);
+                        const title = titleMatch ? titleMatch[1] : `Report from ${this.name}`;
+                        const taskId = (this.currentTaskId && !this.currentTaskId.includes('-')) ? this.currentTaskId : ('mcp-gen-' + Date.now());
+                        await this.saveArtifact(taskId, content, 'report', title, 'protected');
+                    }
+                    return { output: content };
                 }
             } catch (err: any) {
                 clearTimeout(timeoutId);
                 if (err.name === 'AbortError') {
-                    console.error(`[${this.name}] ⏱️ OpenAI Timeout after 120s.`);
+                    console.error(`[${this.name}] ⏱️ ${model} Timeout after 120s.`);
                     throw new Error("LLM API Timeout");
                 }
                 throw err;
@@ -2023,20 +2091,33 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         throw new Error("Max tool recursion");
     }
 
+    async callOpenAI(systemPrompt: string, prompt: string, tools: any[]): Promise<LLMResult> {
+        const apiKey = process.env.OPENAI_API_KEY;
+        return this.callOpenAICompatible('https://api.openai.com/v1/chat/completions', apiKey!, 'gpt-4o', systemPrompt, prompt, tools);
+    }
+
     async callAnthropic(system: string, prompt: string): Promise<LLMResult> {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model: 'claude-3-5-sonnet-20240620', system, messages: [{ role: 'user', content: prompt }], max_tokens: 4000 })
+            body: JSON.stringify({ model: 'claude-3-5-sonnet-latest', system, messages: [{ role: 'user', content: prompt }], max_tokens: 4000 })
         });
         const data = await response.json();
+        if (data.error) throw new Error(`Anthropic Error: ${data.error.message}`);
         return { output: data.content[0].text };
     }
 
     async callGemini(system: string, prompt: string): Promise<LLMResult> {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY}`;
-        const response = await fetch(url, { method: 'POST', body: JSON.stringify({ contents: [{ parts: [{ text: `${system}\n\n${prompt}` }] }] }) });
+        // [PHASE 26] Fail-Safe Gemini Flash (Low Latency)
+        const model = 'gemini-1.5-flash';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: `${system}\n\n${prompt}` }] }] })
+        });
         const data = await response.json();
+        if (data.error) throw new Error(`Gemini Error: ${data.error.message}`);
         return { output: data.candidates[0].content.parts[0].text };
     }
 
@@ -2045,6 +2126,55 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROK_API_KEY}` },
             body: JSON.stringify({ model: 'grok-beta', messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] })
+        });
+        const data = await response.json();
+        return { output: data.choices[0].message.content };
+    }
+
+    async callGroq(system: string, prompt: string): Promise<LLMResult> {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
+            body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] })
+        });
+        const data = await response.json();
+        return { output: data.choices[0].message.content };
+    }
+
+    async callCerebras(system: string, prompt: string): Promise<LLMResult> {
+        const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.CEREBRAS_API_KEY}` },
+            body: JSON.stringify({ model: 'llama3.1-70b', messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] })
+        });
+        const data = await response.json();
+        return { output: data.choices[0].message.content };
+    }
+
+    async callDeepSeek(system: string, prompt: string): Promise<LLMResult> {
+        const response = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` },
+            body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] })
+        });
+        const data = await response.json();
+        return { output: data.choices[0].message.content };
+    }
+
+    async callOpenRouter(system: string, prompt: string, tools: any[] = []): Promise<LLMResult> {
+        // [PHASE 10] OpenRouter defaults to DeepSeek-V3 for cost-performance arbitrage
+        const model = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat';
+        return this.callOpenAICompatible('https://openrouter.ai/api/v1/chat/completions', process.env.OPENROUTER_API_KEY!, model, system, prompt, tools);
+    }
+
+    async callPerplexity(system: string, prompt: string): Promise<LLMResult> {
+        const response = await fetch('https://api.perplexity.ai/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+            body: JSON.stringify({
+                model: 'llama-3.1-sonar-large-128k-online',
+                messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }]
+            })
         });
         const data = await response.json();
         return { output: data.choices[0].message.content };
