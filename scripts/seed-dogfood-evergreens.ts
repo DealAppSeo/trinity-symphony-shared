@@ -73,6 +73,23 @@ const evergreenMissions = [
         status: 'pending',
         assigned_to: 'trinity-orch', // Assigned to the chief orchestrator
         metadata: { required_artifacts: ['Swarm_vitality_report.md'] }
+    },
+    {
+        title: "[MISSION] Clawdbot Integration Blueprint",
+        description: "Draft a technical implementation spec for bridging Trinity with Clawdbot JSON-RPC for Discord/Telegram notifications.",
+        task_type: 'research',
+        priority: 95,
+        status: 'pending',
+        metadata: { squad: 'GAMMA', required_artifacts: ['clawdbot_spec.md'] }
+    },
+    {
+        title: "[MISSION] Autonomous Skill Acquisition",
+        description: "GCM: Identify a trend in AI safety or coordination, then spawn a research task for Sophia to deep dive.",
+        task_type: 'meta',
+        priority: 90,
+        status: 'pending',
+        assigned_to: 'trinity-gcm',
+        metadata: { required_artifacts: ['skill_acquisition_plan.md'] }
     }
 ];
 

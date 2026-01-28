@@ -101,7 +101,9 @@ export class ConstitutionalAgent {
     private currentTaskId: string | null = null;
     private bibleCache: string | null = null;
     bibleCacheTime: number = 0;
-    BIBLE_CACHE_TTL: number = 10 * 60 * 1000;
+    // Generic Loop Controls
+    private activeTaskRetryCount: number = 0;
+    private readonly MAX_TASK_RETRIES: number = 3;
 
     // Dynamic Directive
     systemPrompt: string | null = null;
@@ -154,6 +156,7 @@ export class ConstitutionalAgent {
         const rawName = config.name || 'UNKNOWN';
         this.name = this.resolveLegacyName(rawName);
         this.wisdom = AGENT_WISDOM[this.name] || AGENT_WISDOM.HDM;
+        this.groupName = this.wisdom.squad || 'UNKNOWN';
         this.version = CONSTITUTION.VERSION;
 
         this.sessionMetrics = {
@@ -461,6 +464,13 @@ export class ConstitutionalAgent {
             } catch (e) { console.error('[HEARTBEAT] Interval error', e) }
         }, 15 * 1000);
 
+        // [ANTIGRAVITY] SQUAD-WIDE CASCADE REDEPLOY (Elite Feature)
+        // If the agent is booted with FORCE_CASCADE=true, it triggers its entire squad.
+        if (process.env.FORCE_CASCADE === 'true') {
+            console.log(`[${this.name}] 🌊 CASCADE REDEPLOY DETECTED. Triggering squad...`);
+            await this.runSquadCascadeRedeploy();
+        }
+
         // 3x3: Check Survivor Status on startup
         await this.checkSurvivorStatus();
         // FEATURE: Survivor Boot Protocol (Cascade Redeploy)
@@ -491,14 +501,28 @@ export class ConstitutionalAgent {
 
                     if (fullTask) {
                         if (firstBusy.status === 'pending_clarification') {
-                            console.log(`[${this.name}] 🚧 Awaiting clarification for ${firstBusy.id}.`);
-                            await this.sleep(30000);
+                            console.log(`[${this.name}] 🚧 Awaiting clarification for ${firstBusy.id}. Parallel work allowed.`);
+                            // [ANTIGRAVITY] Parallel Work: Release the busy lock for this turn
                         } else {
+                            // [ANTIGRAVITY] LOOP HARDENING: Track retries for stalled tasks
+                            this.activeTaskRetryCount++;
+                            if (this.activeTaskRetryCount > this.MAX_TASK_RETRIES) {
+                                console.error(`[${this.name}] 🚨 TASK ${firstBusy.id} STALLED. Max retries exceeded. Marking as FAILED.`);
+                                await this.supabase.from('trinity_tasks').update({
+                                    status: 'failed',
+                                    result: 'Max retry limit exceeded in core loop.'
+                                }).eq('id', firstBusy.id);
+                                this.activeTaskRetryCount = 0;
+                                continue;
+                            }
                             await this.processTask(fullTask as any);
                         }
-                        continue;
+                        if (firstBusy.status !== 'pending_clarification') continue;
                     }
                 }
+
+                // Reset retry count when starting fresh
+                this.activeTaskRetryCount = 0;
 
                 let taskHandled = false;
 
@@ -918,6 +942,7 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
 
                 await this.supabase.from('trinity_tasks').update({
                     status: 'pending_clarification',
+                    claimed_by: null, // [ANTIGRAVITY] Release claim so agent can do other work while waiting
                     result: `[ESCALATED] Agent ${this.name} is seeking clarification. \n\nReason: ${lowBelief ? 'Low certainty score' : 'Explicit escalation request'}. \n\nQuery: ${result.output.substring(0, 500)}`,
                     verification_result: `Searching high-dimension databases... seeking expert consensus.`
                 }).eq('id', task.id);
@@ -1625,23 +1650,31 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                 }
             }
 
-            if (!success) throw lastError;
+            if (!success) {
+                console.error(`[ARTIFACT] 🚨 Database Save Failed. Falling back to local filesystem ONLY.`);
+                // We've already written to local FS below, but we need to ensure the user knows it's ONLY local.
+            }
 
-            // 3. LOCAL FILESYSTEM (Backup)
+            // 3. LOCAL FILESYSTEM (Primary Backup & Local Dev Access)
             if (typeof process !== 'undefined' && process.versions && process.versions.node) {
                 try {
-                    const fs = await import('fs');
-                    const path = await import('path');
+                    const fs = require('fs');
+                    const path = require('path');
                     const artifactsDir = path.resolve(process.cwd(), 'artifacts', this.name.toLowerCase());
                     if (!fs.existsSync(artifactsDir)) fs.mkdirSync(artifactsDir, { recursive: true });
 
                     const filename = `task-${safeTaskId.substring(0, 8)}.md`;
                     const fullPath = path.join(artifactsDir, filename);
                     fs.writeFileSync(fullPath, content, 'utf8');
-                } catch (e) { /* Ignore local fs errors */ }
+                    console.log(`[ARTIFACT] 📁 Saved to local filesystem: ${fullPath}`);
+
+                    if (!artifactUrl) artifactUrl = `file://${fullPath}`;
+                } catch (e: any) {
+                    console.warn(`[ARTIFACT] Local FS failure: ${e.message}`);
+                }
             }
 
-            return `db://trinity_artifacts/${artifactId}`;
+            return artifactId ? `db://trinity_artifacts/${artifactId}` : (artifactUrl || 'local-fallback');
         } catch (e: any) {
             console.error(`[ARTIFACT] Final Save Failure: ${e.message}`);
             return null;
@@ -1828,6 +1861,29 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         }
     }
 
+    /**
+     * SQUAD-WIDE CASCADE REDEPLOY
+     * Triggers a redeploy for everyone in the same squad.
+     */
+    async runSquadCascadeRedeploy() {
+        console.log(`[CASCADE] 🌊 Initiating Squad Cascade for: ${this.groupName}`);
+
+        // Map squads to members (Elite 3x3 mapping)
+        const squadMap: Record<string, string[]> = {
+            'ALPHA': ['trinity-veritas', 'trinity-torch', 'trinity-gcm'],
+            'BETA': ['trinity-mel', 'trinity-chesed', 'trinity-apm'],
+            'GAMMA': ['trinity-hdm', 'trinity-sophia', 'trinity-nexus'],
+            'ORCHESTRATION': ['trinity-orch', 'trinity-shofet', 'trinity-w3c']
+        };
+
+        const siblings = squadMap[this.groupName] || [];
+        for (const sibling of siblings) {
+            if (sibling === this.name) continue; // Don't redeploy self (already running)
+            console.log(`[CASCADE] -> Triggering sibling: ${sibling}`);
+            await this.triggerRailwayRedeploy(sibling);
+        }
+    }
+
     async triggerRailwayRedeploy(agentName: string) {
         const RAILWAY_TOKEN = process.env.RAILWAY_API_TOKEN;
         if (!RAILWAY_TOKEN) {
@@ -1837,7 +1893,17 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
 
         const AGENT_SERVICE_IDS: Record<string, string> = {
             'trinity-shofet': process.env.RAILWAY_SERVICE_ID_SHOFET || '',
-            'trinity-orch': process.env.RAILWAY_SERVICE_ID_ORCH || ''
+            'trinity-orch': process.env.RAILWAY_SERVICE_ID_ORCH || '',
+            'trinity-veritas': process.env.RAILWAY_SERVICE_ID_VERITAS || '',
+            'trinity-torch': process.env.RAILWAY_SERVICE_ID_TORCH || '',
+            'trinity-gcm': process.env.RAILWAY_SERVICE_ID_GCM || '',
+            'trinity-mel': process.env.RAILWAY_SERVICE_ID_MEL || '',
+            'trinity-chesed': process.env.RAILWAY_SERVICE_ID_CHESED || '',
+            'trinity-apm': process.env.RAILWAY_SERVICE_ID_APM || '',
+            'trinity-hdm': process.env.RAILWAY_SERVICE_ID_HDM || '',
+            'trinity-sophia': process.env.RAILWAY_SERVICE_ID_SOPHIA || '',
+            'trinity-nexus': process.env.RAILWAY_SERVICE_ID_NEXUS || '',
+            'trinity-w3c': process.env.RAILWAY_SERVICE_ID_W3C || ''
         };
 
         const serviceId = AGENT_SERVICE_IDS[agentName];

@@ -49,7 +49,7 @@ const finalAgentName = normalizedName;
 
 async function startAgent() {
     // DYNAMIC IMPORT TO ENSURE ENV VARS ARE LOADED FIRST
-    const { ConstitutionalAgent } = await import('../lib/agent/ConstitutionalAgent');
+    const { ConstitutionalAgent } = await import('../lib/ConstitutionalAgent');
 
     console.log(`🤖 Starting Agent: ${finalAgentName}...`);
 
