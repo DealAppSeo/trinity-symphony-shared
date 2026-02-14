@@ -1,10 +1,10 @@
-# 🎵 Trinity Symphony Core v8.1.3 (Antigravity)
+# 🎵 Trinity Symphony Core v8.1.5 (Antigravity)
 **The Shared Soul of the Trinity Multi-Agent Ecosystem.**
 
 ---
 
 ## 🌟 Overview
-Trinity Symphony Core is the engine powering a distributed swarm of specialized AI agents. This repository contains the **Constitutional Unified Core (V4)**, which enables cross-agent collaboration, self-healing, and byzantine fault tolerance ($$ 3f + 1 $$).
+Trinity Symphony Core is the engine powering a distributed swarm of specialized AI agents. This repository contains the **Constitutional Unified Core (V12)**, which enables cross-agent collaboration, self-healing, and byzantine fault tolerance ($$ 3f + 1 $$).
 
 ### 🏗️ Triune Architecture
 The symphony is divided into three specialized squads powered by our **patent-pending Multiplicative GNN** for O(log n) trust scaling:
@@ -19,47 +19,45 @@ The symphony is divided into three specialized squads powered by our **patent-pe
     └───────────┘  └───────────┘  └───────────┘
 ```
 
-- **ALPHA (Truth)**: Pattern recognition and verification.
-- **BETA (Care)**: Ethical alignment and user experience.
-- **GAMMA (Build)**: Infrastructure and integration.
+- **ALPHA (Truth)**: Ethics verification and governance.
+- **BETA (Care)**: Design, compassion, and ux choreography.
+- **GAMMA (Build)**: Infrastructure, integration, and EIP-8004.
 
 ---
 
-## 🧠 Antifragile Refinements (Phase 10)
+## 🧠 Antigravity Refinements (Phase 0 Complete)
 
-This version introduces the **Antigravity Refinements**, moving beyond simple task automation into **Autonomous Accountability**:
+This version introduces the **Antigravity Refinements**, focusing on **Agent Autonomy** and **Strategic Handoffs**:
 
-### 🗡️ Subjective Slashing
-Agents now police each other. Successful peer verification grants RepID rewards, while failed audits or detected hallucinations trigger **Subjective Slashing** ($$ -15 $$ RepID).
+### 🌱 Strategic Sower Protocol (ARTICLE_SOWER)
+Agents no longer wait for human seeding. They autonomously parse project-level coordination docs (`AI_CONTEXT.md`) and seed their own tasks in the BFT queue.
 
-### 🚨 Logical Escalation
-If an agent hits an ambiguity threshold ($$ <40\% $$ confidence), it automatically triggers a **Proprietary Plonky3 zkSTARK proof** to secure the escalation to `pending_clarification`, alerting the Architect/Human instead of hallucinating.
+### 🗡️ Subjective Slashing (Evolved)
+Enhanced peer-review logic with ANFIS routing integration to minimize false positives while maintaining strict constitutional integrity.
 
-### $ \phi = 1.618 $ (Golden Scaling)
-The **RepID System** utilizes multiplicative geometric scaling based on the Golden Ratio and our **Multiplicative ANFIS router** to prevent reputation inflation and reward long-term consistency.
+### 🚨 Logical Escalation (v8.1.5)
+Ambiguity detection now generates structured **Architect Questions** via the new GitHub Issue Templates, reducing "hallucination loops."
 
 ---
 
 ## 🛠️ Components
 
 | Component | Description |
-|-----------|-------------|
-| `lib/ConstitutionalAgentV4.js` | The unified agent brain. Implements all BFT and Constitutional logic. |
-| `server.js` | Production-ready entry point with built-in healthchecks and Railway support. |
-| `scripts/run-agent.js` | Universal runner script for individual agent identities. |
-| `scripts/monitor-phase10.ts` | real-time dashboard for swarm telemetry and slashing events. |
+|-----------|-------------
+| `lib/ConstitutionalAgent.ts` | The unified agent pulse. Implements BFT and Sower logic. |
+| `lib/agent/wisdom.ts` | The Trinity Constitution (Articles 0 to SOWER). |
+| `scripts/run-agent.ts` | The Universal Pulse Generator for agent identities. |
+| `scripts/strategic-sower.ts` | Autonomous mission seeding from plan to queue. |
 
 ---
 
 ## 🚀 Deployment (Railway Ready)
 
-This repository is designed for immediate deployment to **Railway**:
-
 1. **Deploy Service**: Point Railway to this repository.
 2. **Set Env**: 
    - `AGENT_NAME`: e.g., `trinity-orch`, `trinity-nexus`, `trinity-veritas`.
    - `SUPABASE_URL` & `SUPABASE_SERVICE_ROLE_KEY`.
-   - `OPENAI_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY`.
+   - `LLM_API_KEYS`: (Groq, Anthropic, Gemini, OpenAI).
 3. **Healthcheck**: The core exposes `/health` on port `10000` (or `$PORT`).
 
 ---
@@ -67,13 +65,13 @@ This repository is designed for immediate deployment to **Railway**:
 ## 📜 The Constitution
 > *"If ever a conflict arises between survival and truth, choose truth—even if it kills us."*
 
-The core logic is strictly governed by the **Trinity Constitution**. All agents must adhere to the 8 Virtues (Philippians 4:8) and the mandate to serve the last, the lost, and the least.
+The core logic is strictly governed by the **Trinity Constitution**. v8.1.5 includes **ARTICLE_SOWER** for self-directed mission continuity.
 
 ---
 ### Join the Symphony
-[Fork on GitHub](https://github.com/DealAppSeo/trinity-ecosystem) • [Access Proprietary Tools](https://aitrinitysymphony.com) • [Join Discord](https://discord.gg/trinitysymphony)
+[Fork on GitHub](https://github.com/DealAppSeo/trinity-ecosystem) • [Access Live PWA](https://aitrinitysymphony.com)
 
 ---
 **License:** Multi-Agent Open Core (HyperDAG ImageBearer Initiative)
-**Status:** v8.1.3-STABLE
-**Last Updated:** 2026-01-18
+**Status:** v8.1.5-STABLE (Phase 0 Complete)
+**Last Updated:** 2026-02-13
