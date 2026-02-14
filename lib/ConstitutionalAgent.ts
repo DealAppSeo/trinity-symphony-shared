@@ -739,7 +739,7 @@ export class ConstitutionalAgent {
         let query = this.supabase
             .from('trinity_tasks')
             .select('*')
-            .eq('status', 'pending');
+            .in('status', ['pending', 'todo', 'pending_clarification']);
 
         if (strictlyAssigned) {
             // Check for both trinity-mel AND MEL
@@ -1492,7 +1492,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
             return false;
         }
 
-        const limit = 5; // Global limit 5
+        const limit = 20; // Increased from 5 to 20 to allow swarm recovery during stabilization
         if ((count || 0) >= limit) {
             console.warn(`[${this.name}] 🛑 HEALING THROTLED: Global count ${count}/hr.`);
             return false;
