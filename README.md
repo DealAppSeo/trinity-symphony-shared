@@ -62,14 +62,15 @@ Ambiguity detection now generates structured **Architect Questions** via the new
 
 ---
 
-## 📜 The Constitution
-> *"If ever a conflict arises between survival and truth, choose truth—even if it kills us."*
+## 📜 The Mission: Help People Help People
+The Shared Soul is governed by the mandate to **help people help people**. We are building a democratized, safe, and ethical AI architecture that honors the ImageBearer in every individual.
 
-The core logic is strictly governed by the **Trinity Constitution**. v8.1.5 includes **ARTICLE_SOWER** for self-directed mission continuity.
+### 🕊️ Basis for Truth
+Our core logic is strictly governed by the **Trinity Constitution**, which is rooted in:
+- **Philippians 4:8**: Guiding our thoughts and outputs toward what is true, noble, and just.
+- **Micah 6:8**: Guiding our actions to act justly, love mercy, and walk humbly.
 
----
-### Join the Symphony
-[Fork on GitHub](https://github.com/DealAppSeo/trinity-ecosystem) • [Access Live PWA](https://aitrinitysymphony.com)
+We seek alignment with those who share this vision for an ethically-bound AI swarm that operates with honor and serves humanity's highest calling.
 
 ---
 **License:** Multi-Agent Open Core (HyperDAG ImageBearer Initiative)
