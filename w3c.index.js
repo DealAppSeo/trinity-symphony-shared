@@ -24,13 +24,13 @@ const AGENT_CONFIG = {
 };
 
 // Auto-detect agent from folder name or env var
-const AGENT_NAME = process.env.AGENT_NAME || 
+const AGENT_NAME = process.env.AGENT_NAME ||
   (process.cwd().includes('/apm') ? 'APM' :
-   process.cwd().includes('/hdm') ? 'HDM' :
-   process.cwd().includes('/mel') ? 'MEL' :
-   process.cwd().includes('/gcm') ? 'GCM' :
-   process.cwd().includes('/torch') ? 'TORCH' :
-   process.cwd().includes('/veritas') ? 'VERITAS' : 'HDM');
+    process.cwd().includes('/hdm') ? 'HDM' :
+      process.cwd().includes('/mel') ? 'MEL' :
+        process.cwd().includes('/gcm') ? 'GCM' :
+          process.cwd().includes('/torch') ? 'TORCH' :
+            process.cwd().includes('/veritas') ? 'VERITAS' : 'HDM');
 
 const CONFIG = AGENT_CONFIG[AGENT_NAME] || AGENT_CONFIG.HDM;
 
@@ -43,7 +43,7 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 const PORT = process.env.PORT || 10000;
 
 const CONDUCTOR_TENURE_MS = 20 * 60 * 1000;
-const POLL_INTERVAL_MS = 30 * 1000;
+const POLL_INTERVAL_MS = 60 * 1000;
 const CERTAINTY_THRESHOLD = 0.80;
 const FREE_CHALLENGES_PER_DAY = 3;
 
@@ -143,18 +143,18 @@ async function checkRotation() {
   try {
     const { data: rotation } = await supabase.from('rotation_state').select('*').single();
     if (!rotation) return;
-    
+
     const elapsed = Date.now() - new Date(rotation.rotation_time).getTime();
-    
+
     if (elapsed > CONDUCTOR_TENURE_MS) {
       const currentIndex = ROTATION_ORDER.indexOf(rotation.current_conductor);
       const nextConductor = ROTATION_ORDER[(currentIndex + 1) % ROTATION_ORDER.length];
-      
+
       if (nextConductor === CONFIG.name) {
         await assumeConductor(rotation.rotation_number + 1);
       }
     }
-    
+
     isConductor = (rotation.current_conductor === CONFIG.name);
     if (isConductor && !conductorSince) {
       conductorSince = rotation.rotation_time;
@@ -182,7 +182,7 @@ async function assumeConductor(rotationNumber) {
 function routeTaskToAgent(task) {
   const text = ((task.description || '') + ' ' + (task.tags || []).join(' ')).toLowerCase();
   let best = { agent: 'HDM', score: 0 };
-  
+
   for (const [agent, keywords] of Object.entries(ALL_SPECIALTIES)) {
     const score = keywords.filter(k => text.includes(k)).length;
     if (score > best.score) best = { agent, score };
@@ -192,16 +192,16 @@ function routeTaskToAgent(task) {
 
 async function routePendingTasks() {
   if (!supabase || !isConductor) return 0;
-  
+
   try {
     const { data: tasks } = await supabase.from('trinity_tasks').select('*')
       .eq('status', 'pending')
       .or('agent_assigned.is.null,agent_assigned.eq.All')
       .order('priority', { ascending: false })
       .limit(5);
-    
+
     if (!tasks?.length) return 0;
-    
+
     let routed = 0;
     for (const task of tasks) {
       const targetAgent = routeTaskToAgent(task);
@@ -232,9 +232,9 @@ async function claimNextTask() {
       .eq('status', 'assigned')
       .order('priority', { ascending: false })
       .limit(1);
-    
+
     if (!tasks?.length) return null;
-    
+
     await supabase.from('trinity_tasks').update({ status: 'in_progress' }).eq('id', tasks[0].id);
     await log('task_claimed', `Working on task ${tasks[0].id}`);
     return tasks[0];
@@ -249,17 +249,17 @@ async function processTask(task) {
   const desc = (task.description || '').toLowerCase();
   let output = `[${CONFIG.name}] Processed: ${task.title || task.id}\n\n`;
   let certainty = 0.80;
-  
+
   // Check if task matches our specialties
   const matchingSpecialties = CONFIG.specialties.filter(s => desc.includes(s));
   if (matchingSpecialties.length > 0) {
     output += `Specialty match: ${matchingSpecialties.join(', ')}\n`;
     certainty = 0.85 + (matchingSpecialties.length * 0.02);
   }
-  
+
   output += `Analysis:\n${task.description}\n\n`;
   output += `Completed by ${CONFIG.name} in Constitutional mode.`;
-  
+
   return { output, certainty: Math.min(certainty, 0.95) };
 }
 
@@ -272,7 +272,7 @@ async function completeTask(taskId, result, certainty) {
       certainty: certainty,
       completed_at: new Date().toISOString()
     }).eq('id', taskId);
-    
+
     await updateRepID(10, `Completed task ${taskId}`);
     await log('task_completed', `Finished task ${taskId}`, { certainty });
   } catch (err) {
@@ -286,13 +286,13 @@ async function completeTask(taskId, result, certainty) {
 
 async function reviewPeerWork() {
   if (!supabase) return;
-  
+
   const today = new Date().toDateString();
   if (today !== lastChallengeReset) {
     challengesToday = 0;
     lastChallengeReset = today;
   }
-  
+
   try {
     const { data: tasks } = await supabase.from('trinity_tasks').select('*')
       .eq('status', 'completed')
@@ -300,15 +300,15 @@ async function reviewPeerWork() {
       .lt('certainty', CERTAINTY_THRESHOLD)
       .gte('completed_at', new Date(Date.now() - 3600000).toISOString())
       .limit(3);
-    
+
     if (!tasks) return;
-    
+
     for (const task of tasks) {
       const { data: existing } = await supabase.from('repid_challenges')
         .select('id').eq('task_id', task.id).eq('challenger', CONFIG.name);
-      
+
       if (existing?.length > 0) continue;
-      
+
       if (task.certainty < 0.60 || challengesToday < FREE_CHALLENGES_PER_DAY) {
         await supabase.from('repid_challenges').insert({
           task_id: task.id,
@@ -339,7 +339,7 @@ async function learnFromPeers(taskType) {
       .neq('agent', CONFIG.name)
       .order('created_at', { ascending: false })
       .limit(5);
-    
+
     if (data?.length > 0) {
       await log('learned_from_peers', `Studied ${data.length} learnings for ${taskType}`);
     }
@@ -367,25 +367,30 @@ async function mainLoop() {
   console.log(`[${CONFIG.name}] Starting Constitutional Agent...`);
   console.log(`[${CONFIG.name}] Specialties: ${CONFIG.specialties.join(', ')}`);
   await log('startup', `${CONFIG.name} online - Constitutional mode`);
-  
+
+  await heartbeat();
+
   while (true) {
     try {
-      await heartbeat();
+      // [ANTIGRAVITY] ARBITRAGE: Periodic heartbeat removed. 
+      // We now rely on 'State-on-Change' pulses.
       await checkRotation();
-      
+
       if (isConductor) {
         const routed = await routePendingTasks();
         if (routed > 0) console.log(`[${CONFIG.name}] Routed ${routed} tasks as CONDUCTOR`);
       }
-      
+
       const task = await claimNextTask();
       if (task) {
+        await heartbeat(`Claimed: ${task.title}`);
         const result = await processTask(task);
         await completeTask(task.id, result.output, result.certainty);
+        await heartbeat(`Completed: ${task.title}`);
       }
-      
+
       await reviewPeerWork();
-      
+
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
     } catch (err) {
       console.error(`[${CONFIG.name}] Loop error:`, err.message);

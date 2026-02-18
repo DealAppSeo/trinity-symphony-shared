@@ -45,27 +45,27 @@ const REQUIRED_MARKERS = [
 
 async function verifyInfection() {
   console.log('🔬 Verifying brain infection...');
-  
+
   try {
     // Read the base class file
     const basePath = path.join(__dirname, 'constitutional-agent-base.js');
     const content = await fs.readFile(basePath, 'utf8');
-    
+
     // Check for required markers
     const missingMarkers = REQUIRED_MARKERS.filter(marker => !content.includes(marker));
-    
+
     if (missingMarkers.length > 0) {
       console.error('❌ INFECTION FAILED! Missing markers:', missingMarkers);
       console.error('⚠️ This agent is running ROGUE CODE!');
       console.error('🚨 Creating emergency healing task...');
-      
+
       // We can't self-heal without Supabase, so just log and continue with degraded mode
       return { valid: false, missingMarkers };
     }
-    
+
     console.log('✅ Brain infection verified - all markers present');
     return { valid: true };
-    
+
   } catch (err) {
     console.error('❌ Could not verify infection:', err.message);
     return { valid: false, error: err.message };
@@ -81,7 +81,7 @@ function detectAgent() {
   if (process.env.AGENT_NAME) {
     return process.env.AGENT_NAME.toUpperCase();
   }
-  
+
   // Priority 2: Folder name detection
   const cwd = process.cwd().toLowerCase();
   const agentMap = {
@@ -94,13 +94,13 @@ function detectAgent() {
     'w3c': 'W3C',
     'evo': 'EVO'
   };
-  
+
   for (const [folder, name] of Object.entries(agentMap)) {
     if (cwd.includes(`/${folder}`) || cwd.includes(`\\${folder}`) || cwd.endsWith(folder)) {
       return name;
     }
   }
-  
+
   // Default fallback
   console.warn('⚠️ Could not auto-detect agent, defaulting to HDM');
   return 'HDM';
@@ -113,46 +113,46 @@ function detectAgent() {
 async function main() {
   const PORT = process.env.PORT || 10000;
   const AGENT_NAME = detectAgent();
-  
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`  TRINITY SYMPHONY - ${AGENT_NAME}`);
   console.log(`  VERSION: ${EXPECTED_VERSION}`);
   console.log(`${'='.repeat(60)}\n`);
-  
+
   // Step 1: Verify infection
   const infection = await verifyInfection();
-  
+
   if (!infection.valid) {
     console.warn('⚠️ Running in DEGRADED MODE due to infection failure');
     console.warn('⚠️ Self-healing capabilities may be limited');
     // Continue anyway - better to run degraded than not at all
   }
-  
+
   // Step 2: Load the ConstitutionalAgent
   let ConstitutionalAgent;
   try {
     const base = require('./constitutional-agent-base');
     ConstitutionalAgent = base.ConstitutionalAgent;
-    
+
     // Verify version
     if (base.VERSION && !base.VERSION.includes('sabbath-rotation') && !base.VERSION.includes('artifact-creator') && !base.VERSION.includes('trinity-dna') && !base.VERSION.includes('trinity-healer') && !base.VERSION.includes('7.')) {
       console.warn(`⚠️ Base class version mismatch: ${base.VERSION}`);
     }
-    
+
   } catch (err) {
     console.error('❌ CRITICAL: Could not load constitutional-agent-base.js');
     console.error(err.message);
     console.error('💀 This agent cannot function without the shared brain!');
     process.exit(1);
   }
-  
+
   // Step 3: Create the agent
   const agent = new ConstitutionalAgent({ name: AGENT_NAME });
-  
+
   // Step 4: Set up Express for health checks
   const app = express();
   app.use(express.json());
-  
+
   // Root endpoint
   app.get('/', (req, res) => {
     res.json({
@@ -163,7 +163,7 @@ async function main() {
       message: 'Trinity Symphony Agent Online'
     });
   });
-  
+
   // Health check endpoint (for Render/Fly.io)
   app.get('/health', (req, res) => {
     res.json({
@@ -178,7 +178,7 @@ async function main() {
       infectionValid: infection.valid
     });
   });
-  
+
   // Detailed status endpoint
   app.get('/api/status', async (req, res) => {
     const repid = await agent.getRepID();
@@ -199,7 +199,7 @@ async function main() {
       }
     });
   });
-  
+
   // Three Eternal Questions endpoint
   app.get('/api/eternal-questions', (req, res) => {
     res.json({
@@ -216,7 +216,7 @@ async function main() {
       }
     });
   });
-  
+
   // Manual trigger for self-diagnostic
   app.post('/api/self-diagnostic', async (req, res) => {
     try {
@@ -226,39 +226,85 @@ async function main() {
       res.status(500).json({ success: false, error: err.message });
     }
   });
-  
+
   // Mount analyze routes for AISocialMirror
   app.use(analyzeRoutes);
-  
+
   // Start Express server
   app.listen(PORT, () => {
     console.log(`[${AGENT_NAME}] 🌐 Health endpoints on port ${PORT}`);
     console.log(`[${AGENT_NAME}] 📡 Endpoints: /, /health, /api/status, /api/eternal-questions, /analyze, /analyze/health`);
   });
-  
+
   // Step 5: Start the agent's main loop
   // CRITICAL: Do NOT pass a custom processTask function!
   // Let the base class handle everything with real LLM calls.
   // Start mutual wake keep-alive
   startMutualWakeLoop();
-  
+
+  // [ANTIGRAVITY] Start Autonomous Seeding Loop
+  startSeedingLoop(agent);
+
   agent.run().catch(err => {
     console.error(`[${AGENT_NAME}] 💀 Fatal error in main loop:`, err);
     process.exit(1);
   });
-  
+
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     console.log(`[${AGENT_NAME}] 🛑 Shutting down gracefully...`);
     await agent.log('shutdown', 'Graceful shutdown via SIGTERM');
     process.exit(0);
   });
-  
+
   process.on('SIGINT', async () => {
     console.log(`[${AGENT_NAME}] 🛑 Shutting down gracefully...`);
     await agent.log('shutdown', 'Graceful shutdown via SIGINT');
     process.exit(0);
   });
+}
+
+/**
+ * [ANTIGRAVITY] Autonomous Seeding Loop
+ * Monitors agent idleness and seeds tasks to maintain 24/7 efficiency.
+ */
+async function startSeedingLoop(agent) {
+  console.log(`[SEEDER] 🛰️ Initializing Autonomous Seeding Loop...`);
+
+  setInterval(async () => {
+    try {
+      // 1. Load Arbitrage Config for thresholds
+      const configPath = path.resolve(__dirname, './config/trinity-arbitrage-config.json');
+      const configRaw = await fs.readFile(configPath, 'utf8').catch(() => null);
+      const config = configRaw ? JSON.parse(configRaw) : { system: { max_idle_agents: 3 } };
+
+      // 2. Count idle agents
+      const { count: idleCount } = await agent.supabase
+        .from('trinity_agent_registry')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'idle');
+
+      console.log(`[SEEDER] 📊 Check: ${idleCount} agents idle (Threshold: ${config.system.max_idle_agents})`);
+
+      if (idleCount && idleCount >= config.system.max_idle_agents) {
+        console.log(`[SEEDER] 🌪️ Threshold reached. Seeding evergreens to wake the swarm...`);
+
+        // Run the seeding script as a child process
+        // Note: Using npx ts-node to handle TS files directly
+        const { exec } = require('child_process');
+        exec('npx ts-node scripts/seed-dogfood-evergreens.ts', (error, stdout, stderr) => {
+          if (error) {
+            console.warn(`[SEEDER] ⚠️ Seeding script failed: ${error.message}`);
+            return;
+          }
+          console.log(`[SEEDER] ✅ Seeding complete: ${stdout.trim()}`);
+          if (stderr) console.warn(`[SEEDER] Stderr: ${stderr}`);
+        });
+      }
+    } catch (err) {
+      console.error(`[SEEDER] ❌ Error in seeding loop:`, err.message);
+    }
+  }, 300000); // Check every 5 minutes
 }
 
 // Run
