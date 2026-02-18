@@ -4,6 +4,8 @@ import { AgentConfig, WisdomProfile, ProviderConfig, LLMResult, Task, AutonomyTi
 import { AGENT_WISDOM, CONSTITUTION } from './wisdom';
 // Dynamic imports for graphology/fs handled inside methods to avoid build issues
 import { mcpManager } from '../mcp/MCPManager';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const MCP_BASE_URL = 'https://raw.githubusercontent.com/dealappseo/trinity-ecosystem/main/docs/MCPs';
 
@@ -17,6 +19,18 @@ const LLM_TIERS: Record<string, number> = {
     'gemini': 2,    // Tier 2: Balanced (Flash)
     'anthropic': 3, // Tier 3: Elite (Sonnet/Opus)
     'openai': 3     // Tier 3: Elite (GPT-4o)
+};
+
+const PROVIDERS: Record<string, ProviderConfig> = {
+    openai: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/chat/completions', envKey: 'OPENAI_API_KEY', model: 'gpt-4o', tier: 'paid', priority: 3 },
+    anthropic: { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', envKey: 'ANTHROPIC_API_KEY', model: 'claude-3-5-sonnet-20241022', tier: 'paid', priority: 3, isAnthropic: true },
+    gemini: { name: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', envKey: 'GEMINI_API_KEY', model: 'gemini-1.5-flash-latest', tier: 'free', priority: 2, isGemini: true },
+    deepseek: { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/chat/completions', envKey: 'DEEPSEEK_API_KEY', model: 'deepseek-chat', tier: 'free', priority: 1 },
+    grok: { name: 'Grok', baseUrl: 'https://api.x.ai/v1/chat/completions', envKey: 'GROK_API_KEY', model: 'grok-beta', tier: 'free', priority: 2 },
+    cerebras: { name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1/chat/completions', envKey: 'CEREBRAS_API_KEY', model: 'llama3.1-70b', tier: 'free', priority: 1 },
+    sambanova: { name: 'SambaNova', baseUrl: 'https://api.sambanova.ai/v1/chat/completions', envKey: 'SAMBANOVA_API_KEY', model: 'Meta-Llama-3.1-70B-Instruct', tier: 'free', priority: 1 },
+    together: { name: 'Together', baseUrl: 'https://api.together.xyz/v1/chat/completions', envKey: 'TOGETHER_API_KEY', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', tier: 'free', priority: 2 },
+    openrouter: { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1/chat/completions', envKey: 'OPENROUTER_API_KEY', model: 'deepseek/deepseek-chat', tier: 'paid', priority: 3 }
 };
 
 // ============================================
@@ -98,6 +112,7 @@ export class ConstitutionalAgent {
     heartbeatInterval: any = null;
 
     // BRAIN TRANSPLANT: New Organs
+    private arbitrageConfig: any = null;
     private currentTaskId: string | null = null;
     private bibleCache: string | null = null;
     bibleCacheTime: number = 0;
@@ -196,22 +211,24 @@ export class ConstitutionalAgent {
         this.researchTool = new WebResearchTool();
 
         this.availableProviders = this.detectProviders();
+        this.loadArbitrageConfig();
         console.log(`[${this.name}] 🚀 Initialized v${this.version}`);
     }
 
-    detectProviders() {
-        const providers = [
-            { key: 'openai', env: 'OPENAI_API_KEY' },
-            { key: 'anthropic', env: 'ANTHROPIC_API_KEY' },
-            { key: 'gemini', env: 'GEMINI_API_KEY' },
-            { key: 'groq', env: 'GROQ_API_KEY' },
-            { key: 'grok', env: 'GROK_API_KEY' },
-            { key: 'cerebras', env: 'CEREBRAS_API_KEY' },
-            { key: 'deepseek', env: 'DEEPSEEK_API_KEY' },
-            { key: 'openrouter', env: 'OPENROUTER_API_KEY' },
-            { key: 'perplexity', env: 'PERPLEXITY_API_KEY' }
-        ];
-        return providers.filter(p => process.env[p.env]).map(p => p.key);
+    private loadArbitrageConfig() {
+        try {
+            const configPath = path.resolve(__dirname, '../config/trinity-arbitrage-config.json');
+            if (fs.existsSync(configPath)) {
+                this.arbitrageConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                console.log(`[${this.name}] ⚖️ Arbitrage config loaded.`);
+            }
+        } catch (e) {
+            console.warn(`[${this.name}] ⚠️ Failed to load arbitrage config:`, e);
+        }
+    }
+
+    detectProviders(): string[] {
+        return Object.keys(PROVIDERS).filter(k => process.env[PROVIDERS[k].envKey]).sort((a, b) => PROVIDERS[a].priority - PROVIDERS[b].priority);
     }
 
     // ============================================
@@ -352,11 +369,13 @@ export class ConstitutionalAgent {
     /**
      * Calls the ANFIS Brain to calculate reward/punishment based on performance.
      */
-    async callAnfisReward(success: boolean) {
+    async callAnfisReward(success: boolean, providerKey?: string, latency?: number) {
         try {
             // Determine Truth Score (Mock for now, would be RAG/Rep verification)
             // Success = 0.9, Failure = 0.2
             const truthScore = success ? 0.9 : 0.2;
+
+            console.log(`[ANFIS] 🧠 Rewarding ${providerKey || 'agent'} (Success: ${success})...`);
 
             // Call Python Microservice
             const ANFIS_URL = process.env.ANFIS_URL || 'http://localhost:8000';
@@ -365,7 +384,9 @@ export class ConstitutionalAgent {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     agent_id: this.name,
+                    provider: providerKey,
                     truth_score: truthScore,
+                    latency: latency,
                     task_complexity: 5 // Default for now
                 })
             });
@@ -2044,6 +2065,16 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
             }
 
             for (const providerKey of sortedProviders) {
+                // 🧠 ARBITRAGE CHECK
+                if (await this.isCircuitOpen(providerKey)) {
+                    console.log(`[${this.name}] ⏭️ Skipping ${providerKey} (circuit open)`);
+                    continue;
+                }
+
+                if (!await this.checkProviderLimit(providerKey)) {
+                    continue;
+                }
+
                 try {
                     console.log(`[${this.name}] 🧠 Attempting LLM via ${providerKey} (Tier: ${LLM_TIERS[providerKey] || '?'})...`);
                     const result = await this.callSpecificProvider(providerKey, prompt, openAiTools);
@@ -2055,6 +2086,7 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
                     return result;
                 } catch (e: any) {
                     console.warn(`[${this.name}] ⚠️ ${providerKey} failed: ${e.message}`);
+                    await this.markProviderFailure(providerKey);
                 }
             }
             throw new Error('All LLM providers failed');
@@ -2069,6 +2101,62 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         }
     }
 
+    /**
+     * MANAGER MODE: Delegate task to specific external tool via MCP
+     */
+    async delegateToTool(toolName: string, taskContext: string): Promise<string> {
+        console.log(`[MANAGER] 💼 Delegating to ${toolName}...`);
+        try {
+            const result = await mcpManager.routeToolCall(toolName, { context: taskContext });
+            return result;
+        } catch (e: any) {
+            console.error(`[MANAGER] ❌ Delegation failed:`, e.message);
+            return `Error during tool delegation to ${toolName}: ${e.message}`;
+        }
+    }
+
+    async checkProviderLimit(provider: string): Promise<boolean> {
+        if (!this.redis || !this.arbitrageConfig) return true;
+        try {
+            const config = this.arbitrageConfig.providers[provider];
+            const dailyLimit = config?.daily_token_limit || 100000;
+
+            const key = `ratelimit:${provider}:${new Date().toISOString().split('T')[0]}`;
+            const current = await this.redis.incr(key);
+            if (current === 1) await this.redis.expire(key, 86400);
+
+            if (current > dailyLimit) {
+                console.log(`[${this.name}] ⚠️ ${provider} daily limit reached (${current}/${dailyLimit})`);
+                return false;
+            }
+            return true;
+        } catch (e) {
+            return true; // Fail open
+        }
+    }
+
+    async markProviderFailure(provider: string) {
+        if (!this.redis) return;
+        try {
+            const key = `circuit:${provider}:failures`;
+            const failures = await this.redis.incr(key);
+            await this.redis.expire(key, 300);
+            if (failures >= 3) {
+                await this.redis.set(`circuit:${provider}:open`, 'true', { ex: 60 });
+                console.log(`[${this.name}] 🔴 Circuit OPEN for ${provider} (60s cooldown)`);
+            }
+        } catch (e) { }
+    }
+
+    async isCircuitOpen(provider: string): Promise<boolean> {
+        if (!this.redis) return false;
+        try {
+            return await this.redis.get(`circuit:${provider}:open`) === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+
     async callSpecificProvider(provider: string, prompt: string, tools: any[]): Promise<LLMResult> {
         const bible = await this.fetchBible();
         const systemPrompt = `You are ${this.name}. ${CONSTITUTION.ARTICLE_MINUS_1.text}\n\nCONTEXT:\n${bible}`;
@@ -2080,6 +2168,8 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         if (provider === 'groq') return this.callGroq(systemPrompt, prompt);
         if (provider === 'cerebras') return this.callCerebras(systemPrompt, prompt);
         if (provider === 'deepseek') return this.callDeepSeek(systemPrompt, prompt);
+        if (provider === 'sambanova') return this.callSambanova(systemPrompt, prompt);
+        if (provider === 'together') return this.callTogether(systemPrompt, prompt);
         if (provider === 'openrouter') return this.callOpenRouter(systemPrompt, prompt, tools);
         if (provider === 'perplexity') return this.callPerplexity(systemPrompt, prompt);
 
@@ -2244,6 +2334,14 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         });
         const data = await response.json();
         return { output: data.choices[0].message.content };
+    }
+
+    async callSambanova(system: string, prompt: string): Promise<LLMResult> {
+        return this.callOpenAICompatible('https://api.sambanova.ai/v1/chat/completions', process.env.SAMBANOVA_API_KEY!, 'Llama-3.1-405B-Instruct', system, prompt, []);
+    }
+
+    async callTogether(system: string, prompt: string): Promise<LLMResult> {
+        return this.callOpenAICompatible('https://api.together.xyz/v1/chat/completions', process.env.TOGETHER_API_KEY!, 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free', system, prompt, []);
     }
 
     // ============================================

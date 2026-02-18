@@ -1,0 +1,66 @@
+{
+    "system": {
+        "target_efficiency": 0.85,
+        "max_idle_agents": 3,
+        "check_interval_ms": 60000
+    },
+    "providers": {
+        "grok": {
+            "strategy": "burst",
+            "daily_token_limit": 100000,
+            "rpm_limit": 10,
+            "priority": 1
+        },
+        "cerebras": {
+            "strategy": "latency_optimized",
+            "daily_token_limit": 500000,
+            "rpm_limit": 30,
+            "priority": 1
+        },
+        "gemini": {
+            "strategy": "long_context",
+            "daily_token_limit": 1000000,
+            "rpm_limit": 2,
+            "priority": 2
+        },
+        "deepseek": {
+            "strategy": "reasoning",
+            "daily_token_limit": 200000,
+            "rpm_limit": 5,
+            "priority": 1
+        },
+        "sambanova": {
+            "strategy": "elite_reasoning",
+            "daily_token_limit": 1000000,
+            "rpm_limit": 10,
+            "priority": 1
+        },
+        "together": {
+            "strategy": "turbo_speed",
+            "daily_token_limit": 500000,
+            "rpm_limit": 20,
+            "priority": 2
+        },
+        "openrouter": {
+            "strategy": "aggregator_fallback",
+            "daily_token_limit": 100000,
+            "rpm_limit": 5,
+            "priority": 3
+        },
+        "huggingface": {
+            "strategy": "task_specialized",
+            "daily_token_limit": 500000,
+            "rpm_limit": 20,
+            "priority": 3
+        }
+    },
+    "edge": {
+        "cloudflare": {
+            "daily_request_limit": 100000,
+            "task_types": [
+                "logic_verification",
+                "routing"
+            ]
+        }
+    }
+}

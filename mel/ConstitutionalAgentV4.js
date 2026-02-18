@@ -30,8 +30,11 @@ class ConstitutionalAgentV4 {
         console.log(`[BOOT] Version: ${this.version}`);
         console.log('========================================');
         await this.heartbeat();
+        // [ANTIGRAVITY] ARBITRAGE: Heartbeat interval removed.
+        /*
         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
         this.heartbeatInterval = setInterval(() => this.heartbeat(), 2 * 60 * 1000);
+        */
         if (this.isSurvivor) await this.runSurvivorBootProtocol();
         this.startHttpServer();
         this.runLoop().catch(err => console.error(`[${this.name}] FATAL LOOP CRASH:`, err));
@@ -48,9 +51,14 @@ class ConstitutionalAgentV4 {
         while (true) {
             try {
                 const task = await this.getNextTask();
-                if (task) { console.log(`[${this.name}] 📋 Processing: ${task.title}`); await this.processRouter(task); }
+                if (task) {
+                    console.log(`[${this.name}] 📋 Processing: ${task.title}`);
+                    await this.heartbeat(`Claimed: ${task.title}`);
+                    await this.processRouter(task);
+                    await this.heartbeat(`Completed: ${task.title}`);
+                }
                 if (this.isSurvivor && Math.random() < 0.1) await this.checkGroupHealth();
-                await this.sleep(10000);
+                await this.sleep(30000); // Increased poll interval to 30s
             } catch (err) { console.error(`[${this.name}] Loop Error:`, err.message); await this.sleep(30000); }
         }
     }

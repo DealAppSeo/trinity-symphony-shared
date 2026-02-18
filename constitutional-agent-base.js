@@ -222,6 +222,17 @@ const AGENT_WISDOM = {
 // ============================================
 // LLM PROVIDER CONFIGURATION
 // ============================================
+const PROVIDERS = {
+  openai: { baseUrl: 'https://api.openai.com/v1/chat/completions', envKey: 'OPENAI_API_KEY', model: 'gpt-4o', priority: 3 },
+  anthropic: { baseUrl: 'https://api.anthropic.com/v1/messages', envKey: 'ANTHROPIC_API_KEY', model: 'claude-3-5-sonnet-20241022', priority: 3, isAnthropic: true },
+  gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', envKey: 'GEMINI_API_KEY', model: 'gemini-1.5-flash-latest', priority: 2, isGemini: true },
+  deepseek: { baseUrl: 'https://api.deepseek.com/chat/completions', envKey: 'DEEPSEEK_API_KEY', model: 'deepseek-chat', priority: 1 },
+  grok: { baseUrl: 'https://api.x.ai/v1/chat/completions', envKey: 'GROK_API_KEY', model: 'grok-beta', priority: 2 },
+  cerebras: { baseUrl: 'https://api.cerebras.ai/v1/chat/completions', envKey: 'CEREBRAS_API_KEY', model: 'llama3.1-70b', priority: 1 },
+  sambanova: { baseUrl: 'https://api.sambanova.ai/v1/chat/completions', envKey: 'SAMBANOVA_API_KEY', model: 'Meta-Llama-3.1-70B-Instruct', priority: 1 },
+  together: { baseUrl: 'https://api.together.xyz/v1/chat/completions', envKey: 'TOGETHER_API_KEY', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', priority: 2 },
+  openrouter: { baseUrl: 'https://openrouter.ai/api/v1/chat/completions', envKey: 'OPENROUTER_API_KEY', model: 'deepseek/deepseek-chat', priority: 3, isOpenRouter: true }
+};
 
 class ConstitutionalAgent {
   constructor(config = {}) {
@@ -231,28 +242,7 @@ class ConstitutionalAgent {
       token: process.env.UPSTASH_REDIS_REST_TOKEN,
     });
 
-    this.openai_api_key = process.env.OPENAI_API_KEY;
-    this.anthropic_api_key = process.env.ANTHROPIC_API_KEY;
-    this.gemini_api_key = process.env.GEMINI_API_KEY;
-    this.deepseek_api_key = process.env.DEEPSEEK_API_KEY;
-    this.grok_api_key = process.env.GROK_API_KEY;
-
-    // 3x3 ARCHITECTURE CONFIG
-    this.groupName = process.env.GROUP_NAME || 'ORCHESTRATION';
-    this.isSurvivor = process.env.IS_SURVIVOR === 'true';
-    this.survivorName = process.env.SURVIVOR_NAME || 'TORCH';
-    this.version = '8.3.0-trinity-3x3';
-
-    this.name = config.name || 'UNKNOWN';
-    this.wisdom = AGENT_WISDOM[this.name] || this.loadWisdom();
-    this.tier = this.wisdom.tier;
-
-    this.availableProviders = [];
-    if (this.openai_api_key) this.availableProviders.push('openai');
-    if (this.anthropic_api_key) this.availableProviders.push('anthropic');
-    if (this.gemini_api_key) this.availableProviders.push('gemini');
-    if (this.deepseek_api_key) this.availableProviders.push('deepseek');
-    if (this.grok_api_key) this.availableProviders.push('grok');
+    this.availableProviders = this.detectProviders();
 
     this.githubEnabled = Boolean(process.env.GITHUB_TOKEN);
     this.githubConfig = {
@@ -853,7 +843,33 @@ RATIONALE: [2-3 sentences explaining why]
         available.push(key);
       }
     }
+    this.loadArbitrageConfig();
     return available.sort((a, b) => PROVIDERS[a].priority - PROVIDERS[b].priority);
+  }
+  loadArbitrageConfig() {
+    try {
+      const configPath = require('path').resolve(__dirname, './config/trinity-arbitrage-config.json');
+      if (require('fs').existsSync(configPath)) {
+        this.arbitrageConfig = JSON.parse(require('fs').readFileSync(configPath, 'utf8'));
+        console.log(`[${this.name}] ⚖️ Arbitrage config loaded.`);
+      }
+    } catch (e) {
+      console.warn(`[${this.name}] ⚠️ Failed to load arbitrage config:`, e);
+    }
+  }
+  /**
+   * MANAGER MODE: Delegate task to specific external tool via MCP
+   */
+  async delegateToTool(toolName, taskContext) {
+    console.log(`[MANAGER] 💼 Delegating to ${toolName}...`);
+    try {
+      const { mcpManager } = require('./mcp/MCPManager');
+      const result = await mcpManager.routeToolCall(toolName, { context: taskContext });
+      return result;
+    } catch (e) {
+      console.error(`[MANAGER] ❌ Delegation failed:`, e.message);
+      return `Error during tool delegation to ${toolName}: ${e.message}`;
+    }
   }
   async callLLM(prompt, options = {}) {
     const startTime = Date.now();
@@ -883,8 +899,7 @@ RATIONALE: [2-3 sentences explaining why]
         continue;
       }
 
-      const limits = { groq: 100000, cerebras: 1000000, deepseek: 500000 };
-      if (!await this.checkProviderLimit(providerKey, limits[providerKey] || 100000)) {
+      if (!await this.checkProviderLimit(providerKey)) {
         continue;
       }
 
@@ -1056,9 +1071,12 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
   // ============================================
   // REDIS HELPERS (Rate Limiting, Caching, Circuit Breaker)
   // ============================================
-  async checkProviderLimit(provider, dailyLimit = 100000) {
-    if (!this.redis) return true;
+  async checkProviderLimit(provider) {
+    if (!this.redis || !this.arbitrageConfig) return true;
     try {
+      const config = this.arbitrageConfig.providers[provider];
+      const dailyLimit = config?.daily_token_limit || 100000;
+
       const key = `ratelimit:${provider}:${new Date().toISOString().split('T')[0]}`;
       const current = await this.redis.incr(key);
       if (current === 1) await this.redis.expire(key, 86400);
@@ -1213,11 +1231,13 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
     console.log('[HEARTBEAT] Writing initial heartbeat...');
     await this.heartbeat();
 
-    // PERIODIC HEARTBEAT INTERVAL (2 mins)
-    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    // [ANTIGRAVITY] ARBITRAGE: Heartbeat interval removed.
+    // We now rely on 'State-on-Change' updates and UptimeRobot pings.
+    /*
     this.heartbeatInterval = setInterval(async () => {
       await this.heartbeat();
     }, 2 * 60 * 1000);
+    */
 
     // 3x3: Check Survivor Status on startup
     await this.checkSurvivorStatus();
@@ -1238,12 +1258,15 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
 
         if (task) {
           console.log(`[${this.name}] 📋 Processing: ${task.title}`);
+          await this.heartbeat(`Claimed: ${task.title}`);
           await this.processTask(task);
+          await this.heartbeat(`Completed: ${task.title}`);
         } else {
           console.log(`[${this.name}] 💤 No tasks available, waiting...`);
         }
 
-        await this.heartbeat();
+        // [ANTIGRAVITY] ARBITRAGE: Periodic heartbeat removed from loop.
+        // await this.heartbeat();
         // 3x3: Continuous Monitoring
         await this.checkSurvivorStatus();
         await this.sleep(30000);
@@ -1513,6 +1536,28 @@ If relevant patterns were provided above, USE THEM.
     if (output.includes('[SIMULATED]') || output.includes('[TEMPLATE]')) certainty = 0.1;
 
     return Math.max(0.1, Math.min(0.99, certainty));
+  }
+
+  /**
+   * ANFIS REWARD & ROUTING LOGIC
+   * Adjusts provider weights based on performance (Speed vs. Truth).
+   */
+  async callAnfisReward(taskId, providerKey, performanceMetric) {
+    console.log(`[ANFIS] 🧠 Rewarding ${providerKey} for task ${taskId}...`);
+    try {
+      // ANFIS logic to adjust weights based on performance
+      await this.trackProviderPerformance(providerKey, performanceMetric.success, performanceMetric.latency);
+
+      // Log for audit
+      await this.log('anfis_reward', {
+        taskId,
+        provider: providerKey,
+        success: performanceMetric.success,
+        latency: performanceMetric.latency
+      });
+    } catch (e) {
+      console.warn(`[ANFIS] ⚠️ Reward failed:`, e.message);
+    }
   }
   // ============================================
   // 3x3 SURVIVOR LOGIC
