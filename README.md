@@ -2,34 +2,72 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Core](https://img.shields.io/badge/Logic-Constitutional-orange)](https://aitrinitysymphony.com)
+[![BFT](https://img.shields.io/badge/Protocol-3--Ply_BFT-green)](https://github.com/DealAppSeo/trinity-ecosystem/blob/main/docs/CORE_CONCEPTS.md#byzantine-fault-tolerance-bft)
 
-**The Foundational Brain and Constitutional Logic of the Multi-Agent Ecosystem.**
+**The Foundational Brain and Constitutional Logic of the Sovereign Multi-Agent Ecosystem.**
 
-## 📜 Mission: Help People Help People
-The Shared Soul is the home of the **Trinity Constitution**. We are building a democratized, safe, and ethical AI architecture designed to protect the ImageBearer in every individual and ensure technology serves humanity with honor, truth, and justice.
+The "Shared Soul" contains the immutable guardrails, fuzzy inference models, and consensus protocols that power the AI Trinity Symphony. It is the repository where ethics meets execution.
 
-## 🏗️ Architecture: BFT 3x3+3
+---
+
+## 🏗️ Technical Architecture: BFT 3x3+3
+
+The Shared Soul implements a **Triple-Ply Byzantine Fault Tolerant** model. This ensures that no single LLM family or agent can compromise the integrity of the system.
+
 ```mermaid
-graph TD
-    CORE[Constitutional Core] --> ALPHA[Truth Squad]
-    CORE --> BETA[Care Squad]
-    CORE --> GAMMA[Build Squad]
-    ALPHA --> BFT[BFT Validation]
-    BETA --> BFT
-    GAMMA --> BFT
+graph LR
+    subgraph "Execution Layer (Ply 1)"
+    E1[Executor A]
+    E2[Executor B]
+    E3[Executor C]
+    end
+    
+    subgraph "Verification Layer (Ply 2)"
+    V1[Verifier X]
+    V2[Verifier Y]
+    V3[Verifier Z]
+    end
+    
+    E1 & E2 & E3 --> V1 & V2 & V3
+    V1 & V2 & V3 --> ANFIS[ANFIS Consensus Ply 3]
+    ANFIS --> Truth[Verifiable Truth]
 ```
 
-- **ALPHA (Truth)**: Ethics verification and governance (**Micah 6:8**).
-- **BETA (Care)**: UI choreography and compassion (**Philippians 4:8**).
-- **GAMMA (Build)**: Infrastructure and Web3 bridging.
+### Core Primitives
+- **Constitutional Agent Base**: The foundation for all agents, enforcing strict [Philippians 4:8](CONSTITUTION.md) adherence at the system level.
+- **ANFIS Bid Resolver**: An Adaptive Neuro-Fuzzy Inference System that scores agent bids based on **Cost, Efficiency, and Flexibility**.
+- **Evolutionary Logger**: A recursive feedback system that logs every "learning event" into a decentralized vault for self-optimization.
+- **Pruning Engine**: Implements **Evolutionary Swarm Pruning (ESP)** to dynamically cull inefficient behaviors and evolve the swarm.
 
-## 🧪 Shared Primitives
-- **Trinity Constitution**: The immutable logic guardrails.
-- **ANFIS Logic**: Shared fuzzy inference models for tool routing.
-- **RepID Staking**: Byzantine Fault Tolerant staking mechanisms.
-- **Sower Protocol**: Autonomous mission seeding from AI_CONTEXT.
+---
 
-## 🔒 Security & Patents
-Logic in this core is strictly governed to prevent exploitation. Patents are held defensively for the benefit of all mankind.
+## 🧬 Squad Specializations
 
-[Contributing](CONTRIBUTING.md) • [Security](SECURITY.md) • [Code of Conduct](CODE_OF_CONDUCT.md)
+- **ALPHA (Truth Squad)**: Focuses on ethics verification, deep research, and BFT governance.
+- **BETA (Care Squad)**: Manages UI choreography, user experience, and compassionate interaction.
+- **GAMMA (Build Squad)**: Handles infrastructure orchestration, Web3 bridging, and deployment automation.
+
+---
+
+## 🛠️ Implementation Details
+
+### ANFIS Fuzzy Logic
+Our routing doesn't just use simple thresholds. We use triangular membership functions to handle the "grey areas" of computational triage.
+```typescript
+// Example membership function from our core
+const isLow = (v: number) => Math.max(0, 1 - v * 2);
+const isHigh = (v: number) => Math.max(0, (v - 0.5) * 2);
+```
+
+### Self-Healing Loop
+When the **Evolutionary Logger** detects a persistent failure pattern, it triggers a **Self-Healing Pulse**, which can automatically demote underperforming LLM providers or re-route tasks to high-reputation "Elite" agents.
+
+---
+
+## 🤝 Contribution
+
+This repository is for developers interested in the **Hard Science of AI Governance**. 
+- To add a new Agent Squad, follow the [Blueprint Guide](blueprints/README.md).
+- To improve the BFT weights, submit a PR to the `IntelligenceRouter`.
+
+[Constitution](CONSTITUTION.md) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
