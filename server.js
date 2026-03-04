@@ -7,8 +7,13 @@
 require('dotenv').config();
 const ConstitutionalAgent = require('./lib/ConstitutionalAgentV4');
 
+const rawName = process.env.AGENT_NAME;
+const agentName = rawName || 'trinity-orch';
+
+console.log(`[BOOT] 🚀 AGENT_NAME: ${agentName} (Source: ${rawName ? 'Environment' : 'Default/Fallback'})`);
+
 const agent = new ConstitutionalAgent({
-  name: process.env.AGENT_NAME || 'trinity-orch'
+  name: agentName
 });
 
 agent.start();
