@@ -79,20 +79,21 @@ async function verifyInfection() {
 function detectAgent() {
   // Priority 1: Environment variable
   if (process.env.AGENT_NAME) {
-    return process.env.AGENT_NAME.toUpperCase();
+    const raw = process.env.AGENT_NAME.toLowerCase();
+    return raw.startsWith('trinity-') ? raw : `trinity-${raw}`;
   }
 
   // Priority 2: Folder name detection
   const cwd = process.cwd().toLowerCase();
   const agentMap = {
-    'apm': 'APM',
-    'hdm': 'HDM',
-    'mel': 'MEL',
-    'gcm': 'GCM',
-    'torch': 'TORCH',
-    'veritas': 'VERITAS',
-    'w3c': 'W3C',
-    'evo': 'EVO'
+    'apm': 'trinity-apm',
+    'hdm': 'trinity-hdm',
+    'mel': 'trinity-mel',
+    'gcm': 'trinity-gcm',
+    'torch': 'trinity-torch',
+    'veritas': 'trinity-veritas',
+    'w3c': 'trinity-w3c',
+    'evo': 'trinity-evo'
   };
 
   for (const [folder, name] of Object.entries(agentMap)) {
@@ -102,8 +103,8 @@ function detectAgent() {
   }
 
   // Default fallback
-  console.warn('⚠️ Could not auto-detect agent, defaulting to HDM');
-  return 'HDM';
+  console.warn('⚠️ Could not auto-detect agent, defaulting to trinity-hdm');
+  return 'trinity-hdm';
 }
 
 // ============================================

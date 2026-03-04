@@ -1,1 +1,1 @@
-require('child_process').spawn('node', ['scripts/run-agent.js', 'CHESED'], { stdio: 'inherit', shell: true });
+require('child_process').spawn('node', ['scripts/run-agent.js', 'trinity-chesed'], { stdio: 'inherit', shell: true });

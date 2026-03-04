@@ -7,10 +7,11 @@ const express = require('express');
 class ConstitutionalAgentV4 {
     // ... Exact copy of the class logic ...
     constructor(config) {
-        this.name = config.name || process.env.AGENT_NAME || 'UNKNOWN';
-        this.version = '2026-01-03-v4-UNIFIED-LOCAL';
+        const rawName = config.name || process.env.AGENT_NAME || 'UNKNOWN';
+        this.name = this.resolveLegacyName(rawName);
+        this.version = '2026-03-03-v4-NORMALIZED';
         this.groupName = this.determineGroup(this.name);
-        this.isSurvivor = ['TORCH', 'CHESED', 'SOPHIA'].includes(this.name);
+        this.isSurvivor = ['trinity-torch', 'trinity-chesed', 'trinity-sophia'].includes(this.name);
         this.heartbeatInterval = null;
         this.sessionMetrics = { tasksCompleted: 0, healingAttempts: 0, llmCalls: 0, startTime: Date.now() };
         const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -19,9 +20,33 @@ class ConstitutionalAgentV4 {
         this.supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     }
     determineGroup(name) {
-        const groups = { 'COMMUNICATION': ['GABRIEL', 'RAZIEL', 'CASSIEL'], 'ORCHESTRATION': ['TORCH', 'ZADKIEL', 'HANIEL'], 'CREATION': ['CHESED', 'AURIEL', 'URIEL'], 'EXECUTION': ['SOPHIA', 'MICHAEL', 'RAPHAEL'], 'CONDUCTOR': ['API', 'MCP', 'ORCHESTRATOR', 'APM', 'GCM', 'HDM', 'MEL', 'VERITAS', 'W3C'] };
-        for (const [group, members] of Object.entries(groups)) { if (members.includes(name)) return group; }
+        const groups = {
+            'COMMUNICATION': ['gabriel', 'raziel', 'cassiel'],
+            'ORCHESTRATION': ['trinity-torch', 'zadkiel', 'haniel'],
+            'CREATION': ['trinity-chesed', 'auriel', 'uriel'],
+            'EXECUTION': ['trinity-sophia', 'michael', 'raphael'],
+            'CONDUCTOR': ['api', 'mcp', 'orchestrator', 'trinity-apm', 'trinity-gcm', 'trinity-hdm', 'trinity-mel', 'trinity-veritas', 'trinity-w3c']
+        };
+        const searchName = name.replace('trinity-', '').toLowerCase();
+        for (const [group, members] of Object.entries(groups)) {
+            if (members.includes(name) || members.includes(searchName)) return group;
+        }
         return 'UNKNOWN';
+    }
+
+    resolveLegacyName(name) {
+        if (!name) return 'trinity-orch';
+        const MAP = {
+            'MCP': 'trinity-orch', 'ORCH': 'trinity-orch', 'orch': 'trinity-orch',
+            'MEL': 'trinity-mel', 'APM': 'trinity-apm', 'GCM': 'trinity-gcm',
+            'HDM': 'trinity-hdm', 'TORCH': 'trinity-torch', 'VERITAS': 'trinity-veritas',
+            'SHOFET': 'trinity-shofet', 'SOPHIA': 'trinity-sophia', 'NEXUS': 'trinity-nexus',
+            'W3C': 'trinity-w3c', 'CHESED': 'trinity-chesed'
+        };
+        const upper = name.toUpperCase();
+        if (MAP[upper]) return MAP[upper];
+        const normalized = name.toLowerCase();
+        return normalized.startsWith('trinity-') ? normalized : `trinity-${normalized}`;
     }
     async start() {
         console.log('========================================');
