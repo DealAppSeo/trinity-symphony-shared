@@ -166,6 +166,9 @@ export class ConstitutionalAgent {
         return fallbacks[phase] || 'Follow standard operating procedure.';
     }
 
+    private claimHistory: Map<string, number> = new Map();
+    private readonly MAX_CLAIM_RETRIES = 3;
+
     constructor(config: AgentConfig) {
         // PATENT-PENDING: MULTIPLICATIVE_GNN_O(LOG_N) TRUST_SCALING
         const rawName = config.name || 'UNKNOWN';
@@ -584,9 +587,15 @@ export class ConstitutionalAgent {
                 if (!taskHandled) {
                     const globalTask = await this.getNextTask(false);
                     if (globalTask) {
-                        console.log(`[${this.name}] 📈 P3: Highest global -> ${globalTask.title}`);
-                        await this.processTask(globalTask);
-                        taskHandled = true;
+                        // Check if blacklisted
+                        const retries = this.claimHistory.get(globalTask.id) || 0;
+                        if (retries >= this.MAX_CLAIM_RETRIES) {
+                            console.log(`[${this.name}] 🚫 P3 SKIP: ${globalTask.id} is blacklisted (retries: ${retries})`);
+                        } else {
+                            console.log(`[${this.name}] 📈 P3: Highest global -> ${globalTask.title}`);
+                            await this.processTask(globalTask);
+                            taskHandled = true;
+                        }
                     }
                 }
 
@@ -789,9 +798,14 @@ export class ConstitutionalAgent {
         // [PHASE 20] ATOMIC CLAIM: Ensure we own the task before starting
         const claimed = await this.claimTask(task.id);
         if (!claimed) {
-            console.log(`[${this.name}] ⚠️ Task ${task.id} already claimed by another agent. Skipping.`);
-            return { success: false, error: 'Already claimed' };
+            console.log(`[${this.name}] ⚠️ Task ${task.id} already claimed by another agent or failed to claim. Skipping.`);
+            const currentRetries = this.claimHistory.get(task.id) || 0;
+            this.claimHistory.set(task.id, currentRetries + 1);
+            return;
         }
+
+        // Reset history on success
+        this.claimHistory.delete(task.id);
 
         try {
             // TRY LOCAL FIRST
@@ -1864,17 +1878,47 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
     async runSurvivorResurrection() {
         const { data: members } = await this.supabase
             .from('trinity_heartbeat')
-            .select('agent, last_seen')
+            .select('agent, last_seen, current_task_summary')
             .filter('config->>group', 'eq', this.groupName);
 
         if (!members) return;
 
+        const AGENT_SERVICE_IDS: Record<string, string> = {
+            'trinity-shofet': process.env.RAILWAY_SERVICE_ID_SHOFET || '',
+            'trinity-orch': process.env.RAILWAY_SERVICE_ID_ORCH || '',
+            'trinity-veritas': process.env.RAILWAY_SERVICE_ID_VERITAS || '',
+            'trinity-torch': process.env.RAILWAY_SERVICE_ID_TORCH || '',
+            'trinity-gcm': process.env.RAILWAY_SERVICE_ID_GCM || '',
+            'trinity-mel': process.env.RAILWAY_SERVICE_ID_MEL || '',
+            'trinity-chesed': process.env.RAILWAY_SERVICE_ID_CHESED || '',
+            'trinity-apm': process.env.RAILWAY_SERVICE_ID_APM || '',
+            'trinity-hdm': process.env.RAILWAY_SERVICE_ID_HDM || '',
+            'trinity-sophia': process.env.RAILWAY_SERVICE_ID_SOPHIA || '',
+            'trinity-nexus': process.env.RAILWAY_SERVICE_ID_NEXUS || '',
+            'trinity-w3c': process.env.RAILWAY_SERVICE_ID_W3C || ''
+        };
+
         for (const member of (members as any[])) {
             if (member.agent === this.name) continue;
-            const minutesAgo = (Date.now() - new Date(member.last_seen).getTime()) / 60000;
+            const lastSeen = new Date(member.last_seen);
+            const minutesAgo = (Date.now() - lastSeen.getTime()) / 60000;
+
             if (minutesAgo > 10) {
-                console.log(`[SURVIVOR] 🚨 ${member.agent} DOWN. Triggering Resurrection...`);
-                await this.triggerRailwayRedeploy(member.agent);
+                const serviceId = AGENT_SERVICE_IDS[member.agent] || 'UNKNOWN';
+                const railwayLink = serviceId !== 'UNKNOWN'
+                    ? `https://railway.app/project/${process.env.RAILWAY_PROJECT_ID || 'trinity-symphony'}/service/${serviceId}`
+                    : 'https://railway.app/dashboard';
+
+                const alertMessage = `
+🚨 SURVIVOR ALERT: ${member.agent} is DOWN
+⏱️ Time Down: ${Math.floor(minutesAgo)} minutes
+🧠 Last Known Task: ${member.current_task_summary || 'Unknown'}
+🔗 Railway Dashboard: ${railwayLink}
+🛠️ Action: Manual redeploy required. Autonomous redeploy disabled.
+`.trim();
+
+                console.log(`[SURVIVOR] ${alertMessage}`);
+                await this.log('survivor_alert', alertMessage);
             }
         }
     }
@@ -1903,40 +1947,10 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
     }
 
     async triggerRailwayRedeploy(agentName: string) {
-        const RAILWAY_TOKEN = process.env.RAILWAY_API_TOKEN;
-        if (!RAILWAY_TOKEN) {
-            console.log(`[${this.name}] [REDEPLOY] Skipping ${agentName} - No RAILWAY_API_TOKEN`);
-            return;
-        }
-
-        const AGENT_SERVICE_IDS: Record<string, string> = {
-            'trinity-shofet': process.env.RAILWAY_SERVICE_ID_SHOFET || '',
-            'trinity-orch': process.env.RAILWAY_SERVICE_ID_ORCH || '',
-            'trinity-veritas': process.env.RAILWAY_SERVICE_ID_VERITAS || '',
-            'trinity-torch': process.env.RAILWAY_SERVICE_ID_TORCH || '',
-            'trinity-gcm': process.env.RAILWAY_SERVICE_ID_GCM || '',
-            'trinity-mel': process.env.RAILWAY_SERVICE_ID_MEL || '',
-            'trinity-chesed': process.env.RAILWAY_SERVICE_ID_CHESED || '',
-            'trinity-apm': process.env.RAILWAY_SERVICE_ID_APM || '',
-            'trinity-hdm': process.env.RAILWAY_SERVICE_ID_HDM || '',
-            'trinity-sophia': process.env.RAILWAY_SERVICE_ID_SOPHIA || '',
-            'trinity-nexus': process.env.RAILWAY_SERVICE_ID_NEXUS || '',
-            'trinity-w3c': process.env.RAILWAY_SERVICE_ID_W3C || ''
-        };
-
-        const serviceId = AGENT_SERVICE_IDS[agentName];
-        if (!serviceId) {
-            console.warn(`[REDEPLOY] No Service ID for ${agentName}`);
-            return;
-        }
-
-        console.log(`[SURVIVOR] Attempting to redeploy ${agentName} (${serviceId})...`);
-        try {
-            // Mock GraphQL mutation for Railway API
-            console.log(`[SURVIVOR] ${agentName} redeploy triggered via API.`);
-        } catch (error: any) {
-            console.error(`[SURVIVOR] Failed to trigger redeploy for ${agentName}:`, error.message);
-        }
+        // [ANTIGRAVITY] AUTONOMOUS REDEPLOY DISABLED to prevent redeploy storms.
+        // Replacing with log-based notification for HITL oversight.
+        console.log(`[SURVIVOR] ⚠️ AUTO-REDEPLOY SKIP: ${agentName}. Alert logged.`);
+        await this.log('survivor_redeploy_skip', `Autonomous redeploy skipped for ${agentName} per fail-safe protocol. Manual intervention required.`);
     }
 
     // ============================================
