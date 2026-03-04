@@ -270,7 +270,6 @@ export class ConstitutionalAgent {
                 console.log(`[${this.name}] New agent detected. Registering in Ledger...`);
                 await this.supabase.from('trinity_agent_registry').insert({
                     agent_name: this.name,
-                    reputation_score: 10,
                     current_tier: 'Assist',
                     tasks_completed: 0,
                     tasks_failed: 0
@@ -357,7 +356,6 @@ export class ConstitutionalAgent {
 
         // Commit to Ledger
         await this.supabase.from('trinity_agent_registry').update({
-            reputation_score: finalScore,
             tasks_completed: success ? currentTasksCompleted + 1 : currentTasksCompleted,
             last_active: new Date().toISOString()
         }).eq('agent_name', name);
@@ -1827,7 +1825,6 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
                     status: 'online', // SSOT: UI expects 'online' or 'active' for Green
                     last_active: timestamp,
                     current_tier: this.autonomyTier,
-                    reputation_score: this.reputationScore,
                     tasks_completed: this.tasksCompleted,
                     current_task_summary: this.currentTaskId ? `Working on task ${this.currentTaskId}` : 'Idle'
                 }, { onConflict: 'agent_name' });
