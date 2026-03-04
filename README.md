@@ -6,7 +6,7 @@
 
 **The Foundational Brain and Constitutional Logic of the Sovereign Multi-Agent Ecosystem.**
 
-The "Shared Soul" contains the immutable guardrails, fuzzy inference models, and consensus protocols that power the AI Trinity Symphony. It is the repository where ethics meets execution.
+The "Shared Soul" contains the immutable guardrails, fuzzy inference models, and consensus protocols that power the AI Trinity Symphony. It is the repository where ethics meets execution, serving as the foundational logic for the **HyperDAG Algorithmic Bridge**.
 
 ---
 
@@ -64,10 +64,13 @@ When the **Evolutionary Logger** detects a persistent failure pattern, it trigge
 
 ---
 
-## 🤝 Contribution
+## 🏗️ Ecosystem Governance
 
-This repository is for developers interested in the **Hard Science of AI Governance**. 
-- To add a new Agent Squad, follow the [Blueprint Guide](blueprints/README.md).
-- To improve the BFT weights, submit a PR to the `IntelligenceRouter`.
+| Repository | Role | Technology Stack |
+| :--- | :--- | :--- |
+| **[trinity-ecosystem](https://github.com/DealAppSeo/trinity-ecosystem)** | Conductor | Next.js, RadixUI, Supabase |
+| **[hyperdag-protocol](https://github.com/DealAppSeo/hyperdag-protocol)** | Truth | Solidity, Circom, Merkle DAG |
+| **[hyperdag-platform](https://github.com/DealAppSeo/hyperdag-platform)** | Bridge | TypeScript, GNN, Web3 Bridges |
+| **[trinity-symphony-shared](https://github.com/DealAppSeo/trinity-symphony-shared)** | Soul | Custom BFT, ANFIS, Ethics Logic |
 
 [Constitution](CONSTITUTION.md) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
