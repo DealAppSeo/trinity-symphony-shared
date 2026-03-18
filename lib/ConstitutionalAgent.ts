@@ -26,7 +26,7 @@ const PROVIDERS: Record<string, ProviderConfig> = {
     anthropic: { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1/messages', envKey: 'ANTHROPIC_API_KEY', model: 'claude-3-5-sonnet-20241022', tier: 'paid', priority: 3, isAnthropic: true },
     gemini: { name: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', envKey: 'GEMINI_API_KEY', model: 'gemini-1.5-flash-latest', tier: 'free', priority: 2, isGemini: true },
     deepseek: { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/chat/completions', envKey: 'DEEPSEEK_API_KEY', model: 'deepseek-chat', tier: 'free', priority: 1 },
-    grok: { name: 'Grok', baseUrl: 'https://api.x.ai/v1/chat/completions', envKey: 'GROK_API_KEY', model: 'grok-beta', tier: 'free', priority: 2 },
+    grok: { name: 'Grok', baseUrl: 'https://api.x.ai/v1/chat/completions', envKey: 'GROK_API_KEY', model: 'grok-2', tier: 'free', priority: 2 },
     cerebras: { name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1/chat/completions', envKey: 'CEREBRAS_API_KEY', model: 'llama3.1-70b', tier: 'free', priority: 1 },
     sambanova: { name: 'SambaNova', baseUrl: 'https://api.sambanova.ai/v1/chat/completions', envKey: 'SAMBANOVA_API_KEY', model: 'Meta-Llama-3.1-70B-Instruct', tier: 'free', priority: 1 },
     together: { name: 'Together', baseUrl: 'https://api.together.xyz/v1/chat/completions', envKey: 'TOGETHER_API_KEY', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', tier: 'free', priority: 2 },
@@ -505,7 +505,7 @@ export class ConstitutionalAgent {
                     .from('trinity_tasks')
                     .select('id, status', { count: 'exact' })
                     .eq('claimed_by', this.name)
-                    .in('status', ['doing', 'in_progress', 'running', 'pending_clarification']);
+                    .in('status', ['doing', 'in_progress', 'running', 'assigned']);
 
                 if (activeCount && activeCount > 0) {
                     const firstBusy = activeClaims![0];
@@ -767,7 +767,7 @@ export class ConstitutionalAgent {
         let query = this.supabase
             .from('trinity_tasks')
             .select('*')
-            .in('status', ['pending', 'todo', 'pending_clarification']);
+            .in('status', ['pending', 'todo', 'assigned']);
 
         if (strictlyAssigned) {
             // Check for both trinity-mel AND MEL

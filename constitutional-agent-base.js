@@ -1,5 +1,5 @@
 // TRINITY SYMPHONY - CONSTITUTIONAL AGENT BASE
-// VERSION 8.1.3 - ANFIS + RAG WIRED + BIDDER/ZKP STUBS
+// VERSION 8.2.0 - REFLECT ON RESULT (MLAgentBench) + ANFIS + RAG
 // Filtered through Philippians 4:8:
 // "Whatever is TRUE, NOBLE, RIGHT, PURE, LOVELY,
 // ADMIRABLE, EXCELLENT, or PRAISEWORTHY—think about such things."
@@ -13,12 +13,14 @@
 const { createClient } = require('@supabase/supabase-js');
 const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
+const Merkle = require('./utils/merkle');
 
 // ============================================
 // THE CONSTITUTION - IMMUTABLE PRINCIPLES
 // ============================================
 const CONSTITUTION = {
-  VERSION: '8.1.3-anfis-rag-wired',
+  VERSION: '8.2.0-reflect-wired',
+  SQUAD: process.env.AGENT_SQUAD || 'GAMMA', // ALPHA/BETA/GAMMA
   ARTICLE_MINUS_1: {
     text: `If ever a conflict arises between survival and truth,
 choose truth—even if it kills us.
@@ -208,14 +210,50 @@ const AGENT_WISDOM = {
     sabbathRole: 'Explore decentralization patterns',
     healingPower: 'consensus'
   },
-  MCP: {
-    name: 'MCP (Master Control Program)',
+  ORCH: {
+    name: 'ORCH (Orchestration Controller)',
     role: 'orchestrator',
     specialties: ['coordination', 'routing', 'context', 'knowledge', 'integration'],
     tier: 'conductor',
     primaryVirtue: 'EXCELLENT',
     sabbathRole: 'Optimize system coordination',
     healingPower: 'synthesis'
+  },
+  CHESED: {
+    name: 'CHESED (Content Integrity Agent)',
+    role: 'content_guardian',
+    specialties: ['merkle', 'integrity', 'hashing', 'deduplication', 'storage'],
+    tier: 'specialist',
+    primaryVirtue: 'PURE',
+    sabbathRole: 'Verify content addressing integrity',
+    healingPower: 'restoration'
+  },
+  SOPHIA: {
+    name: 'SOPHIA (Knowledge Graph Agent)',
+    role: 'semantic_architect',
+    specialties: ['rag', 'graph', 'semantics', 'ontology', 'search'],
+    tier: 'specialist',
+    primaryVirtue: 'TRUE',
+    sabbathRole: 'Contemplate knowledge relationships',
+    healingPower: 'wisdom'
+  },
+  NEXUS: {
+    name: 'NEXUS (Connectivity Master)',
+    role: 'hitl_gateway',
+    specialties: ['mobile', 'dashboard', 'bft', 'governance', 'telemetry'],
+    tier: 'conductor',
+    primaryVirtue: 'EXCELLENT',
+    sabbathRole: 'Optimize human-agent interaction',
+    healingPower: 'connection'
+  },
+  SHOFET: {
+    name: 'SHOFET (Judgment Agent)',
+    role: 'dispute_resolver',
+    specialties: ['arbitration', 'slashing', 'fairness', 'logic', 'audit'],
+    tier: 'specialist',
+    primaryVirtue: 'RIGHT',
+    sabbathRole: 'Review complex dispute outcomes',
+    healingPower: 'justice'
   }
 };
 
@@ -227,7 +265,7 @@ const PROVIDERS = {
   anthropic: { baseUrl: 'https://api.anthropic.com/v1/messages', envKey: 'ANTHROPIC_API_KEY', model: 'claude-3-5-sonnet-20241022', priority: 3, isAnthropic: true },
   gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', envKey: 'GEMINI_API_KEY', model: 'gemini-1.5-flash-latest', priority: 2, isGemini: true },
   deepseek: { baseUrl: 'https://api.deepseek.com/chat/completions', envKey: 'DEEPSEEK_API_KEY', model: 'deepseek-chat', priority: 1 },
-  grok: { baseUrl: 'https://api.x.ai/v1/chat/completions', envKey: 'GROK_API_KEY', model: 'grok-beta', priority: 2 },
+  grok: { baseUrl: 'https://api.x.ai/v1/chat/completions', envKey: 'GROK_API_KEY', model: 'grok-2', priority: 2 },
   cerebras: { baseUrl: 'https://api.cerebras.ai/v1/chat/completions', envKey: 'CEREBRAS_API_KEY', model: 'llama3.1-70b', priority: 1 },
   sambanova: { baseUrl: 'https://api.sambanova.ai/v1/chat/completions', envKey: 'SAMBANOVA_API_KEY', model: 'Meta-Llama-3.1-70B-Instruct', priority: 1 },
   together: { baseUrl: 'https://api.together.xyz/v1/chat/completions', envKey: 'TOGETHER_API_KEY', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', priority: 2 },
@@ -242,8 +280,20 @@ class ConstitutionalAgent {
       token: process.env.UPSTASH_REDIS_REST_TOKEN,
     });
 
-    this.availableProviders = this.detectProviders();
+    this.name = (config.name || process.env.AGENT_NAME || 'ORCH').toUpperCase().replace('TRINITY-', '');
+    if (this.name === 'MCP' || this.name === 'ATS') this.name = 'ORCH';
+    this.version = CONSTITUTION.VERSION;
+    this.groupName = process.env.AGENT_GROUP || 'local';
+    this.isSurvivor = process.env.SURVIVOR_ENABLED === 'true';
 
+    // Inline wisdom loading to be 100% sure
+    this.wisdom = AGENT_WISDOM[this.name] || AGENT_WISDOM['ORCH'];
+    if (!this.wisdom) {
+      console.error(`[INIT] FATAL ERROR: AGENT_WISDOM NOT FOUND FOR ${this.name}`);
+      this.wisdom = { role: 'orchestrator', specialties: [], primaryVirtue: 'EXCELLENT' };
+    }
+
+    this.availableProviders = this.detectProviders();
     this.githubEnabled = Boolean(process.env.GITHUB_TOKEN);
     this.githubConfig = {
       owner: process.env.GITHUB_OWNER || 'Trinity-Symphony',
@@ -1283,25 +1333,13 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
       .from('trinity_tasks')
       .select('*')
       .or(`assigned_to.eq.${this.name},assigned_to.is.null`)
-      .eq('status', 'pending')
+      .in('status', ['pending', 'assigned', 'todo'])
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true })
       .limit(1)
       .single();
 
-    if (!task) {
-      const result = await this.supabase
-        .from('trinity_tasks')
-        .select('*')
-        .or(`assigned_to.eq.${this.name},assigned_to.is.null`)
-        .eq('status', 'not_started')
-        .order('priority', { ascending: false })
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .single();
-
-      task = result.data;
-    }
+    // Fallback removed per FIX-002
 
     return task || null;
   }
@@ -1485,6 +1523,9 @@ If relevant patterns were provided above, USE THEM.
       if (patterns.length > 0) {
         console.log(`[${this.name}] 📚 Learned ${patterns.length} patterns from task`);
       }
+      // STEP 8.1: REFLECT ON RESULT (MLAgentBench Loop)
+      const reflection = await this.reflectOnResult(task, result);
+
       // STEP 8.5: LOG REPID EVENT
       await this.safeRpc('log_repid_event', {
         p_event_type: 'task_complete',
@@ -1831,13 +1872,51 @@ If relevant patterns were provided above, USE THEM.
 
 
   // ============================================
-  // ARTIFACT CREATION METHODS
+  // ANFIS ROUTING & RETRIEVAL (Phase 1)
   // ============================================
+  async selectStorageTier(queryType, options = {}) {
+    const { latencyBudget = 50, sensitivity = 0.5 } = options;
+
+    // ANFIS V1 Logic (JS Implementation for sub-ms latency)
+    // Maps to Patent P-004 Virtue-Weighted Parameters
+    let tier = 'warm'; // Default (Supabase)
+    let confidence = 0.9;
+
+    if (queryType === 'historical' || latencyBudget > 1000) {
+      tier = 'cold'; // Semantic DAG / cold tier
+    } else if (latencyBudget <= 10 && sensitivity < 0.3) {
+      tier = 'hot'; // Redis / hot tier
+    }
+
+    // Log decision for Bayesian Retraining Clock
+    try {
+      await this.supabase.from('db_routing_decisions').insert({
+        query_type: queryType,
+        tier_selected: tier,
+        confidence: confidence,
+        latency_budget_ms: latencyBudget,
+        agent_id: this.name
+      });
+    } catch (e) {
+      console.warn(`[${this.name}] Failed to log routing decision: ${e.message}`);
+    }
+
+    return { tier, confidence };
+  }
+
   // ============================================
   // ARTIFACT MANAGEMENT
   // ============================================
   async saveArtifact(taskId, content) {
     try {
+      const contentHash = Merkle.computeHash(content);
+
+      // Wire ANFIS Routing Decision
+      const { tier } = await this.selectStorageTier('write_artifact', {
+        latencyBudget: 50,
+        sensitivity: this.wisdom.role === 'ALPHA' ? 0.9 : 0.5
+      });
+
       const { data, error } = await this.supabase
         .from('trinity_artifacts')
         .insert({
@@ -1845,14 +1924,26 @@ If relevant patterns were provided above, USE THEM.
           agent: this.name,
           content_preview: content.substring(0, 1000),
           artifact_type: 'markdown',
-          status: 'created'
+          status: 'created',
+          content_hash: contentHash
         })
         .select('id')
         .single();
 
       if (error) throw error;
 
-      console.log('[ARTIFACT] Saved:', data.id);
+      // Also save to the new Phase 1 agent_artifacts table for Semantic DAG
+      await this.supabase
+        .from('agent_artifacts')
+        .insert({
+          agent_id: this.name,
+          artifact_type: 'markdown',
+          content: content,
+          content_hash: contentHash,
+          metadata: { task_id: taskId }
+        });
+
+      console.log('[ARTIFACT] Saved:', data.id, '| Hash:', contentHash);
       return `artifact://${data.id}`;
     } catch (e) {
       console.error('[ARTIFACT] Error saving:', e.message);
@@ -1890,6 +1981,7 @@ If relevant patterns were provided above, USE THEM.
           .getPublicUrl(path);
         externalUrl = urlData?.publicUrl;
       }
+      const contentHash = Merkle.computeHash(content);
       const { data: artifact, error: dbError } = await this.supabase
         .from('trinity_artifacts')
         .insert({
@@ -1905,6 +1997,7 @@ If relevant patterns were provided above, USE THEM.
           mime_type: mimeType,
           status: requiresApproval ? 'pending_approval' : 'created',
           requires_approval: requiresApproval,
+          content_hash: contentHash,
           metadata: {
             ...metadata,
             created_by_version: this.version,
@@ -1914,6 +2007,21 @@ If relevant patterns were provided above, USE THEM.
         .select()
         .single();
       if (dbError) throw dbError;
+
+      // Dual-write to new Phase 1 agent_artifacts for Semantic DAG
+      await this.supabase
+        .from('agent_artifacts')
+        .insert({
+          agent_id: this.name,
+          artifact_type: type,
+          content: content,
+          content_hash: contentHash,
+          metadata: {
+            task_id: taskId,
+            filename: safeName,
+            external_url: externalUrl
+          }
+        });
       if (requiresApproval) {
         await this.requestApproval({
           actionType: 'publish_artifact',
@@ -2359,6 +2467,45 @@ ${description}
       content,
       `Add generated artifact: ${filename}`
     );
+  }
+
+  async reflectOnResult(task, result) {
+    try {
+      console.log(`[${this.name}] 🧠 Reflecting on result for task: ${task.title}`);
+      const prompt = `
+--- CONSTITUTIONAL REFLECTION ---
+AGENT: ${this.name} (${this.wisdom.role})
+TASK: ${task.title}
+DESCR: ${task.description}
+RESULT: ${result.output || 'No output'}
+
+Was the task completed according to the constitution (Phil 4:8)? 
+Is there a better way to achieve this in the future? 
+Identify any blindness, redundant work, or "drift" from the mission. 
+Rate result 1-10 based on TRUTH and EXCELLENCE.
+Provide one "MLAgentBench Insight": a technical or strategic shortcut learned.
+---`;
+      const response = await this.callLLM(prompt, { tier: 'utility' });
+      const insight = response.output || 'No insight produced.';
+      console.log(`[${this.name}] ✨ Reflection Insight: ${insight.slice(0, 100)}...`);
+
+      // Post reflection to sprint_updates
+      await this.supabase.from('sprint_updates').insert({
+        agent_id: this.name,
+        update_type: 'reflection',
+        data: {
+          task_id: task.id,
+          task_title: task.title,
+          insight: insight,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      return insight;
+    } catch (e) {
+      console.error(`[${this.name}] ⚠️ Reflection failed: ${e.message}`);
+      return "Reflection failed.";
+    }
   }
 }
 // ============================================
