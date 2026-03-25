@@ -1000,6 +1000,11 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                     'content': 'document'
                 };
                 const artifactType = typeMap[task.task_type || ''] || 'text_content';
+                
+                await this.supabase.from('trinity_tasks').update({
+                  result: result.output || result
+                }).eq('id', task.id);
+                
                 const dbArtifactLink = await this.saveArtifact(String(task.id), result.output, artifactType);
                 if (dbArtifactLink) externalArtifactUrl = dbArtifactLink;
             }
