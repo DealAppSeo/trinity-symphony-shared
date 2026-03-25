@@ -1626,7 +1626,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                         agent_name: this.name,
                         creator_agent: this.name,
                         status: 'created',
-                        storage_location: artifactUrl || `agent://${this.name}/${Date.now()}`,
+                        storage_location: artifactUrl || `agent://${this.name}/${this.name}/${Date.now()}`,
                         // [PHASE 25] MCP v2 SECURE CHAINING (Grok's Phase 5)
                         metadata: {
                             mcp_version: '2.0',
