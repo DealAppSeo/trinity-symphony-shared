@@ -125,6 +125,8 @@ export class ConstitutionalAgent {
 
     // MCP Cache
     private mcpCache: Map<string, string> = new Map();
+    public app: any; // Express app instance
+
 
     /**
      * MCP Protocol Loader
@@ -215,6 +217,11 @@ export class ConstitutionalAgent {
 
         this.availableProviders = this.detectProviders();
         this.loadArbitrageConfig();
+        
+        if (this.name === 'trinity-orch' || this.name === 'ORCH') {
+            this.startTelegramListener().catch(console.error);
+        }
+        
         console.log(`[${this.name}] 🚀 Initialized v${this.version}`);
     }
 
@@ -233,6 +240,81 @@ export class ConstitutionalAgent {
     detectProviders(): string[] {
         return Object.keys(PROVIDERS).filter(k => process.env[PROVIDERS[k].envKey]).sort((a, b) => PROVIDERS[a].priority - PROVIDERS[b].priority);
     }
+
+async startTelegramListener(): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  
+  if (!botToken || !chatId || !this.app) return;
+
+  // Set webhook
+  await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      url: `${process.env.RAILWAY_PUBLIC_DOMAIN}/telegram-webhook`
+    })
+  });
+  
+  // Add webhook handler to express server
+  this.app.post('/telegram-webhook', async (req: any, res: any) => {
+    const message = req.body?.message?.text;
+    const fromChatId = req.body?.message?.chat?.id;
+    
+    if (!message || fromChatId?.toString() !== chatId) {
+      return res.sendStatus(200);
+    }
+    
+    // Create task from message
+    const { data: task } = await this.supabase
+      .from('trinity_tasks')
+      .insert({
+        task_type: 'directive',
+        assigned_to: 'NEXUS', // changed agent_assigned to assigned_to per typical schema
+        status: 'pending',
+        priority: 1,
+        title: `Telegram directive: ${message.substring(0, 50)}`,
+        description: message,
+        metadata: { 
+          source: 'telegram', 
+          chat_id: chatId,
+          respond_via_telegram: true 
+        }
+      })
+      .select()
+      .single();
+      
+    if (task) {
+      // Acknowledge receipt
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `✅ Received directive. Task ${task.id} created. Will respond when complete.`
+        })
+      });
+    }
+    
+    res.sendStatus(200);
+  });
+}
+
+async notifyTelegramOnCompletion(task: any): Promise<void> {
+  if (!task.metadata?.respond_via_telegram) return;
+  
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  
+  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: `🤖 Task ${task.id} complete:\n\n${(task.result || '').substring(0, 500)}`
+    })
+  });
+}
 
     // ============================================
     // GOVERNANCE PROTOCOLS (RepID)
@@ -1047,6 +1129,9 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
 
             // [PHASE 25] PERSIST INSIGHT (Phase 3)
             await this.generateInsight(task, result.output);
+
+            // Hook for Telegram Webhook logic
+            await this.notifyTelegramOnCompletion({ ...task, result: result.output }).catch(e => console.warn("Telegram warning", e));
 
             this.sessionMetrics.tasksCompleted++;
             await this.updateReputation(evaluation.score > 0.6);
