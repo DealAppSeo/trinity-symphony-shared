@@ -1626,7 +1626,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                         agent_name: this.name,
                         creator_agent: this.name,
                         status: 'created',
-                        storage_location: 'supabase',
+                        storage_location: artifactUrl || `agent://${this.name}/${Date.now()}`,
                         // [PHASE 25] MCP v2 SECURE CHAINING (Grok's Phase 5)
                         metadata: {
                             mcp_version: '2.0',
@@ -2065,13 +2065,20 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
             // [ANTIGRAVITY] TIERED ROUTING & DIVERSIFIED VERIFICATION
             const excludeProvider = (task as any)?.metadata?.creator_provider;
 
-            // Sort available providers by Tier
-            const sortedProviders = [...this.availableProviders]
-                .filter(p => p !== excludeProvider) // Diversify verification
-                .sort((a, b) => (LLM_TIERS[a] || 99) - (LLM_TIERS[b] || 99));
+            const LLM_PRIORITY = [
+                { provider: 'groq', key: process.env.GROQ_API_KEY, direct: true },
+                { provider: 'cerebras', key: process.env.CEREBRAS_API_KEY, direct: true },
+                { provider: 'deepseek', key: process.env.DEEPSEEK_API_KEY, direct: true },
+                { provider: 'gemini', key: process.env.GEMINI_API_KEY, direct: true },
+                { provider: 'openrouter', key: process.env.OPENROUTER_API_KEY, direct: true },
+                { provider: 'together', key: process.env.TOGETHER_API_KEY, direct: true },
+                { provider: 'anthropic', key: process.env.ANTHROPIC_API_KEY, direct: true },
+                { provider: 'openai', key: process.env.OPENAI_API_KEY, direct: true },
+                { provider: 'litellm', key: process.env.LITELLM_URL, proxy: true }
+            ];
 
+            let sortedProviders = LLM_PRIORITY.filter(p => !!p.key).map(p => p.provider);
             if (sortedProviders.length === 0 && this.availableProviders.length > 0) {
-                console.warn(`[${this.name}] ⚠️ All preferred providers excluded for verification diversity. Falling back to any available.`);
                 sortedProviders.push(...this.availableProviders);
             }
 
@@ -2173,6 +2180,7 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         const systemPrompt = `You are ${this.name}. ${CONSTITUTION.ARTICLE_MINUS_1.text}\n\nCONTEXT:\n${bible}`;
 
         if (provider === 'openai') return this.callOpenAI(systemPrompt, prompt, tools);
+        if (provider === 'litellm') return this.callOpenAICompatible((process.env.LITELLM_URL || 'https://trinity-litellm.railway.app') + '/v1/chat/completions', process.env.LITELLM_MASTER_KEY || 'sk-proxy', 'groq/llama-3.1-70b-versatile', systemPrompt, prompt, tools);
         if (provider === 'anthropic') return this.callAnthropic(systemPrompt, prompt);
         if (provider === 'gemini') return this.callGemini(systemPrompt, prompt);
         if (provider === 'grok') return this.callGrok(systemPrompt, prompt);
