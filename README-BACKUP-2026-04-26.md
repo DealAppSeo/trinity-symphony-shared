@@ -1,16 +1,3 @@
-<div align="center">
-  <h1>trinity-symphony-shared</h1>
-  <p><strong>Part of the HyperDAG Ecosystem</strong></p>
-  <p>
-    <img src="https://img.shields.io/badge/status-active-success.svg" alt="Status" />
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" />
-  </p>
-</div>
-
-## 🌐 Ecosystem Context
-
-The HyperDAG ecosystem is a suite of purpose-aligned agentic infrastructure. `trinity-symphony-shared` plays a critical role in the broader architecture, interacting closely with its sibling repositories to provide verifiable trust and scalable coordination.
-
 # 🎵 Trinity Symphony Shared: The Shared Soul
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -87,17 +74,3 @@ When the **Evolutionary Logger** detects a persistent failure pattern, it trigge
 | **[trinity-symphony-shared](https://github.com/DealAppSeo/trinity-symphony-shared)** | Soul | Custom BFT, ANFIS, Ethics Logic |
 
 [Constitution](CONSTITUTION.md) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
-
----
-
-## 🔗 Related Projects in the Ecosystem
-
-- [hyperdag-protocol](https://github.com/DealAppSeo/hyperdag-protocol) — The L1 specification.
-- [hyperdag-core](https://github.com/DealAppSeo/hyperdag-core) — ZKP primitives.
-- [trinity-symphony-shared](https://github.com/DealAppSeo/trinity-symphony-shared) — Agent infrastructure.
-- [repid](https://github.com/DealAppSeo/repid) — The reputation engine.
-- [trustrepid](https://github.com/DealAppSeo/trustrepid) — SDK and integration layer.
-
-## 🤝 Contributing
-
-We actively welcome community contributions! Please check out our [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) to get started. Whether you're fixing bugs, improving docs, or proposing new features, we're excited to have you on board.
