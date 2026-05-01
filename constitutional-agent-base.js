@@ -1329,17 +1329,43 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
     }
   }
   async getNextTask() {
+    // Soft-preference cascade (fix 2026-04-30): self-tagged > unassigned > poach others'.
+    // Lets any agent claim any task while preserving primary-owner preference, so tasks
+    // tagged for an offline agent don't sit unclaimed.
+    const statusFilter = ['pending', 'assigned', 'todo'];
+
     let { data: task } = await this.supabase
       .from('trinity_tasks')
       .select('*')
-      .or(`assigned_to.eq.${this.name},assigned_to.is.null`)
-      .in('status', ['pending', 'assigned', 'todo'])
+      .eq('assigned_to', this.name)
+      .in('status', statusFilter)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true })
       .limit(1)
       .single();
+    if (task) return task;
 
-    // Fallback removed per FIX-002
+    ({ data: task } = await this.supabase
+      .from('trinity_tasks')
+      .select('*')
+      .is('assigned_to', null)
+      .in('status', statusFilter)
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single());
+    if (task) return task;
+
+    ({ data: task } = await this.supabase
+      .from('trinity_tasks')
+      .select('*')
+      .not('assigned_to', 'is', null)
+      .neq('assigned_to', this.name)
+      .in('status', statusFilter)
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single());
 
     return task || null;
   }
