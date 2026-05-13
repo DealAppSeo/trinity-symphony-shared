@@ -1281,13 +1281,10 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
     console.log('[HEARTBEAT] Writing initial heartbeat...');
     await this.heartbeat();
 
-    // [ANTIGRAVITY] ARBITRAGE: Heartbeat interval removed.
-    // We now rely on 'State-on-Change' updates and UptimeRobot pings.
-    /*
+    // Restore heartbeat interval to ensure liveness is reported when idle
     this.heartbeatInterval = setInterval(async () => {
       await this.heartbeat();
     }, 2 * 60 * 1000);
-    */
 
     // 3x3: Check Survivor Status on startup
     await this.checkSurvivorStatus();
@@ -1526,6 +1523,7 @@ If relevant patterns were provided above, USE THEM.
           status: 'completed',
           claimed_by: this.name,
           result: result.output,
+          artifact_url: externalArtifactUrl,
           completed_at: new Date().toISOString(),
           metadata: JSON.stringify({
             ...(task.metadata ? JSON.parse(task.metadata) : {}),
