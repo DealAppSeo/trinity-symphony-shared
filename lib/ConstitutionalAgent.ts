@@ -1728,6 +1728,9 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                     const primaryPayload = {
                         ...payload,
                         content: content,
+                        content_preview: content.substring(0, 5000),
+                        agent: this.name,
+                        filename: `artifact-${safeTaskId.substring(0,8)}.md`,
                         file_path: artifactUrl,
                         url: artifactUrl,
                         creator_agent: this.name
