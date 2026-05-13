@@ -175,6 +175,10 @@ export class ConstitutionalAgent {
         // PATENT-PENDING: MULTIPLICATIVE_GNN_O(LOG_N) TRUST_SCALING
         const rawName = config.name || 'UNKNOWN';
         this.name = this.resolveLegacyName(rawName);
+        
+        const gateEnabled = process.env.HAL_SUBSTANCE_GATE_ENABLED === 'true';
+        console.log(`[SUBSTANCE_GATE] Mode: ${gateEnabled ? 'ENFORCING' : 'SHADOW'}`);
+
         this.wisdom = AGENT_WISDOM[this.name] || AGENT_WISDOM.HDM;
         this.groupName = this.wisdom.squad || 'UNKNOWN';
         this.version = CONSTITUTION.VERSION;
@@ -1100,6 +1104,28 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                 else console.warn(`[ANTIGRAVITY] ⚠️ Failed to save fallback artifact.`);
             }
 
+            // --- SUBSTANCE GATE ---
+            // Note: DB artifact id might not be easily accessible if it's external or saved without returning UUID, so we pass null and it will query by task_id
+            const substanceGate = await this.validateSubstance(result.output, task, null);
+            const gateEnabled = process.env.HAL_SUBSTANCE_GATE_ENABLED === 'true';
+
+            if (!substanceGate.ok) {
+                if (gateEnabled) {
+                    console.log(`[SUBSTANCE_GATE] 🚫 Rejecting task ${task.id}: ${substanceGate.reason}`);
+                    await this.log('substance_gate_rejected', `Task ${task.id} rejected: ${substanceGate.reason}`, { taskId: task.id, claimed_by: this.name });
+                    await this.supabase.from('trinity_tasks').update({
+                        status: 'pending_clarification',
+                        claimed_by: null,
+                        result: `[SUBSTANCE_GATE_REJECTED] ${substanceGate.reason}`
+                    }).eq('id', task.id);
+                    // insertHitlRequest not present in TS version, using hitl logic if it exists, or skipping
+                    return { success: false, escalated: true };
+                } else {
+                    console.log(`[SUBSTANCE_GATE] 👁️ Shadow mode reject task ${task.id}: ${substanceGate.reason}`);
+                    await this.log('substance_gate_shadow_reject', `Task ${task.id} shadow-rejected: ${substanceGate.reason}`, { taskId: task.id, claimed_by: this.name });
+                }
+            }
+
             // Mark Completed
             await this.supabase
                 .from('trinity_tasks')
@@ -1429,6 +1455,65 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
     // ============================================
     // TRAINING & OPTIMIZATION LOGIC
     // ============================================
+
+    async validateSubstance(output: string, task: Task, artifactId: string | null): Promise<{ ok: boolean; reason?: string }> {
+        // Template placeholder check
+        const placeholderRegex = /\[insert\s|\[INSERT\s|\[TODO|\[PLACEHOLDER|\[FILL_IN|\{\{|\}\}|<placeholder/i;
+        const match = output.match(placeholderRegex);
+        if (match) {
+            return { ok: false, reason: `template_placeholder_detected: ${match[0]}` };
+        }
+
+        // Minimum length check
+        const stripped = output.replace(/^#+.*$/gm, '').replace(/```[\s\S]*?```/g, '').trim();
+        const minLength = parseInt(process.env.HAL_MIN_SUBSTANCE_CHARS || '200', 10);
+        if (stripped.length < minLength) {
+            return { ok: false, reason: `output_too_short: ${stripped.length}/${minLength}` };
+        }
+
+        // Success criteria overlap check
+        if (task.success_criteria && task.success_criteria.length > 50) {
+            const getWords = (text: string) => {
+                const words = (text.toLowerCase().match(/\b\w{4,}\b/g) || []);
+                const stopwords = new Set(['this', 'that', 'with', 'from', 'your', 'have', 'what', 'will', 'then', 'they']);
+                return new Set(words.filter(w => !stopwords.has(w)));
+            };
+            const criteriaWords = getWords(task.success_criteria);
+            if (criteriaWords.size > 0) {
+                const outputWords = getWords(output);
+                let overlap = 0;
+                for (const word of criteriaWords) {
+                    if (outputWords.has(word)) overlap++;
+                }
+                const pct = (overlap / criteriaWords.size) * 100;
+                if (pct < 30) {
+                    return { ok: false, reason: `success_criteria_unmet: ${Math.round(pct)}%` };
+                }
+            } else {
+                await this.log('success_criteria_skipped', 'Criteria parsed to 0 distinctive words', { taskId: task.id });
+            }
+        } else {
+            await this.log('success_criteria_skipped', 'Criteria missing or too short', { taskId: task.id });
+        }
+
+        // Artifact presence check
+        const artifactTypes = ['code', 'research', 'docs', 'artifact', 'content', 'report', 'design', 'data'];
+        if (task.task_type && artifactTypes.includes(task.task_type)) {
+            let query = this.supabase.from('trinity_artifacts').select('content, content_preview');
+            if (artifactId) {
+                query = query.eq('id', artifactId);
+            } else {
+                query = query.eq('task_id', String(task.id)).order('created_at', { ascending: false }).limit(1);
+            }
+            const { data } = await query.maybeSingle();
+            if (!data || (!data.content && !data.content_preview)) {
+                return { ok: false, reason: 'artifact_missing_or_empty' };
+            }
+        }
+
+        return { ok: true };
+    }
+
 
     async evaluateResult(task: Task, output: string): Promise<{ score: number; handoff_required: boolean; handoff_to?: string }> {
         // Simplified Logic Rule Engine
