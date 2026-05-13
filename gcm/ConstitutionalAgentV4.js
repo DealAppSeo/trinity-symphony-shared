@@ -73,11 +73,9 @@ class ConstitutionalAgentV4 {
         console.log('========================================');
 
         await this.heartbeat();
-        // [ANTIGRAVITY] ARBITRAGE: Heartbeat interval removed.
-        /*
+        // Restore the background heartbeat interval
         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
         this.heartbeatInterval = setInterval(() => this.heartbeat(), 2 * 60 * 1000);
-        */
         if (this.isSurvivor) await this.runSurvivorBootProtocol();
         this.startHttpServer();
         this.runLoop().catch(err => console.error(`[${this.name}] FATAL LOOP CRASH:`, err));
@@ -153,12 +151,15 @@ class ConstitutionalAgentV4 {
 
     async processWithLLM(task) {
         console.log(`[LLM] 🧠 Processing ${task.id}`);
-        await this.supabase.from('trinity_tasks').update({ status: 'in_progress', claimed_by: this.name }).eq('id', task.id);
+        await this.supabase.from('trinity_tasks').update({ status: 'in_progress', claimed_by: this.name, claimed_at: new Date().toISOString(), started_at: new Date().toISOString() }).eq('id', task.id);
         try {
             await this.sleep(2000);
             const output = `[SIMULATION] Completed analysis of ${task.title} by ${this.name}`;
-            if (['content', 'code'].includes(task.task_type)) await this.saveArtifact(task.id, output);
-            await this.supabase.from('trinity_tasks').update({ status: 'completed', result: output, completed_at: new Date().toISOString() }).eq('id', task.id);
+            let artifactUrl = null;
+            if (['content', 'code'].includes(task.task_type)) {
+                artifactUrl = await this.saveArtifact(task.id, output);
+            }
+            await this.supabase.from('trinity_tasks').update({ status: 'completed', result: output, artifact_url: artifactUrl, completed_at: new Date().toISOString() }).eq('id', task.id);
             this.sessionMetrics.tasksCompleted++;
             this.sessionMetrics.llmCalls++;
         } catch (e) {
@@ -198,7 +199,11 @@ class ConstitutionalAgentV4 {
                 status: 'created'
             }).select().single();
             console.log(`[ARTIFACT] Saved: ${data?.id}`);
-        } catch (e) { console.error('[ARTIFACT] Save failed:', e.message); }
+            return data ? `db://trinity_artifacts/${data.id}` : null;
+        } catch (e) { 
+            console.error('[ARTIFACT] Save failed:', e.message); 
+            return null;
+        }
     }
 
     async runSurvivorBootProtocol() { console.log(`[SURVIVOR] 🛡️ Checking group ${this.groupName}...`); }
