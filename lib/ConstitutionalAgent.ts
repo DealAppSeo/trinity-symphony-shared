@@ -1060,6 +1060,15 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
             if (lowBelief || explicitEscalate) {
                 console.log(`[ANTIGRAVITY] 🚨 UNCERTAINTY DETECTED (Score: ${evaluation.score}). Escalating to Architect...`);
 
+                // If explicit refusal based on constitutional grounds
+                if (explicitEscalate && result.output.toLowerCase().includes('unconstitutional')) {
+                    await this.log('constitutional_refusal', `Task ${task.id} refused on constitutional grounds.`, { taskId: task.id, claimed_by: this.name });
+                    if (process.env.ZKP_CARDS_ENABLED === 'true') {
+                        // TODO(Phase 2.4): trigger generateCard API for constitutional_refusal
+                        // fetch(`${process.env.REPID_API_URL}/v1/cards/generate`, { method: 'POST', body: JSON.stringify({ agent_name: this.name, task_id: task.id, task_title: task.title, event_type: 'constitutional_refusal' }) })
+                    }
+                }
+
                 await this.supabase.from('trinity_tasks').update({
                     status: 'pending_clarification',
                     claimed_by: null, // [ANTIGRAVITY] Release claim so agent can do other work while waiting
@@ -1124,6 +1133,10 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                 } else {
                     console.log(`[SUBSTANCE_GATE] 👁️ Shadow mode reject task ${task.id}: ${substanceGate.reason}`);
                     await this.log('substance_gate_shadow_reject', `Task ${task.id} shadow-rejected: ${substanceGate.reason}`, { taskId: task.id, claimed_by: this.name });
+                    if (process.env.ZKP_CARDS_ENABLED === 'true') {
+                        // TODO(Phase 2.4): trigger generateCard API for substance_gate_fire
+                        // fetch(`${process.env.REPID_API_URL}/v1/cards/generate`, { method: 'POST', body: JSON.stringify({ agent_name: this.name, task_id: task.id, task_title: task.title, event_type: 'substance_gate_fire' }) })
+                    }
                 }
             }
 
@@ -1147,7 +1160,12 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                         processedBy: this.name,
                         version: this.version
                     })
-                })
+                });
+
+            if (process.env.ZKP_CARDS_ENABLED === 'true') {
+                // TODO(Phase 2.4): trigger generateCard API for task_completion
+                // fetch(`${process.env.REPID_API_URL}/v1/cards/generate`, { method: 'POST', body: JSON.stringify({ agent_name: this.name, task_id: task.id, task_title: task.title, event_type: 'task_completion' }) })
+            }
                 .eq('id', task.id);
 
             // Log Benchmark Score if applicable (Training Loop)
