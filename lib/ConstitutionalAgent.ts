@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import ws from 'ws';
-import { provenance } from './provenance';
+import { provenance, inheritProvenance } from './provenance';
 import { Redis } from '@upstash/redis';
 import { AgentConfig, WisdomProfile, ProviderConfig, LLMResult, Task, AutonomyTier, AgentRegistryRecord, SessionMetrics, MCPPhase } from './types';
 import { AGENT_WISDOM, CONSTITUTION } from './wisdom';
@@ -393,7 +393,8 @@ async notifyTelegramOnCompletion(task: any): Promise<void> {
                 metadata: {
                     ...(task.metadata as any || {}),
                     source_task_priority: task.priority,
-                    generated_at: new Date().toISOString()
+                    generated_at: new Date().toISOString(),
+                    ...inheritProvenance(task.metadata, 'trinity_artifacts')
                 }
             };
 
@@ -404,6 +405,7 @@ async notifyTelegramOnCompletion(task: any): Promise<void> {
         }
     }
 
+    // TODO(Phase 8): Implement saveFeedbackEvent() for feedback_events writer and apply inheritProvenance()
     async updateReputation(success: boolean, targetAgent?: string, overrideDelta?: number) {
         // [PHASE 10] TARGETED REPID UPDATE
         const name = targetAgent || this.name;
@@ -1815,6 +1817,17 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                         }
                     };
 
+                    if (dbTaskId) {
+                        const { data } = await clientToUse.from('trinity_tasks').select('metadata').eq('id', dbTaskId).single();
+                        if (data && data.metadata) {
+                            payload.metadata = { ...payload.metadata, ...inheritProvenance(data.metadata, 'trinity_artifacts') };
+                        } else {
+                            payload.metadata = { ...payload.metadata, ...inheritProvenance({}, 'trinity_artifacts') };
+                        }
+                    } else {
+                        payload.metadata = { ...payload.metadata, ...inheritProvenance({}, 'trinity_artifacts') };
+                    }
+
                     const primaryPayload = {
                         ...payload,
                         content: content,
@@ -1986,6 +1999,16 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
             if (metadata) {
                 meta = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
             }
+            let parentMetadata = meta;
+            if (!parentMetadata.test_tier && this.currentTaskId) {
+                const { data } = await this.supabase.from('trinity_tasks').select('metadata').eq('id', this.currentTaskId).single();
+                if (data?.metadata) {
+                    parentMetadata = { ...parentMetadata, ...data.metadata };
+                }
+            }
+            const prov = inheritProvenance(parentMetadata, 'trinity_agent_logs');
+            meta = { ...meta, ...prov };
+
             await this.supabase
                 .from('trinity_agent_logs')
                 .insert({

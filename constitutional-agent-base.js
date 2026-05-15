@@ -14,6 +14,7 @@ const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
+const { provenance, inheritProvenance } = require('./lib/provenance');
 const Merkle = require('./utils/merkle');
 
 // ============================================
@@ -1821,18 +1822,23 @@ If relevant patterns were provided above, USE THEM.
   }
   async log(action, message, metadata = {}) {
     try {
+      let parentMetadata = metadata || {};
+      if (!parentMetadata.test_tier && this.currentTaskId) {
+        const { data } = await this.supabase.from('trinity_tasks').select('metadata').eq('id', this.currentTaskId).single();
+        if (data && data.metadata) {
+          parentMetadata = { ...parentMetadata, ...data.metadata };
+        }
+      }
+      const prov = inheritProvenance(parentMetadata, 'trinity_agent_logs');
+      const mergedMetadata = { ...metadata, ...prov, version: this.version, primaryVirtue: this.wisdom.primaryVirtue, group: this.groupName };
+
       await this.supabase
         .from('trinity_agent_logs')
         .insert({
           agent: this.name,
           action,
           message: typeof message === 'string' ? message.substring(0, 5000) : JSON.stringify(message).substring(0, 5000),
-          metadata: {
-            ...metadata,
-            version: this.version,
-            primaryVirtue: this.wisdom.primaryVirtue,
-            group: this.groupName // 3x3 Log
-          },
+          metadata: mergedMetadata,
           created_at: new Date().toISOString()
         });
     } catch (err) {
@@ -2362,6 +2368,13 @@ If relevant patterns were provided above, USE THEM.
     );
     console.log(`[${this.name}] 📄 ${existingSHA ? 'Updated' : 'Created'} file: ${path}`);
 
+    let parentMetadata = {};
+    if (this.currentTaskId) {
+      const { data } = await this.supabase.from('trinity_tasks').select('metadata').eq('id', this.currentTaskId).single();
+      if (data && data.metadata) parentMetadata = data.metadata;
+    }
+    const prov = inheritProvenance(parentMetadata, 'trinity_artifacts');
+
     await this.supabase.from('trinity_artifacts').insert({
       agent: this.name,
       artifact_type: 'github_file',
@@ -2371,7 +2384,7 @@ If relevant patterns were provided above, USE THEM.
       external_url: data.content?.html_url,
       content_preview: content.substring(0, 500),
       status: 'created',
-      metadata: { branch, sha: data.content?.sha }
+      metadata: { branch, sha: data.content?.sha, ...prov }
     });
 
     return data;
@@ -2397,6 +2410,13 @@ If relevant patterns were provided above, USE THEM.
     );
     console.log(`[${this.name}] 🔀 Created PR #${data.number}: ${title}`);
 
+    let parentMetadata = {};
+    if (this.currentTaskId) {
+      const { data } = await this.supabase.from('trinity_tasks').select('metadata').eq('id', this.currentTaskId).single();
+      if (data && data.metadata) parentMetadata = data.metadata;
+    }
+    const prov = inheritProvenance(parentMetadata, 'trinity_artifacts');
+
     await this.supabase.from('trinity_artifacts').insert({
       agent: this.name,
       artifact_type: 'pull_request',
@@ -2410,7 +2430,8 @@ If relevant patterns were provided above, USE THEM.
       metadata: {
         pr_number: data.number,
         head_branch: headBranch,
-        base_branch: baseBranch
+        base_branch: baseBranch,
+        ...prov
       }
     });
     await this.log('github_pr_created', `Created PR #${data.number}: ${title}`, {

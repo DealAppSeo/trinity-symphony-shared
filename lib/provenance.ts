@@ -42,3 +42,21 @@ export function provenance(
     provenance_tagged_at: new Date().toISOString()
   };
 }
+
+/**
+ * Inherit provenance tags from a parent task for derivative data (artifacts, logs, cards).
+ */
+export function inheritProvenance(parentMetadata: any, source: string): Partial<ProvenanceTags> {
+  const parentTier = parentMetadata?.test_tier;
+  if (!parentTier) {
+    return { test_tier: 'T0_INTERNAL_DEV_TEST', test_source: source };
+  }
+  return {
+    test_tier: parentTier,
+    test_source: source,
+    inherited_from: parentMetadata.test_source,
+    patent_eligible: parentMetadata.patent_eligible,
+    patent_classes: parentMetadata.patent_classes,
+    provenance_tagged_at: new Date().toISOString()
+  };
+}
