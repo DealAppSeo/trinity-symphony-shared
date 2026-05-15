@@ -2360,7 +2360,7 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         const systemPrompt = `You are ${this.name}. ${CONSTITUTION.ARTICLE_MINUS_1.text}\n\nCONTEXT:\n${bible}`;
 
         if (provider === 'openai') return this.callOpenAI(systemPrompt, prompt, tools);
-        if (provider === 'litellm') return this.callOpenAICompatible((process.env.LITELLM_URL || 'https://trinity-litellm.railway.app') + '/v1/chat/completions', process.env.LITELLM_MASTER_KEY || 'sk-proxy', 'groq/llama-3.1-70b-versatile', systemPrompt, prompt, tools);
+        if (provider === 'litellm') return this.callRepidEngineRouter(systemPrompt, prompt);
         if (provider === 'anthropic') return this.callAnthropic(systemPrompt, prompt);
         if (provider === 'gemini') return this.callGemini(systemPrompt, prompt);
         if (provider === 'grok') return this.callGrok(systemPrompt, prompt);
@@ -2373,6 +2373,36 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         if (provider === 'perplexity') return this.callPerplexity(systemPrompt, prompt);
 
         throw new Error(`Provider ${provider} not implemented`);
+    }
+
+    async callRepidEngineRouter(systemPrompt: string, prompt: string): Promise<LLMResult> {
+        const url = 'https://repid-engine-production-b844.up.railway.app/v1/llm/complete';
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+        ];
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-repid-agent': this.name,
+                'x-repid-version': 'v1.1'
+            },
+            body: JSON.stringify({
+                agentId: this.name,
+                messages: messages,
+                context: "trinity_swarm_organic_task"
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Repid Engine Router Error: ${err}`);
+        }
+
+        const data = await response.json();
+        return { output: data.output || data.message || data.content || (data.choices && data.choices[0]?.message?.content) || JSON.stringify(data) };
     }
 
     async callOpenAICompatible(url: string, apiKey: string, model: string, systemPrompt: string, prompt: string, tools: any[]): Promise<LLMResult> {
