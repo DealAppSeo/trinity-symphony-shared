@@ -149,7 +149,9 @@ sleep 5
 # 4C. Run same diagnostic query
 node -e "
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const WebSocket = require('ws');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { realtime: { transport: WebSocket } });
+console.log('[SUPABASE] ✅ Client initialized with ws transport (Node ' + process.version + ')');
 
 async function verify() {
   const { data } = await supabase
@@ -524,7 +526,9 @@ sleep 5
 # 4C. Run same diagnostic query
 node -e "
 const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const WebSocket = require('ws');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { realtime: { transport: WebSocket } });
+console.log('[SUPABASE] ✅ Client initialized with ws transport (Node ' + process.version + ')');
 
 async function verify() {
   const { data } = await supabase

@@ -8,6 +8,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
 const express = require('express');
 
 // ============================================
@@ -64,7 +65,9 @@ const ROTATION_ORDER = ['APM', 'HDM', 'MEL', 'GCM', 'TORCH', 'VERITAS'];
 
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { transport: WebSocket } });
+
+  console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
   console.log(`[${CONFIG.name}] Connected to Supabase`);
 } else {
   console.error(`[${CONFIG.name}] Missing SUPABASE_URL or SUPABASE_SERVICE_KEY`);

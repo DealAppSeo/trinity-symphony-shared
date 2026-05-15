@@ -12,7 +12,9 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const WebSocket = require('ws');
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { transport: WebSocket } });
+console.log('[SUPABASE] ✅ Client initialized with ws transport (Node ' + process.version + ')');
 
 const docs = [
   { id: 'GROK-RULES', category: 'minimal', path: 'docs/GROK-RULES.md' },

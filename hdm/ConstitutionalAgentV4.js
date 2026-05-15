@@ -2,6 +2,7 @@
  * TRINITY CONSTITUTIONAL AGENT V4 (LOCAL COPY) - HDM
  */
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
 const express = require('express');
 
 class ConstitutionalAgentV4 {
@@ -18,7 +19,8 @@ class ConstitutionalAgentV4 {
         const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
         const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
         if (!SUPABASE_URL || !SUPABASE_KEY) { console.error(`[${this.name}] CRITICAL: No Supabase Credentials!`); process.exit(1); }
-        this.supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        this.supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { transport: WebSocket } });
+        console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
     }
     determineGroup(name) {
         const groups = {

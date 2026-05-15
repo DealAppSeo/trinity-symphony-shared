@@ -11,6 +11,7 @@
 // - RESULT: Ethical, grounded, cost-efficient routing
 
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
 const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
 const Merkle = require('./utils/merkle');
@@ -274,7 +275,8 @@ const PROVIDERS = {
 
 class ConstitutionalAgent {
   constructor(config = {}) {
-    this.supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+    this.supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, { realtime: { transport: WebSocket } });
+        console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
     this.redis = new Redis({
       url: process.env.UPSTASH_REDIS_REST_URL,
       token: process.env.UPSTASH_REDIS_REST_TOKEN,
