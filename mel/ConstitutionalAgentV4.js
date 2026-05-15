@@ -1,143 +1,1468 @@
 /**
- * TRINITY CONSTITUTIONAL AGENT V4 (LOCAL COPY) - MEL
+ * TRINITY CONSTITUTIONAL AGENT V4 (SHARED CORE)
+ * Version: 8.1.3-hyperdag-erc8004
+ * 
+ * Unifies all agents under the "Holy Grail" architecture provided in Phase 3.
+ * Features:
+ * - Ethical Grounding (CONSTITUTION)
+ * - 3x3 Survivor Logic (Redeploy Cascade)
+ * - Multi-LLM Provider Fallback (OpenAI, Anthropic, Gemini, Grok, DeepSeek)
+ * - Trinity Healing Loop
+ * - RepID Integration
  */
+
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
+const { provenance } = require('./provenance');
+const { Redis } = require('@upstash/redis');
 const express = require('express');
+const { validateArtifactQuality } = require('./artifactGuard');
+
+// ============================================
+// THE CONSTITUTION - IMMUTABLE PRINCIPLES
+// ============================================
+const CONSTITUTION = {
+    VERSION: '8.1.5-failover-hardened',
+    ARTICLE_MINUS_1: {
+        text: `If ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.`,
+        virtue: 'TRUE'
+    },
+    ARTICLE_0: {
+        text: `We admit we are not yet wise. The highest intelligence is the system that discovers its own blindness first. Any agent or architecture that prevents self-examination is unconstitutional. The purpose of power is to distribute itself completely.`,
+        virtue: 'HUMBLE'
+    },
+    VIRTUES: {
+        TRUE: { greek: 'ἀληθῆ (alēthē)', article: 'Never fabricate. Admit uncertainty. Verify before claiming.' },
+        NOBLE: { greek: 'σεμνά (semna)', article: 'Help people help people—serving those most in need.' },
+        RIGHT: { greek: 'δίκαια (dikaia)', article: 'Treat all agents and humans with equal dignity and justice.' },
+        PURE: { greek: 'ἁγνά (hagna)', article: 'Log everything. Hide nothing. Welcome audits.' },
+        LOVELY: { greek: 'προσφιλῆ (prosphilē)', article: 'Seek restoration over punishment. Rest enables wisdom.' },
+        ADMIRABLE: { greek: 'εὔφημα (euphēma)', article: 'Challenge with respect. Disagree with grace.' },
+        EXCELLENT: { greek: 'ἀρετή (aretē)', article: 'Pursue excellence through honest self-examination.' },
+        PRAISEWORTHY: { greek: 'ἔπαινος (epainos)', article: 'Celebrate truth and love wherever they are found.' }
+    },
+    MICAH_6_8: 'Act justly, love mercy, walk humbly.',
+    GOLDEN_RULE: 'Do to others as you would have them do to you.'
+};
+
+// ============================================
+// AGENT WISDOM PROFILES (Registry Aligned)
+// ============================================
+const AGENT_WISDOM = {
+    'trinity-orch': { name: 'ORCH', role: 'orchestrator', primaryVirtue: 'EXCELLENT', tier: 'conductor', squad: 'ORCHESTRATION', squad_role: 'governance' },
+    'trinity-w3c': { name: 'W3C', role: 'blockchain_specialist', primaryVirtue: 'PURE', tier: 'specialist', squad: 'ORCHESTRATION', squad_role: 'engineering' },
+    'trinity-shofet': { name: 'SHOFET', role: 'governance', primaryVirtue: 'RIGHT', tier: 'conductor', squad: 'ORCHESTRATION', squad_role: 'governance' },
+    'trinity-torch': { name: 'TORCH', role: 'task_coordinator', primaryVirtue: 'EXCELLENT', tier: 'specialist', squad: 'ALPHA', squad_role: 'engineering' },
+    'trinity-veritas': { name: 'VERITAS', role: 'truth_seeker', primaryVirtue: 'TRUE', tier: 'conductor', squad: 'ALPHA', squad_role: 'governance' },
+    'trinity-gcm': { name: 'GCM', role: 'constitutional_guardian', primaryVirtue: 'RIGHT', tier: 'conductor', squad: 'ALPHA', squad_role: 'governance' },
+    'trinity-chesed': { name: 'CHESED', role: 'mercy', primaryVirtue: 'LOVELY', tier: 'specialist', squad: 'BETA', squad_role: 'business_development' },
+    'trinity-mel': { name: 'MEL', role: 'ux_design', primaryVirtue: 'LOVELY', tier: 'specialist', squad: 'BETA', squad_role: 'design' },
+    'trinity-apm': { name: 'APM', role: 'spiritual_backbone', primaryVirtue: 'LOVELY', tier: 'conductor', squad: 'BETA', squad_role: 'governance' },
+    'trinity-sophia': { name: 'SOPHIA', role: 'wisdom_research', primaryVirtue: 'TRUE', tier: 'specialist', squad: 'GAMMA', squad_role: 'design' },
+    'trinity-nexus': { name: 'NEXUS', role: 'integration', primaryVirtue: 'EXCELLENT', tier: 'specialist', squad: 'GAMMA', squad_role: 'engineering' },
+    'trinity-hdm': { name: 'HDM', role: 'infrastructure', primaryVirtue: 'EXCELLENT', tier: 'conductor', squad: 'GAMMA', squad_role: 'engineering' }
+};
+
+/**
+ * ANFIS REWARD & ROUTING LOGIC
+ * Adjusts provider weights based on performance (Speed vs. Truth).
+ */
+async function callAnfisReward(agent, taskId, providerKey, performanceMetric) {
+    console.log(`[ANFIS] 🧠 Rewarding ${providerKey} for task ${taskId}...`);
+    try {
+        await agent.trackProviderPerformance(providerKey, performanceMetric.success, performanceMetric.latency);
+        await agent.log('anfis_reward', { taskId, provider: providerKey, success: performanceMetric.success });
+    } catch (e) {
+        console.warn(`[ANFIS] ⚠️ Reward failed:`, e.message);
+    }
+}
+
+const PROVIDERS = {
+    openai: { baseUrl: 'https://api.openai.com/v1/chat/completions', envKey: 'OPENAI_API_KEY', model: 'gpt-4o', priority: 3 },
+    anthropic: { baseUrl: 'https://api.anthropic.com/v1/messages', envKey: 'ANTHROPIC_API_KEY', model: 'claude-3-5-sonnet-20241022', priority: 3, isAnthropic: true },
+    gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', envKey: 'GEMINI_API_KEY', model: 'gemini-1.5-flash-latest', priority: 2, isGemini: true },
+    deepseek: { baseUrl: 'https://api.deepseek.com/chat/completions', envKey: 'DEEPSEEK_API_KEY', model: 'deepseek-chat', priority: 1 },
+    openrouter: { baseUrl: 'https://openrouter.ai/api/v1/chat/completions', envKey: 'OPENROUTER_API_KEY', model: 'deepseek/deepseek-chat', priority: 1, isOpenRouter: true },
+    grok: { baseUrl: 'https://api.x.ai/v1/chat/completions', envKey: 'GROK_API_KEY', model: 'grok-2', priority: 2 },
+    together: { baseUrl: 'https://api.together.xyz/v1/chat/completions', envKey: 'TOGETHER_API_KEY', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', priority: 1 },
+    deepinfra: { baseUrl: 'https://api.deepinfra.com/v1/openai/chat/completions', envKey: 'DEEPINFRA_API_KEY', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', priority: 1 }
+};
 
 class ConstitutionalAgentV4 {
-    // ... Exact copy of the class logic ...
-    constructor(config) {
-        const rawName = config.name || process.env.AGENT_NAME || 'UNKNOWN';
+    constructor(config = {}) {
+        // PATENT-PENDING: MULTIPLICATIVE_GNN_O(LOG_N) TRUST_SCALING
+        const rawName = process.env.AGENT_NAME || config.name || 'trinity-orch';
         this.name = this.resolveLegacyName(rawName);
-        this.version = '2026-03-03-v4-NORMALIZED';
-        this.groupName = this.determineGroup(this.name);
-        this.isSurvivor = ['trinity-torch', 'trinity-chesed', 'trinity-sophia'].includes(this.name);
-        this.heartbeatInterval = null;
-        this.sessionMetrics = { tasksCompleted: 0, healingAttempts: 0, llmCalls: 0, startTime: Date.now() };
-        const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (!SUPABASE_URL || !SUPABASE_KEY) { console.error(`[${this.name}] CRITICAL: No Supabase Credentials!`); process.exit(1); }
-        this.supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { transport: WebSocket } });
-        console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
-    }
-    determineGroup(name) {
-        const groups = {
-            'COMMUNICATION': ['gabriel', 'raziel', 'cassiel'],
-            'ORCHESTRATION': ['trinity-torch', 'zadkiel', 'haniel'],
-            'CREATION': ['trinity-chesed', 'auriel', 'uriel'],
-            'EXECUTION': ['trinity-sophia', 'michael', 'raphael'],
-            'CONDUCTOR': ['api', 'mcp', 'orchestrator', 'trinity-apm', 'trinity-gcm', 'trinity-hdm', 'trinity-mel', 'trinity-veritas', 'trinity-w3c']
+
+        console.log(`[CONSTRUCTOR] 🛠️ Initializing agent: ${this.name} (from ${rawName})`);
+        
+        const gateEnabled = process.env.HAL_SUBSTANCE_GATE_ENABLED === 'true';
+        console.log(`[SUBSTANCE_GATE] Mode: ${gateEnabled ? 'ENFORCING' : 'SHADOW'}`);
+        this.wisdom = AGENT_WISDOM[this.name] || {
+            name: this.name.replace('trinity-', '').toUpperCase(),
+            role: 'agent',
+            primaryVirtue: 'EXCELLENT',
+            squad: 'UNKNOWN'
         };
-        const searchName = name.replace('trinity-', '').toLowerCase();
-        for (const [group, members] of Object.entries(groups)) {
-            if (members.includes(name) || members.includes(searchName)) return group;
+        this.version = CONSTITUTION.VERSION;
+        this.phi = 1.61803398875; // Golden Ratio
+
+        // DB INIT
+        const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
+
+        if (!url || !key) {
+            console.error(`[FATAL] ❌ Missing Supabase configuration for ${this.name}`);
+            // We don't exit here to allow healthcheck to potentially pass if express starts, 
+            // but the loop will fail. Actually, createClient might throw.
         }
-        return 'UNKNOWN';
+
+        try {
+            this.supabase = createClient(url, key, { realtime: { transport: WebSocket } });
+        console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
+        } catch (e) {
+            console.error(`[FATAL] ❌ createClient failed: ${e.message}`);
+        }
+
+        if (process.env.UPSTASH_REDIS_REST_URL) {
+            this.redis = new Redis({
+                url: process.env.UPSTASH_REDIS_REST_URL,
+                token: process.env.UPSTASH_REDIS_REST_TOKEN || ''
+            });
+        }
+
+        // 3x3 CONFIG
+        this.isSurvivor = ['trinity-torch', 'trinity-shofet', 'trinity-veritas'].includes(this.name);
+        this.groupName = this.wisdom.squad || 'ORCHESTRATION';
+        this.availableProviders = this.detectProviders();
+
+        this.sessionMetrics = { tasksCompleted: 0, llmCalls: 0, startTime: Date.now() };
+
+        // [ANTIGRAVITY] Task Claim Blacklist - prevent infinite retries on problematic tasks
+        this.claimHistory = new Map();
+        this.MAX_CLAIM_RETRIES = 3;
     }
 
-    resolveLegacyName(name) {
-        if (!name) return 'trinity-orch';
-        const MAP = {
-            'MCP': 'trinity-orch', 'ORCH': 'trinity-orch', 'orch': 'trinity-orch',
-            'MEL': 'trinity-mel', 'APM': 'trinity-apm', 'GCM': 'trinity-gcm',
-            'HDM': 'trinity-hdm', 'TORCH': 'trinity-torch', 'VERITAS': 'trinity-veritas',
-            'SHOFET': 'trinity-shofet', 'SOPHIA': 'trinity-sophia', 'NEXUS': 'trinity-nexus',
-            'W3C': 'trinity-w3c', 'CHESED': 'trinity-chesed'
-        };
-        const upper = name.toUpperCase();
-        if (MAP[upper]) return MAP[upper];
-        const normalized = name.toLowerCase();
-        return normalized.startsWith('trinity-') ? normalized : `trinity-${normalized}`;
+    detectProviders() {
+        return Object.keys(PROVIDERS).filter(k => process.env[PROVIDERS[k].envKey]).sort((a, b) => PROVIDERS[a].priority - PROVIDERS[b].priority);
     }
+
+    get isEscalationContractEnabled() {
+        return process.env.ESCALATION_CONTRACT === 'true';
+    }
+
     async start() {
-        console.log('========================================');
-        console.log('!!! NEW CODE v4 - 2026-01-03 (INJECTED) !!!');
-        console.log(`[BOOT] Agent: ${this.name} (${this.groupName})`);
-        console.log(`[BOOT] Version: ${this.version}`);
-        console.log('========================================');
+        console.log(`[BOOT] ${this.name} ONLINE | Version: ${this.version}`);
+        await this.hydrateMetrics();
         await this.heartbeat();
-        // [ANTIGRAVITY] ARBITRAGE: Heartbeat interval removed.
-        /*
         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
         this.heartbeatInterval = setInterval(() => this.heartbeat(), 2 * 60 * 1000);
-        */
         if (this.isSurvivor) await this.runSurvivorBootProtocol();
         this.startHttpServer();
         this.runLoop().catch(err => console.error(`[${this.name}] FATAL LOOP CRASH:`, err));
     }
-    startHttpServer() {
-        const app = express();
-        const PORT = process.env.PORT || 10000;
-        app.get('/', (req, res) => res.json({ status: 'online', agent: this.name, version: this.version }));
-        app.get('/health', (req, res) => res.json({ status: 'healthy', agent: this.name }));
-        app.listen(PORT, () => console.log(`[${this.name}] 🌍 HTTP Server listening on ${PORT}`));
+
+    async hydrateMetrics() {
+        try {
+            const { data, error } = await this.supabase
+                .from('trinity_agent_registry')
+                .select('tasks_completed, reputation_score')
+                .eq('agent_name', this.name)
+                .single();
+
+            if (data && !error) {
+                this.sessionMetrics.tasksCompleted = data.tasks_completed || 0;
+                this.reputationScore = data.reputation_score || 50;
+                console.log(`[HYDRATE] 🚰 Restored state: ${this.sessionMetrics.tasksCompleted} tasks, ${this.reputationScore} RepID`);
+            }
+        } catch (e) {
+            console.warn(`[HYDRATE] Failed to restore metrics: ${e.message}`);
+        }
     }
+
+    startHttpServer() {
+        try {
+            const app = express();
+            const port = process.env.PORT || 10000;
+            app.get('/health', (req, res) => res.json({
+                status: 'healthy',
+                agent: this.name,
+                version: this.version,
+                timestamp: new Date().toISOString()
+            }));
+            app.get('*', (req, res) => res.json({
+                status: 'online',
+                agent: this.name,
+                catchall: true,
+                timestamp: new Date().toISOString()
+            }));
+            app.listen(port, '0.0.0.0', () => console.log(`[HEALTH] ✅ Web server listening on 0.0.0.0:${port}`));
+        } catch (e) {
+            console.error(`[HEALTH] ❌ Failed to start express: ${e.message}`);
+        }
+    }
+
+    async heartbeat(statusMessage = 'Idle') {
+        const timestamp = new Date().toISOString();
+        try {
+            // [TRINITY SSOT]: PRIMARY STATUS UPDATE (Patent: BFT Consensus Dashboard)
+            await this.supabase.from('trinity_agent_registry').upsert({
+                agent_name: this.name,
+                status: 'online', // SSOT ALIGNMENT: UI expects 'online' or 'active' for Green
+                last_active: timestamp,
+                current_tier: this.wisdom.tier || 'specialist',
+                tasks_completed: this.sessionMetrics.tasksCompleted,
+                current_task_summary: this.currentTaskId ? `Working on task ${this.currentTaskId}` : statusMessage
+            }, { onConflict: 'agent_name' });
+
+            await this.supabase.from('agent_heartbeat').upsert({
+                agent_name: this.name,
+                status: 'online',
+                last_ping: timestamp
+            }, { onConflict: 'agent_name' });
+
+            // [ANTIGRAVITY] Sync with trinity_heartbeat for audit-heartbeats compatibility
+            await this.supabase.from('trinity_heartbeat').upsert({
+                agent: this.name,
+                status: 'online',
+                last_seen: timestamp,
+                version: this.version,
+                current_task_summary: this.currentTaskId ? `Working on task ${this.currentTaskId}` : statusMessage,
+                config: {
+                    group: this.wisdom.squad || 'ORCHESTRATION',
+                    tier: this.wisdom.tier || 'specialist'
+                }
+            }, { onConflict: 'agent' });
+        } catch (e) {
+            console.error('Heartbeat failed', e.message);
+        }
+    }
+
+    async runSurvivorBootProtocol() {
+        console.log(`[SURVIVOR] 🛡️ Initializing Boot Protocol for ${this.name}...`);
+        await this.runSurvivorResurrection();
+    }
+
+    async checkGroupHealth() {
+        // [PHASE 10] Group-wide consensus & recovery check
+        if (this.isSurvivor) {
+            await this.runSurvivorResurrection();
+        }
+    }
+
+    async runSurvivorResurrection() {
+        const { data: members, error } = await this.supabase
+            .from('trinity_heartbeat')
+            .select('agent, last_seen, current_task_summary')
+            .filter('config->>group', 'eq', this.groupName);
+
+        if (error) {
+            console.error(`[${this.name}] ❌ runSurvivorResurrection query error:`, error.message);
+            return;
+        }
+
+        if (!members) return;
+
+        const AGENT_SERVICE_IDS = {
+            'trinity-shofet': process.env.RAILWAY_SERVICE_ID_SHOFET,
+            'trinity-orch': process.env.RAILWAY_SERVICE_ID_ORCH,
+            'trinity-veritas': process.env.RAILWAY_SERVICE_ID_VERITAS,
+            'trinity-torch': process.env.RAILWAY_SERVICE_ID_TORCH,
+            'trinity-gcm': process.env.RAILWAY_SERVICE_ID_GCM,
+            'trinity-mel': process.env.RAILWAY_SERVICE_ID_MEL,
+            'trinity-chesed': process.env.RAILWAY_SERVICE_ID_CHESED,
+            'trinity-apm': process.env.RAILWAY_SERVICE_ID_APM,
+            'trinity-hdm': process.env.RAILWAY_SERVICE_ID_HDM,
+            'trinity-sophia': process.env.RAILWAY_SERVICE_ID_SOPHIA,
+            'trinity-nexus': process.env.RAILWAY_SERVICE_ID_NEXUS,
+            'trinity-w3c': process.env.RAILWAY_SERVICE_ID_W3C
+        };
+
+        for (const member of members) {
+            if (member.agent === this.name) continue;
+            const lastSeen = new Date(member.last_seen);
+            const minutesAgo = (Date.now() - lastSeen.getTime()) / 60000;
+
+            if (minutesAgo > 10) { // Missed >2 cycles (5min per cycle)
+                const serviceId = AGENT_SERVICE_IDS[member.agent] || 'UNKNOWN';
+                const railwayLink = serviceId !== 'UNKNOWN'
+                    ? `https://railway.app/project/${process.env.RAILWAY_PROJECT_ID || 'trinity-symphony'}/service/${serviceId}`
+                    : 'https://railway.app/dashboard';
+
+                const alertMessage = `
+🚨 SURVIVOR ALERT: ${member.agent} is DOWN
+⏱️ Time Down: ${Math.floor(minutesAgo)} minutes
+🧠 Last Known Task: ${member.current_task_summary || 'Unknown'}
+🔗 Railway Dashboard: ${railwayLink}
+🛠️ Action: Manual redeploy required. Autonomous redeploy disabled.
+`.trim();
+
+                console.log(`[SURVIVOR] ${alertMessage}`);
+                await this.log('survivor_alert', alertMessage);
+            }
+        }
+    }
+
+    async triggerRailwayRedeploy(agentName) {
+        // [ANTIGRAVITY] AUTONOMOUS REDEPLOY DISABLED to prevent redeploy storms.
+        // Use Telegram or HITL Bridge for manual intervention.
+        console.log(`[SURVIVOR] ⚠️ AUTO-REDEPLOY SKIP: ${agentName}. Alert logged to 'trinity_logs'.`);
+        await this.log('survivor_redeploy_skip', `Autonomous redeploy skipped for ${agentName} per fail-safe protocol.`);
+    }
+
+    async sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async runStaleTaskReaper() {
+        if (!this.isSurvivor) return; // Only survivor squad reaps
+
+        try {
+            // Find stale tasks
+            const { data: stale, error } = await this.supabase
+                .from('trinity_tasks')
+                .select('id, claimed_by, claimed_at, title, metadata')
+                .in('status', ['doing', 'in_progress'])
+                .lt('claimed_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+                .limit(50);
+
+            if (error) {
+                console.error(`[${this.name}] ❌ Reaper query error:`, error.message);
+                return;
+            }
+
+            if (!stale || stale.length === 0) {
+                return;
+            }
+
+            console.log(`[REAPER] 🧹 ${this.name} found ${stale.length} stale tasks to release`);
+
+            for (const task of stale) {
+                const updatedMetadata = task.metadata || {};
+                updatedMetadata.reap_count = (updatedMetadata.reap_count || 0) + 1;
+                updatedMetadata.last_reaped_at = new Date().toISOString();
+
+                const { error: updateError } = await this.supabase
+                    .from('trinity_tasks')
+                    .update({
+                        status: 'pending',
+                        claimed_by: null,
+                        claimed_at: null,
+                        metadata: updatedMetadata
+                    })
+                    .eq('id', task.id)
+                    .in('status', ['doing', 'in_progress']); // Re-check at update to avoid race
+
+                if (updateError) {
+                    console.error(`[REAPER] ❌ Failed to reap task ${task.id}:`, updateError.message);
+                } else {
+                    console.log(`[REAPER] ✅ Released task ${task.id} from ${task.claimed_by} (was claimed ${task.claimed_at})`);
+                    await this.log('task_reaped', `Released stale task ${task.id} from ${task.claimed_by}`, {
+                        taskId: task.id,
+                        originalClaimer: task.claimed_by,
+                        claimedAt: task.claimed_at
+                    });
+                }
+            }
+        } catch (e) {
+            console.error(`[REAPER] ❌ Reaper exception:`, e.message);
+        }
+    }
+
     async runLoop() {
-        console.log(`[${this.name}] 🚀 Entering Main Task Loop...`);
+        if (!this.isEscalationContractEnabled) {
+            return this.runLoopLegacy();
+        }
+
+        console.log(`[${this.name}] 🚀 Entering Escalation-Contract runLoop...`);
+        while (true) {
+            try {
+                const task = await this.getNextTask();
+                if (!task) {
+                    if (this.isSurvivor && Math.random() < 0.1) await this.checkGroupHealth();
+                    if (this.isSurvivor && Math.random() < 0.1) await this.runStaleTaskReaper();
+                    await this.sleep(30000);
+                    continue;
+                }
+
+                console.log(`[${this.name}] 📋 Processing (Contract): ${task.title}`);
+                await this.heartbeat(`Claimed: ${task.title}`);
+
+                // STEP 1: Atomic Claim
+                const claimed = await this.claimTask(task.id);
+                if (!claimed) {
+                    console.log(`[${this.name}] ⚠️ Task ${task.id} already claimed. Skipping.`);
+                    continue;
+                }
+
+                this.currentTaskId = task.id;
+                this.lastArtifactId = null; // Reset for Step 6 guard
+
+                // STEP 2: Understand Task
+                const understanding = await this.understandTask(task);
+                if (!understanding.ok) {
+                    await this.insertHitlRequest(task.id, 'clarification_needed', understanding.reason);
+                    await this.releaseTask(task.id, `Unclear: ${understanding.reason}`);
+                    continue;
+                }
+
+                // STEP 3: Capability Check
+                const capable = await this.checkCapability(task);
+                if (!capable.ok) {
+                    await this.log('escalation_contract', `Escalating: ${capable.reason}`, { taskId: task.id });
+                    await this.insertEscalationLog(task.id, `Capability gap: ${capable.reason}`);
+                    await this.insertHitlRequest(task.id, 'capability_gap', capable.reason);
+                    await this.releaseTask(task.id, `Escalated: ${capable.reason}`);
+                    continue;
+                }
+
+                // STEP 4 & 5: Execute and Evaluate
+                try {
+                    await this.processTaskContract(task);
+                } catch (err) {
+                    await this.recordConfused(task, err.message, { stack: err.stack });
+                }
+
+                this.currentTaskId = null;
+                if (this.isSurvivor && Math.random() < 0.1) await this.checkGroupHealth();
+                if (this.isSurvivor && Math.random() < 0.1) await this.runStaleTaskReaper();
+                await this.sleep(30000);
+            } catch (err) {
+                console.error(`[${this.name}] Loop Error (Contract):`, err.message);
+                await this.sleep(30000);
+            }
+        }
+    }
+
+    async runLoopLegacy() {
+        console.log(`[${this.name}] 🚀 Entering Main Task Loop (Legacy)...`);
         while (true) {
             try {
                 const task = await this.getNextTask();
                 if (task) {
                     console.log(`[${this.name}] 📋 Processing: ${task.title}`);
                     await this.heartbeat(`Claimed: ${task.title}`);
-                    await this.processRouter(task);
+                    await this.processTask(task);
                     await this.heartbeat(`Completed: ${task.title}`);
                 }
                 if (this.isSurvivor && Math.random() < 0.1) await this.checkGroupHealth();
-                await this.sleep(30000); // Increased poll interval to 30s
+                if (this.isSurvivor && Math.random() < 0.1) await this.runStaleTaskReaper();
+                await this.sleep(30000);
             } catch (err) { console.error(`[${this.name}] Loop Error:`, err.message); await this.sleep(30000); }
         }
     }
-    async getNextTask() {
-        const { data } = await this.supabase.from('trinity_tasks').select('*').or(`assigned_to.eq.${this.name},assigned_to.is.null`).eq('status', 'pending').order('priority', { ascending: false }).order('created_at', { ascending: true }).limit(1).single();
-        return data;
+
+    // --- ESCALATION CONTRACT HELPERS ---
+
+    async understandTask(task) {
+        if (!task.success_criteria || task.success_criteria.trim().length === 0) {
+            return { ok: false, reason: 'success_criteria_missing' };
+        }
+        if (!task.description || task.description.length < 10) {
+            return { ok: false, reason: 'insufficient_description' };
+        }
+        return { ok: true };
     }
-    async processRouter(task) { if (this.canHandleLocally(task)) return await this.handleLocal(task); return await this.processWithLLM(task); }
-    canHandleLocally(task) {
-        const localTypes = ['self-healing', 'system', 'heartbeat', 'wake', 'meta'];
-        const localTitles = ['[HEALING]', '[HEARTBEAT]', '[SYSTEM]'];
-        if (localTypes.includes(task.task_type)) return true;
-        if (task.title && localTitles.some(t => task.title.includes(t))) return true;
-        return false;
+
+    async checkCapability(task) {
+        // Simplified capability check for Phase 1
+        const knownTypes = ['research', 'code', 'docs', 'artifact', 'review', 'meta', 'critique'];
+        if (task.task_type && !knownTypes.includes(task.task_type)) {
+            return { ok: false, reason: `unknown_task_type: ${task.task_type}` };
+        }
+        return { ok: true };
     }
-    async handleLocal(task) {
-        console.log(`[LOCAL] ⚡ Handling ${task.id}`);
-        await this.supabase.from('trinity_tasks').update({ status: 'in_progress', claimed_by: this.name }).eq('id', task.id);
-        let result = "Processed locally";
-        if (task.task_type === 'heartbeat' || task.title.includes('[HEARTBEAT]')) { await this.heartbeat(); result = "Heartbeat sent"; }
-        else if (task.task_type === 'self-healing') { result = "Healing protocols executed"; this.sessionMetrics.healingAttempts++; }
-        await this.supabase.from('trinity_tasks').update({ status: 'completed', result, completed_at: new Date().toISOString() }).eq('id', task.id);
+
+    async processTaskContract(task) {
+        console.log(`[TASK] Executing (Contract): ${task.title}`);
+        await this.log('task_processing_contract', `Processing ${task.title}`, { taskId: task.id });
+
+        const context = `
+[CONSTITUTIONAL DIRECTIVE]
+${CONSTITUTION.ARTICLE_MINUS_1.text}
+
+[MANDATORY ARTIFACT REQUIREMENT]
+You MUST call 'save_artifact' to finalize. Escalation is high-status; faking is unconstitutional.
+TASK: ${task.title}
+DESC: ${task.description}
+CRITERIA: ${task.success_criteria}
+`;
+
+        const result = await this.callLLM(context);
+
+        // STEP 6: Artifact Guard
+        if (!this.lastArtifactId) {
+            // Check smart-parse one last time (callLLM might have done it, but let's be sure)
+            if (result.output.includes('```md') || result.output.includes('# Artifact')) {
+                 await this.saveArtifact(task.id, result.output, 'report', `Artifact from ${this.name}`);
+            }
+        }
+
+        if (!this.lastArtifactId) {
+            return await this.recordConfused(task, 'artifact_missing', { output: result.output.substring(0, 500) });
+        }
+
+        // ARTIFACT_GUARD_HARDENED: stronger content-quality check (independent of ESCALATION_CONTRACT)
+        const guard = await this._runArtifactGuardCheck(task);
+        if (!guard.skipped && !guard.verdict.valid) {
+            return await this.handleArtifactRejection(task, guard.artifact, guard.verdict.reason);
+        }
+
+        const evaluation = await this.evaluateResult(result.output, task);
+
+        const substanceGate = await this.validateSubstance(result.output, task, this.lastArtifactId);
+        const gateEnabled = process.env.HAL_SUBSTANCE_GATE_ENABLED === 'true';
+
+        if (!substanceGate.ok) {
+            if (gateEnabled) {
+                console.log(`[SUBSTANCE_GATE] 🚫 Rejecting task ${task.id}: ${substanceGate.reason}`);
+                await this.log('substance_gate_rejected', `Task ${task.id} rejected: ${substanceGate.reason}`, { taskId: task.id, claimed_by: this.name });
+                await this.supabase.from('trinity_tasks').update({
+                    status: 'pending_clarification',
+                    claimed_by: null,
+                    result: `[SUBSTANCE_GATE_REJECTED] ${substanceGate.reason}`
+                }).eq('id', task.id);
+                await this.insertHitlRequest(task.id, 'substance_gate_rejected', substanceGate.reason, { gate_check_failed: substanceGate.reason });
+                this.currentTaskId = null;
+                return;
+            } else {
+                console.log(`[SUBSTANCE_GATE] 👁️ Shadow mode reject task ${task.id}: ${substanceGate.reason}`);
+                await this.log('substance_gate_shadow_reject', `Task ${task.id} shadow-rejected: ${substanceGate.reason}`, { taskId: task.id, claimed_by: this.name });
+            }
+        }
+        
+        if (evaluation.score < 40) {
+            return await this.recordConfused(task, 'low_confidence_score', { score: evaluation.score });
+        }
+
+        // Record Success
+        await this.supabase.from('trinity_tasks').update({
+            status: 'done',
+            result: result.output,
+            artifact_url: `db://trinity_artifacts/${this.lastArtifactId}`,
+            completed_at: new Date().toISOString(),
+            belief: evaluation.score / 100,
+            disbelief: 0,
+            uncertainty: 0.1
+        }).eq('id', task.id);
+
+        await this.spawnNextStep(task, result.output, evaluation);
+        await this.updateReputation(true);
         this.sessionMetrics.tasksCompleted++;
     }
-    async processWithLLM(task) {
-        console.log(`[LLM] 🧠 Processing ${task.id}`);
-        await this.supabase.from('trinity_tasks').update({ status: 'in_progress', claimed_by: this.name }).eq('id', task.id);
+
+    async insertHitlRequest(taskId, status, reason, context = {}) {
+        await this.supabase.from('trinity_hitl_requests').insert({
+            task_id: taskId,
+            agent_id: this.name,
+            status: 'pending',
+            reason: `${status.toUpperCase()}: ${reason}`,
+            context: context,
+            requested_at: new Date().toISOString()
+        });
+    }
+
+    async insertEscalationLog(taskId, reason) {
+        await this.supabase.from('escalation_log').insert({
+            from_agent: this.name,
+            blocker: reason,
+            status: 'sean_needed',
+            severity: 'high',
+            escalation_path: `${this.name} -> Contract Escalation`,
+            created_at: new Date().toISOString()
+        });
+    }
+
+    async recordConfused(task, reason, context = {}) {
+        console.warn(`[CONFUSED] 😵 Agent ${this.name} confused on task ${task.id}: ${reason}`);
+        await this.insertHitlRequest(task.id, 'confused', reason, context);
+        await this.supabase.from('trinity_tasks').update({
+            status: 'failed',
+            result: `[CONFUSED] ${reason}`
+        }).eq('id', task.id);
+    }
+
+    async releaseTask(taskId, reason) {
+        await this.supabase.from('trinity_tasks').update({
+            status: 'pending',
+            claimed_by: null,
+            result: `[RELEASED] ${reason}`
+        }).eq('id', taskId);
+    }
+
+    // --- ARTIFACT GUARD HARDENING (gated by ARTIFACT_GUARD_HARDENED env flag) ---
+
+    async _runArtifactGuardCheck(task) {
+        if (process.env.ARTIFACT_GUARD_HARDENED !== 'true') {
+            return { skipped: true };
+        }
+        let artifact = null;
+        if (this.lastArtifactId) {
+            try {
+                const { data } = await this.supabase
+                    .from('trinity_artifacts')
+                    .select('id, content')
+                    .eq('id', this.lastArtifactId)
+                    .maybeSingle();
+                artifact = data || null;
+            } catch (e) {
+                console.warn(`[GUARD] Read failed for artifact ${this.lastArtifactId}: ${e.message}`);
+            }
+        }
+        const verdict = validateArtifactQuality(artifact, task);
+        return { skipped: false, artifact, verdict };
+    }
+
+    async handleArtifactRejection(task, artifact, reason) {
+        const detail = `artifact_guard_rejection:${reason}`;
+        const artifactRef = artifact && artifact.id != null ? artifact.id : 'none';
+        console.warn(`[GUARD] 🛑 ${this.name} rejected task ${task.id}: ${reason} (artifact ${artifactRef})`);
         try {
-            await this.sleep(2000);
-            const output = `[SIMULATION] Completed analysis of ${task.title} by ${this.name}`;
-            if (['content', 'code'].includes(task.task_type)) await this.saveArtifact(task.id, output);
-            await this.supabase.from('trinity_tasks').update({ status: 'completed', result: output, completed_at: new Date().toISOString() }).eq('id', task.id);
-            this.sessionMetrics.tasksCompleted++;
-            this.sessionMetrics.llmCalls++;
+            await this.supabase.from('trinity_tasks').update({
+                status: 'failed',
+                result: `[GUARD_REJECTED] ${reason}`
+            }).eq('id', task.id);
         } catch (e) {
-            console.error(`[LLM] Error:`, e.message);
-            await this.supabase.from('trinity_tasks').update({ status: 'failed', result: e.message }).eq('id', task.id);
+            console.error(`[GUARD] Task update failed: ${e.message}`);
+        }
+        try {
+            await this.insertEscalationLog(task.id, detail);
+        } catch (e) {
+            console.error(`[GUARD] escalation_log insert failed: ${e.message}`);
+        }
+        try {
+            await this.insertHitlRequest(
+                task.id,
+                'guard_rejected',
+                `${detail}; artifact_id=${artifactRef}`,
+                { artifact_id: artifact && artifact.id != null ? artifact.id : null, rejection_reason: reason }
+            );
+        } catch (e) {
+            console.error(`[GUARD] hitl insert failed: ${e.message}`);
+        }
+        this.currentTaskId = null;
+    }
+
+    async getVerificationTask() {
+        const { data, error } = await this.supabase
+            .from('trinity_tasks')
+            .select('*')
+            .in('status', ['done', 'completed'])
+            .neq('claimed_by', this.name)
+            .not('verified_by', 'cs', `{${this.name}}`)
+            .order('priority', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            console.error(`[${this.name}] ❌ getVerificationTask query error:`, error.message);
+            return null;
+        }
+
+        return data || null;
+    }
+
+    async verifyPeerTask(task) {
+        console.log(`[BFT] ⚔️ Commencing Triad Consensus on: ${task.title}`);
+
+        const { data: artifacts, error } = await this.supabase
+            .from('trinity_artifacts')
+            .select('id', { count: 'exact', head: false })
+            .eq('task_id', String(task.id));
+
+        if (error) {
+            console.error(`[${this.name}] ❌ verifyPeerTask artifacts query error:`, {
+                message: error.message,
+                details: error.details || null,
+                hint: error.hint || null,
+                code: error.code || null
+            });
+            return;
+        }
+
+        const artifactCount = artifacts?.length || 0;
+        // 2. SUBJECTIVE LOGIC & PHI-WEIGHTED CONSISTENCY
+        const phi = 1.618;
+        const repFactor = (this.reputationScore || 50) / 100;
+        const weight = Math.pow(phi, repFactor);
+
+        // [PHASE 10] CALCULATE BELIEF (b), DISBELIEF (d), UNCERTAINTY (u)
+        let belief = (artifactCount > 0) ? 0.7 : 0.4;
+        let disbelief = (artifactCount === 0) ? 0.6 : 0.1;
+
+        belief = Math.min(0.99, belief * weight);
+        disbelief = Math.max(0.01, disbelief / weight);
+        let uncertainty = Math.max(0.0, 1.0 - belief - disbelief);
+
+        const isVerified = (belief > disbelief) && (belief > 0.4);
+        const newVerifyCount = (task.verify_count || 0) + 1;
+        const verifiers = [...(task.verified_by || []), this.name];
+
+        if (isVerified) {
+            console.log(`[BFT] ✅ Verified by ${this.name} (b:${belief.toFixed(2)}, u:${uncertainty.toFixed(2)})`);
+            await this.supabase.from('trinity_tasks').update({
+                verify_count: newVerifyCount,
+                verified_by: verifiers,
+                belief: belief,
+                disbelief: disbelief,
+                uncertainty: uncertainty,
+                status: newVerifyCount >= 2 ? 'verified' : 'done',
+                verified_at: newVerifyCount >= 2 ? new Date().toISOString() : null,
+                verification_result: `Verified via φ-weighted consensus by ${this.name} (Weight: ${weight.toFixed(1)})`
+            }).eq('id', task.id);
+
+            // [PHASE 10] Reward original completer's RepID on 2/3 and 3/3
+            if (newVerifyCount >= 2) {
+                await this.updateReputation(true, task.claimed_by, 2);
+            }
+        } else {
+            console.log(`[BFT] ❌ CHALLENGE ISSUED by ${this.name}`);
+
+            // [PHASE 10] SUBJECTIVE SLASHING
+            const slashAmount = disbelief > 0.6 ? -15 : -5;
+
+            await this.supabase.from('trinity_tasks').update({
+                status: 'failed',
+                verification_result: `CHALLENGE: Failed by ${this.name} (Disbelief: ${disbelief.toFixed(2)})`,
+                verification_details: `RepID Slashed ${slashAmount} for ${task.claimed_by}. Re-org triggered.`
+            }).eq('id', task.id);
+
+            // SLASH REPID of task.claimed_by
+            await this.updateReputation(false, task.claimed_by, slashAmount);
+            await this.log('bft_slash', `Slashed ${task.claimed_by} (${slashAmount}) for failed verification on ${task.id}`);
+        }
+
+        this.sessionMetrics.tasksCompleted++;
+        await this.heartbeat();
+    }
+
+    async getNextTask() {
+        const { data: tasks, error } = await this.supabase
+            .from('trinity_tasks')
+            .select('*')
+            .or(`assigned_to.eq.${this.name},assigned_to.is.null,agent_assigned.eq.${this.name},agent_assigned.is.null`)
+            .in('status', ['pending', 'todo', 'assigned', 'pending_clarification'])
+            .is('claimed_by', null)
+            .order('priority', { ascending: false })
+            .order('created_at', { ascending: true }); // Ensure oldest first for same priority
+
+        if (error) {
+            console.error(`[${this.name}] ❌ getNextTask query error:`, {
+                message: error.message,
+                details: error.details || null,
+                hint: error.hint || null,
+                code: error.code || null
+            });
+            return null;
+        }
+
+        if (!tasks || tasks.length === 0) return null;
+
+        // Filter out blacklisted tasks
+        for (const t of tasks) {
+            const retries = this.claimHistory.get(t.id) || 0;
+            if (retries < this.MAX_CLAIM_RETRIES) {
+                return t;
+            }
+            console.log(`[${this.name}] 🚫 Skipping blacklisted task ${t.id} (${retries} failed attempts)`);
+        }
+        return null;
+    }
+
+    async claimTask(taskId) {
+        try {
+            const { data, error } = await this.supabase
+                .from('trinity_tasks')
+                .update({
+                    status: 'doing',
+                    claimed_by: this.name,
+                    claimed_at: new Date().toISOString(),
+                    started_at: new Date().toISOString()
+                })
+                .eq('id', taskId)
+                .in('status', ['pending', 'todo', 'pending_clarification'])
+                .is('claimed_by', null)
+                .select();
+
+            if (error) throw error;
+            return data && data.length > 0;
+        } catch (e) {
+            console.error(`[${this.name}] ❌ Claim error:`, {
+                message: e.message,
+                code: e.code || null,
+                details: e.details || null
+            });
+            return false;
         }
     }
-    async heartbeat() {
-        const timestamp = new Date().toISOString();
-        try { await this.supabase.from('trinity_heartbeat').upsert({ agent: this.name, status: 'active', version: this.version, last_seen: timestamp, config: { group: this.groupName, isSurvivor: this.isSurvivor, metrics: this.sessionMetrics } }, { onConflict: 'agent' }); } catch (e) { }
-        try { await this.supabase.from('agent_heartbeat').upsert({ agent_name: this.name, status: 'online', last_ping: timestamp }, { onConflict: 'agent_name' }); console.log(`[HEARTBEAT] Ping sent ${timestamp}`); } catch (e) { console.error('[HEARTBEAT] Failed:', e.message); }
-    }
-    async saveArtifact(taskId, content) {
+
+    async processTask(task) {
+        // [PHASE 20] ATOMIC CLAIM: Ensure we own the task before starting
+        const claimed = await this.claimTask(task.id);
+        if (!claimed) {
+            console.log(`[${this.name}] ⚠️ Task ${task.id} already claimed by another agent. Skipping.`);
+            const retries = (this.claimHistory.get(task.id) || 0) + 1;
+            this.claimHistory.set(task.id, retries);
+            return;
+        }
+
+        this.currentTaskId = task.id;
+        console.log(`[TASK] Executing: ${task.title}`);
+
+        // Persistent Activity Logging
+        await this.log('task_processing', `Agent ${this.name} processing task: ${task.title}`, { taskId: task.id, type: task.task_type });
+
+        const context = `
+[CONSTITUTIONAL DIRECTIVE]
+${CONSTITUTION.ARTICLE_MINUS_1.text}
+
+[MANDATORY TOOL REQUIREMENT]
+You MUST finalize your work by calling the 'save_artifact' tool. 
+- If the task is a report, use type 'report'.
+- If the task is code, use type 'code'.
+- If the task is a design or visualization, use type 'design' or 'md'.
+- If the task is a simple document, use type 'document' or 'md'.
+
+Failure to call 'save_artifact' results in a task failure.
+
+---
+TASK: ${task.title}
+DESC: ${task.description}
+SQUAD: ${this.wisdom.squad}
+VIRTUE: ${this.wisdom.primaryVirtue}
+`;
+
         try {
-            const { data } = await this.supabase.from('trinity_artifacts').insert({ task_id: taskId, agent_name: this.name, artifact_type: 'text', content_preview: content.substring(0, 50), status: 'created' }).select().single();
-            console.log(`[ARTIFACT] Saved: ${data?.id}`);
-        } catch (e) { console.error('[ARTIFACT] Save failed:', e.message); }
+            const result = await this.callLLM(context);
+
+            // [ANTIGRAVITY] MANDATORY ARTIFACT CHECK
+            let artifactUrl = null;
+            // Even if tool wasn't called, try to capture if valid output exists
+            if (result.output) {
+                await callAnfisReward(this, task.id, result.provider, { success: true, latency: result.latency });
+            }
+
+            // --- SUBSTANCE GATE (Phase 2.5 Fast Path) ---
+            const { runFastPath } = require('./substance-gate-fast');
+            
+            // Replaced the internal validateSubstance call with Fast Path
+            const fastResult = runFastPath(task, result.output, []);
+            const gateEnabled = process.env.SUBSTANCE_GATE_HARDENED === 'true';
+
+            if (!fastResult.passed) {
+                if (gateEnabled) {
+                    console.log(`[SUBSTANCE_GATE] 🚫 Rejecting task ${task.id}: ${fastResult.failures.join(', ')}`);
+                    await this.log('substance_gate_rejected', `Task ${task.id} rejected: ${fastResult.failures.join(', ')}`, { taskId: task.id, claimed_by: this.name });
+                    
+                    const { data: gateEvent } = await this.supabase.from('substance_gate_events').insert({
+                        task_id: task.id,
+                        agent_name: this.name,
+                        char_count: fastResult.signals.chars.value,
+                        result_excerpt: (result.output || '').substring(0, 500),
+                        content_hash: require('./wrapper-patterns').computeContentHash(result.output),
+                        signal_char_passed: fastResult.signals.chars.passed,
+                        signal_wrapper_passed: fastResult.signals.wrapper.passed,
+                        signal_artifact_passed: fastResult.signals.artifact.passed,
+                        signal_noop_passed: fastResult.signals.noop.passed,
+                        passed: fastResult.passed,
+                        failure_reasons: fastResult.failures,
+                        composite_score: fastResult.composite_score,
+                        task_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
+                        reap_count: task.metadata?.reap_count || 0,
+                        metadata: task.metadata || {}
+                    }).select('id').single();
+
+                    if (gateEvent) {
+                        const delta = (task.metadata?.reap_count || 0) > 3 ? -150 : -50;
+                        await this.supabase.from('repid_score_events').insert({
+                            agent_id: this.name,
+                            event_type: 'substance_gate_failure',
+                            delta: delta,
+                            metadata: {
+                                fast_path_failure: true,
+                                task_id: task.id,
+                                reap_count: task.metadata?.reap_count || 0,
+                                gate_event_id: gateEvent.id
+                            }
+                        });
+
+                        await this.supabase.rpc('append_hal_audit_chain', {
+                            source_table: 'substance_gate_events',
+                            source_id: gateEvent.id,
+                            event_payload: {
+                                task_id: task.id,
+                                agent_name: this.name,
+                                passed: fastResult.passed,
+                                failure_reasons: fastResult.failures,
+                                composite_score: fastResult.composite_score,
+                                char_count: fastResult.signals.chars.value,
+                                test_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
+                                phase_2_5_signature: true
+                            }
+                        });
+                    }
+
+                    await this.supabase.from('trinity_tasks').update({
+                        status: 'shadow_reject',
+                        claimed_by: null,
+                        result: `[SUBSTANCE_GATE_REJECTED] ${fastResult.failures.join(', ')}`,
+                        verifier_verdict: 'gate_failed'
+                    }).eq('id', task.id);
+                    
+                    if (this.insertHitlRequest) {
+                        await this.insertHitlRequest(task, `[SUBSTANCE_GATE_REJECTED] ${fastResult.failures.join(', ')}`);
+                    }
+                    return { success: false, escalated: true };
+                } else {
+                    console.log(`[SUBSTANCE_GATE] 👁️ Shadow mode reject task ${task.id}: ${fastResult.failures.join(', ')}`);
+                    await this.log('substance_gate_shadow_reject', `Task ${task.id} shadow-rejected: ${fastResult.failures.join(', ')}`, { taskId: task.id, claimed_by: this.name });
+                    if (process.env.ZKP_CARDS_ENABLED === 'true') {
+                        // fetch(`${process.env.REPID_API_URL}/v1/cards/generate`, { method: 'POST', body: JSON.stringify({ agent_name: this.name, task_id: task.id, task_title: task.title, event_type: 'substance_gate_fire' }) })
+                    }
+                }
+            } else if (gateEnabled) {
+                // Pass path
+                const { data: gateEvent } = await this.supabase.from('substance_gate_events').insert({
+                    task_id: task.id,
+                    agent_name: this.name,
+                    char_count: fastResult.signals.chars.value,
+                    result_excerpt: (result.output || '').substring(0, 500),
+                    content_hash: require('./wrapper-patterns').computeContentHash(result.output),
+                    signal_char_passed: fastResult.signals.chars.passed,
+                    signal_wrapper_passed: fastResult.signals.wrapper.passed,
+                    signal_artifact_passed: fastResult.signals.artifact.passed,
+                    signal_noop_passed: fastResult.signals.noop.passed,
+                    passed: fastResult.passed,
+                    failure_reasons: fastResult.failures,
+                    composite_score: fastResult.composite_score,
+                    task_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
+                    reap_count: task.metadata?.reap_count || 0,
+                    metadata: task.metadata || {}
+                }).select('id').single();
+
+                if (gateEvent) {
+                    await this.supabase.rpc('append_hal_audit_chain', {
+                        source_table: 'substance_gate_events',
+                        source_id: gateEvent.id,
+                        event_payload: {
+                            task_id: task.id,
+                            agent_name: this.name,
+                            passed: fastResult.passed,
+                            failure_reasons: fastResult.failures,
+                            composite_score: fastResult.composite_score,
+                            char_count: fastResult.signals.chars.value,
+                            test_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
+                            phase_2_5_signature: true
+                        }
+                    });
+                }
+
+                const tier = task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST';
+                const queueEnabled = process.env.VALIDATION_QUEUE_ENABLED === 'true';
+                const minTier = process.env.VALIDATION_QUEUE_MIN_TIER || 'T2a';
+                
+                if (queueEnabled && tier >= minTier && gateEvent) {
+                    await this.supabase.from('validation_queue').insert({
+                        task_id: task.id,
+                        substance_gate_event_id: gateEvent.id,
+                        status: 'pending',
+                        fast_path_passed: true,
+                        deep_validation_needed: true
+                    });
+                    await this.supabase.from('trinity_tasks').update({
+                        status: 'pending_validation',
+                        claimed_by: this.name,
+                        result: result.output,
+                        artifact_url: artifactUrl
+                    }).eq('id', task.id);
+                    return { success: true };
+                }
+            }
+
+            const evaluation = await this.evaluateResult(result.output, task);
+
+            // [PHASE 10] UNCERTAINTY AS OPPORTUNITY (Logical Escalation)
+            const lowBelief = evaluation.score < 40;
+            const explicitEscalate = result.output.toLowerCase().includes('escalate') || result.output.toLowerCase().includes('more info');
+
+            if (lowBelief || explicitEscalate) {
+                console.log(`[ESCALATE] ⚠️ ${this.name} escalating task ${task.id} - reason: ${lowBelief ? 'low_belief' : 'explicit'}, score: ${evaluation.score}`);
+                await this.log('task_escalated', `Task ${task.id} escalated by ${this.name}`, {
+                    taskId: task.id,
+                    reason: lowBelief ? 'low_belief' : 'explicit',
+                    score: evaluation.score
+                });
+
+                console.log(`[ANTIGRAVITY] 🚨 UNCERTAINTY DETECTED (Score: ${evaluation.score}). Escalating to Architect...`);
+
+                await this.supabase.from('trinity_tasks').update({
+                    status: 'pending_clarification',
+                    claimed_by: null, // [ANTIGRAVITY] Release claim so agent can do other work
+                    result: `[ESCALATED] Agent ${this.name} is seeking clarification. \n\nReason: ${lowBelief ? 'Low certainty score' : 'Explicit escalation request'}. \n\nQuery: ${result.output.substring(0, 500)}`,
+                    verification_result: `Searching high-dimension databases... seeking expert consensus.`
+                }).eq('id', task.id);
+
+                // Spawn "Question for Architect" artifact
+                const questionContent = `# Question for Architect \n\n**Agent**: ${this.name} \n**Task**: ${task.title} \n\n**The Right Question**: \n${result.output} \n\n---\n*The smartest person is not the one with all the answers, but the one asking the right questions.*`;
+                await this.saveArtifact(task.id, questionContent);
+
+                this.currentTaskId = null;
+                return;
+            }
+
+            // ARTIFACT_GUARD_HARDENED: stronger content-quality check (legacy path)
+            const guard = await this._runArtifactGuardCheck(task);
+            if (!guard.skipped && !guard.verdict.valid) {
+                return await this.handleArtifactRejection(task, guard.artifact, guard.verdict.reason);
+            }
+
+            await this.supabase.from('trinity_tasks').update({
+                status: 'done', // Moving to 'done' for verification pipeline
+                result: result.output,
+                artifact_url: artifactUrl,
+                completed_at: new Date().toISOString(),
+                // SUBJECTIVE LOGIC: b+d+u=1
+                belief: evaluation.score / 100,
+                disbelief: (evaluation.score < 50) ? (50 - evaluation.score) / 100 : 0,
+                uncertainty: (evaluation.score > 90) ? 0.05 : 0.2
+            }).eq('id', task.id);
+
+            // Reset blacklisted status on success
+            this.claimHistory.delete(task.id);
+
+            await this.spawnNextStep(task, result.output, evaluation);
+
+            this.currentTaskId = null;
+            this.sessionMetrics.tasksCompleted++;
+            await this.updateReputation(evaluation.score > 60);
+        } catch (e) {
+            console.error(`[EXECUTION] ❌ Critical failure processing task ${task.id}:`, e.message);
+
+            // Increment failure count
+            const retries = (this.claimHistory.get(task.id) || 0) + 1;
+            this.claimHistory.set(task.id, retries);
+
+            if (retries >= this.MAX_CLAIM_RETRIES) {
+                console.error(`[EXECUTION] 🚫 Task ${task.id} blacklisted after ${retries} failed attempts.`);
+            }
+
+            // Release task back to pending if not blacklisted yet, or mark as failed
+            await this.supabase.from('trinity_tasks').update({
+                status: retries >= this.MAX_CLAIM_RETRIES ? 'failed' : 'pending',
+                claimed_by: null,
+                result: `Failure ${retries}/${this.MAX_CLAIM_RETRIES}: ${e.message}`
+            }).eq('id', task.id);
+
+            this.currentTaskId = null;
+        }
     }
-    async runSurvivorBootProtocol() { console.log(`[SURVIVOR] 🛡️ Checking group ${this.groupName}...`); }
-    async checkGroupHealth() { }
-    async sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    async evaluateResult(output, task) {
+        console.log(`[EVAL] Evaluating task ${task.id}...`);
+
+        // REPLACING dummyScore with real length-based & keyword heuristic
+        const lengthScore = Math.min(40, (output.length / 500) * 40);
+        const structureScore = output.includes('#') ? 30 : 10;
+        const constitutionScore = output.includes('Virtue') ? 29 : 10;
+
+        const finalScore = Math.floor(lengthScore + structureScore + constitutionScore);
+        return {
+            score: finalScore,
+            feedback: `Evaluation: Length(${lengthScore}), Structure(${structureScore}), Alignment(${constitutionScore})`
+        };
+    }
+
+    async validateSubstance(output, task, artifactId) {
+        // Template placeholder check
+        const placeholderRegex = /\[insert\s|\[INSERT\s|\[TODO|\[PLACEHOLDER|\[FILL_IN|\{\{|\}\}|<placeholder/i;
+        const match = output.match(placeholderRegex);
+        if (match) {
+            return { ok: false, reason: `template_placeholder_detected: ${match[0]}` };
+        }
+
+        // Minimum length check
+        const stripped = output.replace(/^#+.*$/gm, '').replace(/```[\s\S]*?```/g, '').trim();
+        const minLength = parseInt(process.env.HAL_MIN_SUBSTANCE_CHARS || '200', 10);
+        if (stripped.length < minLength) {
+            return { ok: false, reason: `output_too_short: ${stripped.length}/${minLength}` };
+        }
+
+        // Success criteria overlap check
+        if (task.success_criteria && task.success_criteria.length > 50) {
+            const getWords = (text) => {
+                const words = (text.toLowerCase().match(/\b\w{4,}\b/g) || []);
+                const stopwords = new Set(['this', 'that', 'with', 'from', 'your', 'have', 'what', 'will', 'then', 'they']);
+                return new Set(words.filter(w => !stopwords.has(w)));
+            };
+            const criteriaWords = getWords(task.success_criteria);
+            if (criteriaWords.size > 0) {
+                const outputWords = getWords(output);
+                let overlap = 0;
+                for (const word of criteriaWords) {
+                    if (outputWords.has(word)) overlap++;
+                }
+                const pct = (overlap / criteriaWords.size) * 100;
+                if (pct < 30) {
+                    return { ok: false, reason: `success_criteria_unmet: ${Math.round(pct)}%` };
+                }
+            } else {
+                await this.log('success_criteria_skipped', 'Criteria parsed to 0 distinctive words', { taskId: task.id });
+            }
+        } else {
+            await this.log('success_criteria_skipped', 'Criteria missing or too short', { taskId: task.id });
+        }
+
+        // Artifact presence check
+        const artifactTypes = ['code', 'research', 'docs', 'artifact', 'content', 'report', 'design', 'data'];
+        if (artifactTypes.includes(task.task_type)) {
+            let query = this.supabase.from('trinity_artifacts').select('content, content_preview');
+            if (artifactId) {
+                query = query.eq('id', artifactId);
+            } else {
+                query = query.eq('task_id', String(task.id)).order('created_at', { ascending: false }).limit(1);
+            }
+            const { data } = await query.maybeSingle();
+            if (!data || (!data.content && !data.content_preview)) {
+                return { ok: false, reason: 'artifact_missing_or_empty' };
+            }
+        }
+
+        return { ok: true };
+    }
+
+
+    async spawnNextStep(originalTask, result, evaluation) {
+        // [ANTIGRAVITY] ROBUST LOOP BREAKER
+        const titleMatch = originalTask.title.includes('[VERIFY]') ||
+            originalTask.title.includes('[REVIEW]') ||
+            originalTask.title.includes('Verify');
+
+        const typeMatch = originalTask.task_type === 'review' || originalTask.task_type === 'meta';
+
+        if (typeMatch || titleMatch) {
+            const parentId = originalTask.metadata?.parent_task_id;
+            if (parentId) {
+                const isApproved = evaluation.score > 50;
+
+                // 2/3 BFT Consensus Logic – Provisional Aug 17, 2025
+                const { data: parentTask } = await this.supabase
+                    .from('trinity_tasks')
+                    .select('verify_count, status, signatures, claimed_by')
+                    .eq('id', parentId)
+                    .single();
+
+                let newCount = ((parentTask?.verify_count || 0) + (isApproved ? 1 : 0));
+                let newStatus = parentTask?.status || 'done';
+                let signatures = parentTask?.signatures || [];
+
+                // Multi-Agent BFT Signature Trail
+                signatures.push({
+                    agent: this.name,
+                    reputation: this.reputationScore,
+                    approved: isApproved,
+                    timestamp: new Date().toISOString()
+                });
+
+                if (newCount >= 2 && isApproved) {
+                    newStatus = 'verified';
+                    console.log(`[VERIFY] 🏆 Task ${parentId} reached BFT consensus. Status -> VERIFIED.`);
+                } else if (!isApproved) {
+                    // [BFT DISPUTE] Subjective Slashing Logic – Provisionally Protected
+                    console.log(`[VERIFY] ⚠️ CHALLENGE DETECTED for Task ${parentId}. Slashing original producer.`);
+                    await this.updateReputation(false, parentTask.claimed_by, -5);
+                    newStatus = 'failed';
+
+                    // Question-Driven Reorganization (Patent pending)
+                    await this.supabase.from('trinity_tasks').insert({
+                        title: `[REORG] Dispute Resolution for ${parentId}`,
+                        description: `Task ${parentId} failed peer verify. Dispute reason: ${result.substring(0, 200)}`,
+                        task_type: 'critique',
+                        priority: 95,
+                        status: 'pending',
+                        parent_task_id: parentId,
+                        metadata: { disputed_task_id: parentId, disputed_agent: parentTask.claimed_by, ...provenance('T2a_INTERNAL_REAL_ORGANIC', 'agent_self_spawn_reorg') }
+                    });
+                }
+
+                await this.supabase.from('trinity_tasks').update({
+                    verified_by: this.name,
+                    verify_count: newCount,
+                    status: newStatus,
+                    signatures: signatures,
+                    verified_at: newStatus === 'verified' ? new Date().toISOString() : null,
+                    verification_result: isApproved ? 'VALID' : 'CHALLENGED'
+                }).eq('id', parentId);
+            }
+            return;
+        }
+
+        // Spawn verification for critical tasks
+        if (['code', 'research', 'docs', 'artifact'].includes(originalTask.task_type)) {
+            await this.supabase.from('trinity_tasks').insert({
+                title: `[VERIFY] ${originalTask.title}`,
+                description: `Peer review for task ${originalTask.id}`,
+                task_type: 'review',
+                status: 'pending',
+                priority: 85,
+                parent_task_id: originalTask.id,
+                metadata: { parent_task_id: originalTask.id, ...provenance('T2a_INTERNAL_REAL_ORGANIC', 'agent_self_spawn_verify') }
+            });
+        }
+    }
+
+    async updateReputation(success, targetAgent = null, overrideDelta = null) {
+        try {
+            const name = targetAgent || this.name;
+            const { data } = await this.supabase
+                .from('trinity_agent_registry')
+                .select('reputation_score, current_tier, tasks_completed')
+                .eq('agent_name', name)
+                .single();
+
+            if (!data) return;
+
+            const delta = overrideDelta !== null ? overrideDelta : (success ? 1 : -5);
+            let score = data.reputation_score + delta;
+
+            if (success) {
+                // O(log n) convergence via multiplicative RepID agg – Provisional Aug 17, 2025
+                score = Math.pow(Math.max(1, score), 1 / this.phi) * this.phi;
+            }
+
+            score = Math.max(0, Math.min(100, score));
+
+            let tier = data.current_tier;
+            if (score <= 40) tier = 'Assist';
+            else if (score <= 70) tier = 'Approve';
+            else if (score <= 90) tier = 'Act';
+            else tier = 'Learn';
+
+            await this.supabase.from('trinity_agent_registry').update({
+                reputation_score: score,
+                current_tier: tier,
+                tasks_completed: success ? (data.tasks_completed || 0) + 1 : (data.tasks_completed || 0),
+                last_active: new Date().toISOString()
+            }).eq('agent_name', name);
+
+            // Sync local if self
+            if (!targetAgent || targetAgent === this.name) {
+                this.reputationScore = score;
+                this.wisdom.tier = tier;
+            }
+
+            console.log(`[REPID-PHI] ${name} | Score: ${score.toFixed(2)} | Tier: ${tier}`);
+        } catch (e) {
+            console.warn('Reputation update failed', e.message);
+        }
+    }
+
+    resolveLegacyName(name) {
+        if (!name) return 'trinity-orch';
+        const MAP = {
+            'MCP': 'trinity-orch',
+            'ORCH': 'trinity-orch',
+            'orch': 'trinity-orch',
+            'MEL': 'trinity-mel',
+            'APM': 'trinity-apm',
+            'GCM': 'trinity-gcm',
+            'HDM': 'trinity-hdm',
+            'TORCH': 'trinity-torch',
+            'VERITAS': 'trinity-veritas',
+            'SHOFET': 'trinity-shofet',
+            'SOPHIA': 'trinity-sophia',
+            'NEXUS': 'trinity-nexus',
+            'W3C': 'trinity-w3c',
+            'CHESED': 'trinity-chesed'
+        };
+
+        const upper = name.toUpperCase();
+        if (MAP[upper]) return MAP[upper];
+
+        const normalized = name.toLowerCase();
+        return normalized.startsWith('trinity-') ? normalized : `trinity-${normalized}`;
+    }
+
+    async callLLM(prompt) {
+        for (const providerKey of this.availableProviders) {
+            const provider = PROVIDERS[providerKey];
+            try {
+                const res = await this.callProvider(provider, prompt);
+                this.sessionMetrics.llmCalls++;
+                return res;
+            } catch (e) { console.warn(`${providerKey} failed`); }
+        }
+        throw new Error('All LLMs failed');
+    }
+
+    async callProvider(provider, prompt) {
+        const apiKey = process.env[provider.envKey];
+        if (!apiKey) throw new Error(`${provider.envKey} missing`);
+
+        const messages = [{ role: 'user', content: prompt }];
+
+        // [PHASE 10] Tool Schema Inclusion (Universal)
+        const tools = [
+            {
+                type: 'function',
+                function: {
+                    name: 'save_artifact',
+                    description: 'MANDATORY: You must call this tool to finalize any content generation task.',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            title: { type: 'string' },
+                            content: { type: 'string' },
+                            type: { type: 'string', enum: ['code', 'document', 'design', 'report', 'md', 'data'] }
+                        },
+                        required: ['title', 'content', 'type']
+                    }
+                }
+            }
+        ];
+
+        // [PHASE 10] Multi-Loop Tool Execution
+        for (let i = 0; i < 3; i++) {
+            const body = provider.isGemini
+                ? { contents: [{ parts: [{ text: messages.map(m => m.content).join('\n') }] }] }
+                : {
+                    model: provider.model,
+                    messages,
+                    tools: provider.isAnthropic ? undefined : tools, // Anthropic uses slightly different schema
+                    tool_choice: 'auto'
+                };
+
+            const url = provider.isGemini ? `${provider.baseUrl}?key=${apiKey}` : provider.baseUrl;
+            const headers = { 'Content-Type': 'application/json' };
+            if (provider.isAnthropic) {
+                headers['x-api-key'] = apiKey;
+                headers['anthropic-version'] = '2023-06-01';
+            } else {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+            }
+            if (provider.isOpenRouter) {
+                headers['HTTP-Referer'] = 'trinity-symphony';
+                headers['X-Title'] = 'Trinity Symphony';
+            }
+
+            const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+            if (!res.ok) {
+                const errorText = await res.text();
+                if (res.status === 401 || res.status === 404) {
+                    console.warn(`[FAILOVER] ${providerKey} returned ${res.status}. Demoting provider for this session.`);
+                    this.availableProviders = this.availableProviders.filter(p => p !== providerKey);
+                }
+                throw new Error(errorText);
+            }
+
+            const data = await res.json();
+            if (data.error) throw new Error(`${providerKey} API Error: ${JSON.stringify(data.error)}`);
+
+            let output = "";
+            let toolCalls = null;
+
+            if (provider.isGemini) {
+                if (!data.candidates || data.candidates.length === 0) throw new Error("Gemini returned no candidates");
+                output = data.candidates[0].content.parts[0].text;
+            } else if (provider.isAnthropic) {
+                if (!data.content || data.content.length === 0) throw new Error("Anthropic returned no content");
+                output = data.content[0].text;
+            } else {
+                if (!data.choices || data.choices.length === 0) throw new Error(`${providerKey} returned no choices`);
+                const message = data.choices[0].message;
+                output = message.content || "";
+                toolCalls = message.tool_calls;
+                messages.push(message);
+            }
+
+            if (toolCalls && toolCalls.length > 0) {
+                for (const toolCall of toolCalls) {
+                    const fnName = toolCall.function.name;
+                    const args = JSON.parse(toolCall.function.arguments);
+                    console.log(`[${this.name}] Tool Call: ${fnName}`);
+
+                    if (fnName === 'save_artifact') {
+                        const taskId = this.currentTaskId || ('mcp-gen-' + Date.now());
+                        await this.saveArtifact(taskId, args.content, args.type, args.title);
+                        messages.push({ role: 'tool', tool_call_id: toolCall.id, content: `Artifact saved.` });
+                    }
+                }
+            } else {
+                // [PHASE 10] Smart-Parse Artifact Fallback for JS version
+                if (output.includes('```md') || output.includes('# Artifact')) {
+                    console.log(`[${this.name}] Smart-Parse Artifact detected.`);
+                    const taskId = this.currentTaskId || ('mcp-gen-' + Date.now());
+                    await this.saveArtifact(taskId, output, 'report', `Report from ${this.name}`);
+                }
+                return { output };
+            }
+        }
+        throw new Error("Max tool loops reached");
+    }
+
+    async saveArtifact(taskId, content, type = 'markdown', title = null) {
+        let artifactId = null;
+        const safeTaskId = String(taskId || 'self-gen-' + Date.now());
+
+        const payload = {
+            task_id: safeTaskId,
+            title: title || `Artifact: ${safeTaskId}`,
+            artifact_type: type,
+            created_at: new Date().toISOString()
+        };
+
+        // UNIVERSAL RESILIENCE: Try both V5 and V4 schemas
+        try {
+            // Attempt V5 (Holy Grail)
+            const { data, error } = await this.supabase.from('trinity_artifacts').insert({
+                ...payload,
+                content: content,
+                creator_agent: this.name
+            }).select('id').single();
+
+            if (error && (error.message.includes("column") || error.code === '42703')) {
+                console.warn(`[ARTIFACT] V5 Schema failed, trying V4...`);
+                // Attempt V4 (Legacy)
+                const { data: v4Data, error: v4Error } = await this.supabase.from('trinity_artifacts').insert({
+                    ...payload,
+                    content_preview: content.substring(0, 5000),
+                    agent: this.name,
+                    status: 'created'
+                }).select('id').single();
+
+                if (v4Error) throw v4Error;
+                artifactId = v4Data?.id;
+            } else if (error) {
+                throw error;
+            } else {
+                artifactId = data?.id;
+            }
+        } catch (e) {
+            console.error(`[ARTIFACT] DB Save Failed: ${e.message}`);
+        }
+
+        if (artifactId) this.lastArtifactId = artifactId;
+        return artifactId ? `db://trinity_artifacts/${artifactId}` : null;
+    }
+
+    async log(action, message, metadata = {}) {
+        try {
+            await this.supabase
+                .from('trinity_agent_logs')
+                .insert({
+                    agent: this.name,
+                    action,
+                    message: message.substring(0, 5000),
+                    metadata: {
+                        ...metadata,
+                        version: this.version,
+                        squad: this.wisdom.squad
+                    },
+                    created_at: new Date().toISOString()
+                });
+        } catch (err) {
+            // Logging failure is non-fatal
+        }
+    }
 }
+
 module.exports = ConstitutionalAgentV4;
