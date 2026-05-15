@@ -4,6 +4,7 @@
  * Injected to solve build isolation/module resolution issues on Railway.
  */
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
 const express = require('express');
 
 class ConstitutionalAgentV4 {
@@ -29,7 +30,8 @@ class ConstitutionalAgentV4 {
             console.error(`[${this.name}] CRITICAL: No Supabase Credentials!`);
             process.exit(1);
         }
-        this.supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        this.supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { transport: WebSocket } });
+        console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
     }
 
     determineGroup(name) {

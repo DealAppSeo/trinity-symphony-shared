@@ -12,6 +12,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 
@@ -23,7 +24,9 @@ let supabase = null;
 
 function getSupabase() {
   if (!supabase && supabaseKey) {
-    supabase = createClient(supabaseUrl, supabaseKey);
+    supabase = createClient(supabaseUrl, supabaseKey, { realtime: { transport: WebSocket } });
+
+    console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
   }
   return supabase;
 }
