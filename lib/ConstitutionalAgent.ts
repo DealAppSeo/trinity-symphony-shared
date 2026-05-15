@@ -1127,7 +1127,83 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                     await this.log('substance_gate_rejected', `Task ${task.id} rejected: ${fastResult.failures.join(', ')}`, { taskId: task.id, claimed_by: this.name });
                     
                     // Supabase writes directly to mimic the Engine's behavior since we're in the agent
-                    const { data: gateEvent } = await this.supabase.from('substance_gate_events').insert({
+                    try {
+                        const { data: gateEvent, error: gateErr } = await this.supabase.from('substance_gate_events').insert({
+                            task_id: task.id,
+                            agent_name: this.name,
+                            char_count: fastResult.signals.chars.value,
+                            result_excerpt: (result.output || '').substring(0, 500),
+                            content_hash: require('./wrapper-patterns').computeContentHash(result.output),
+                            signal_char_passed: fastResult.signals.chars.passed,
+                            signal_wrapper_passed: fastResult.signals.wrapper.passed,
+                            signal_artifact_passed: fastResult.signals.artifact.passed,
+                            signal_noop_passed: fastResult.signals.noop.passed,
+                            passed: fastResult.passed,
+                            failure_reasons: fastResult.failures,
+                            composite_score: fastResult.composite_score,
+                            task_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
+                            reap_count: task.metadata?.reap_count || 0,
+                            metadata: task.metadata || {}
+                        }).select('id').single();
+
+                        if (gateErr) throw gateErr;
+
+                        if (gateEvent) {
+                            const delta = (task.metadata?.reap_count || 0) > 3 ? -150 : -50;
+                            const { error: repidErr } = await this.supabase.from('repid_score_events').insert({
+                                agent_id: this.name,
+                                event_type: 'EPISTEMIC_VIOLATION',
+                                delta: delta,
+                                metadata: {
+                                    failure_subtype: 'substance_gate_fast_path',
+                                    fast_path_failure: true,
+                                    task_id: task.id,
+                                    reap_count: task.metadata?.reap_count || 0,
+                                    gate_event_id: gateEvent.id
+                                }
+                            });
+                            if (repidErr) throw repidErr;
+
+                            const { error: auditErr } = await this.supabase.rpc('append_hal_audit_chain', {
+                                source_table: 'substance_gate_events',
+                                source_id: gateEvent.id,
+                                event_payload: {
+                                    task_id: task.id,
+                                    agent_name: this.name,
+                                    passed: fastResult.passed,
+                                    failure_reasons: fastResult.failures,
+                                    composite_score: fastResult.composite_score,
+                                    char_count: fastResult.signals.chars.value,
+                                    test_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
+                                    phase_2_5_signature: true
+                                }
+                            });
+                            if (auditErr) throw auditErr;
+                        }
+
+                        await this.supabase.from('trinity_tasks').update({
+                            status: 'shadow_reject',
+                            claimed_by: null,
+                            result: `[SUBSTANCE_GATE_REJECTED] ${fastResult.failures.join(', ')}`,
+                            verifier_verdict: 'gate_failed'
+                        }).eq('id', task.id);
+                    } catch (e) {
+                        console.error('[SUBSTANCE_GATE] DB write failed during reject path', e);
+                        await this.log('error', `Substance gate fail-path DB write error: ${e.message}`, { taskId: task.id, claimed_by: this.name });
+                    }
+                    
+                    return { success: false, escalated: true };
+                } else {
+                    console.log(`[SUBSTANCE_GATE] 👁️ Shadow mode reject task ${task.id}: ${fastResult.failures.join(', ')}`);
+                    await this.log('substance_gate_shadow_reject', `Task ${task.id} shadow-rejected: ${fastResult.failures.join(', ')}`, { taskId: task.id, claimed_by: this.name });
+                    if (process.env.ZKP_CARDS_ENABLED === 'true') {
+                        // fetch(`${process.env.REPID_API_URL}/v1/cards/generate`, { method: 'POST', body: JSON.stringify({ agent_name: this.name, task_id: task.id, task_title: task.title, event_type: 'substance_gate_fire' }) })
+                    }
+                }
+            } else if (gateEnabled) {
+                // Pass path
+                try {
+                    const { data: gateEvent, error: gateErr } = await this.supabase.from('substance_gate_events').insert({
                         task_id: task.id,
                         agent_name: this.name,
                         char_count: fastResult.signals.chars.value,
@@ -1145,21 +1221,10 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                         metadata: task.metadata || {}
                     }).select('id').single();
 
-                    if (gateEvent) {
-                        const delta = (task.metadata?.reap_count || 0) > 3 ? -150 : -50;
-                        await this.supabase.from('repid_score_events').insert({
-                            agent_id: this.name,
-                            event_type: 'substance_gate_failure',
-                            delta: delta,
-                            metadata: {
-                                fast_path_failure: true,
-                                task_id: task.id,
-                                reap_count: task.metadata?.reap_count || 0,
-                                gate_event_id: gateEvent.id
-                            }
-                        });
+                    if (gateErr) throw gateErr;
 
-                        await this.supabase.rpc('append_hal_audit_chain', {
+                    if (gateEvent) {
+                        const { error: auditErr } = await this.supabase.rpc('append_hal_audit_chain', {
                             source_table: 'substance_gate_events',
                             source_id: gateEvent.id,
                             event_payload: {
@@ -1173,79 +1238,32 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                                 phase_2_5_signature: true
                             }
                         });
+                        if (auditErr) throw auditErr;
                     }
 
-                    await this.supabase.from('trinity_tasks').update({
-                        status: 'shadow_reject',
-                        claimed_by: null,
-                        result: `[SUBSTANCE_GATE_REJECTED] ${fastResult.failures.join(', ')}`,
-                        verifier_verdict: 'gate_failed'
-                    }).eq('id', task.id);
+                    const tier = task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST';
+                    const queueEnabled = process.env.VALIDATION_QUEUE_ENABLED === 'true';
+                    const minTier = process.env.VALIDATION_QUEUE_MIN_TIER || 'T2a';
                     
-                    return { success: false, escalated: true };
-                } else {
-                    console.log(`[SUBSTANCE_GATE] 👁️ Shadow mode reject task ${task.id}: ${fastResult.failures.join(', ')}`);
-                    await this.log('substance_gate_shadow_reject', `Task ${task.id} shadow-rejected: ${fastResult.failures.join(', ')}`, { taskId: task.id, claimed_by: this.name });
-                    if (process.env.ZKP_CARDS_ENABLED === 'true') {
-                        // fetch(`${process.env.REPID_API_URL}/v1/cards/generate`, { method: 'POST', body: JSON.stringify({ agent_name: this.name, task_id: task.id, task_title: task.title, event_type: 'substance_gate_fire' }) })
-                    }
-                }
-            } else if (gateEnabled) {
-                // Pass path
-                const { data: gateEvent } = await this.supabase.from('substance_gate_events').insert({
-                    task_id: task.id,
-                    agent_name: this.name,
-                    char_count: fastResult.signals.chars.value,
-                    result_excerpt: (result.output || '').substring(0, 500),
-                    content_hash: require('./wrapper-patterns').computeContentHash(result.output),
-                    signal_char_passed: fastResult.signals.chars.passed,
-                    signal_wrapper_passed: fastResult.signals.wrapper.passed,
-                    signal_artifact_passed: fastResult.signals.artifact.passed,
-                    signal_noop_passed: fastResult.signals.noop.passed,
-                    passed: fastResult.passed,
-                    failure_reasons: fastResult.failures,
-                    composite_score: fastResult.composite_score,
-                    task_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
-                    reap_count: task.metadata?.reap_count || 0,
-                    metadata: task.metadata || {}
-                }).select('id').single();
-
-                if (gateEvent) {
-                    await this.supabase.rpc('append_hal_audit_chain', {
-                        source_table: 'substance_gate_events',
-                        source_id: gateEvent.id,
-                        event_payload: {
+                    if (queueEnabled && tier >= minTier && gateEvent) {
+                        await this.supabase.from('validation_queue').insert({
                             task_id: task.id,
-                            agent_name: this.name,
-                            passed: fastResult.passed,
-                            failure_reasons: fastResult.failures,
-                            composite_score: fastResult.composite_score,
-                            char_count: fastResult.signals.chars.value,
-                            test_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
-                            phase_2_5_signature: true
-                        }
-                    });
-                }
-
-                const tier = task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST';
-                const queueEnabled = process.env.VALIDATION_QUEUE_ENABLED === 'true';
-                const minTier = process.env.VALIDATION_QUEUE_MIN_TIER || 'T2a';
-                
-                if (queueEnabled && tier >= minTier && gateEvent) {
-                    await this.supabase.from('validation_queue').insert({
-                        task_id: task.id,
-                        substance_gate_event_id: gateEvent.id,
-                        status: 'pending',
-                        fast_path_passed: true,
-                        deep_validation_needed: true
-                    });
-                    await this.supabase.from('trinity_tasks').update({
-                        status: 'pending_validation',
-                        claimed_by: this.name,
-                        result: result.output,
-                        artifact_url: externalArtifactUrl
-                    }).eq('id', task.id);
-                    return { success: true };
+                            substance_gate_event_id: gateEvent.id,
+                            status: 'pending',
+                            fast_path_passed: true,
+                            deep_validation_needed: true
+                        });
+                        await this.supabase.from('trinity_tasks').update({
+                            status: 'pending_validation',
+                            claimed_by: this.name,
+                            result: result.output,
+                            artifact_url: externalArtifactUrl
+                        }).eq('id', task.id);
+                        return { success: true };
+                    }
+                } catch (e) {
+                    console.error('[SUBSTANCE_GATE] DB write failed during pass path', e);
+                    await this.log('error', `Substance gate pass-path DB write error: ${e.message}`, { taskId: task.id, claimed_by: this.name });
                 }
             }
 
