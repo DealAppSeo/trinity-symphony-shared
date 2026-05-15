@@ -855,6 +855,17 @@ VIRTUE: ${this.wisdom.primaryVirtue}
                     await this.log('substance_gate_rejected', `Task ${task.id} rejected: ${fastResult.failures.join(', ')}`, { taskId: task.id, claimed_by: this.name });
                     
                     try {
+                        const m = task.metadata || {};
+                        const provenance = {
+                            test_tier: m.test_tier || 'T0_INTERNAL_DEV_TEST',
+                            test_source: m.test_source || null,
+                            external_party_id: m.external_party_id || null,
+                            external_party_aware: m.external_party_aware ?? null,
+                            adversarial_planted: m.adversarial_planted ?? false,
+                            patent_eligible: m.patent_eligible ?? false,
+                            parent_task_id: task.id
+                        };
+
                         const { data: gateEvent, error: gateErr } = await this.supabase.from('substance_gate_events').insert({
                             task_id: task.id,
                             agent_name: this.name,
@@ -870,7 +881,10 @@ VIRTUE: ${this.wisdom.primaryVirtue}
                             composite_score: fastResult.composite_score,
                             task_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
                             reap_count: task.metadata?.reap_count || 0,
-                            metadata: task.metadata || {}
+                            metadata: {
+                                ...(task.metadata || {}),
+                                phase_2_5_writer_version: '2.5.0'
+                            }
                         }).select('id').single();
 
                         if (gateErr) throw gateErr;
@@ -881,12 +895,15 @@ VIRTUE: ${this.wisdom.primaryVirtue}
                                 agent_id: this.name,
                                 event_type: 'EPISTEMIC_VIOLATION',
                                 delta: delta,
+                                idempotency_key: gateEvent.id,
                                 metadata: {
                                     failure_subtype: 'substance_gate_fast_path',
                                     fast_path_failure: true,
                                     task_id: task.id,
                                     reap_count: task.metadata?.reap_count || 0,
-                                    gate_event_id: gateEvent.id
+                                    gate_event_id: gateEvent.id,
+                                    agent_name: this.name,
+                                    provenance: provenance
                                 }
                             });
                             if (repidErr) throw repidErr;
@@ -901,8 +918,8 @@ VIRTUE: ${this.wisdom.primaryVirtue}
                                     failure_reasons: fastResult.failures,
                                     composite_score: fastResult.composite_score,
                                     char_count: fastResult.signals.chars.value,
-                                    test_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
-                                    phase_2_5_signature: true
+                                    phase_2_5_signature: true,
+                                    provenance: provenance
                                 }
                             });
                             if (auditErr) throw auditErr;
@@ -933,6 +950,17 @@ VIRTUE: ${this.wisdom.primaryVirtue}
             } else if (gateEnabled) {
                 // Pass path
                 try {
+                    const m = task.metadata || {};
+                    const provenance = {
+                        test_tier: m.test_tier || 'T0_INTERNAL_DEV_TEST',
+                        test_source: m.test_source || null,
+                        external_party_id: m.external_party_id || null,
+                        external_party_aware: m.external_party_aware ?? null,
+                        adversarial_planted: m.adversarial_planted ?? false,
+                        patent_eligible: m.patent_eligible ?? false,
+                        parent_task_id: task.id
+                    };
+
                     const { data: gateEvent, error: gateErr } = await this.supabase.from('substance_gate_events').insert({
                         task_id: task.id,
                         agent_name: this.name,
@@ -948,7 +976,10 @@ VIRTUE: ${this.wisdom.primaryVirtue}
                         composite_score: fastResult.composite_score,
                         task_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
                         reap_count: task.metadata?.reap_count || 0,
-                        metadata: task.metadata || {}
+                        metadata: {
+                            ...(task.metadata || {}),
+                            phase_2_5_writer_version: '2.5.0'
+                        }
                     }).select('id').single();
 
                     if (gateErr) throw gateErr;
@@ -964,8 +995,8 @@ VIRTUE: ${this.wisdom.primaryVirtue}
                                 failure_reasons: fastResult.failures,
                                 composite_score: fastResult.composite_score,
                                 char_count: fastResult.signals.chars.value,
-                                test_tier: task.metadata?.test_tier || 'T0_INTERNAL_DEV_TEST',
-                                phase_2_5_signature: true
+                                phase_2_5_signature: true,
+                                provenance: provenance
                             }
                         });
                         if (auditErr) throw auditErr;
