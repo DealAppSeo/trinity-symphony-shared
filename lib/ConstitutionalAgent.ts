@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import ws from 'ws';
+import { provenance } from './provenance';
 import { Redis } from '@upstash/redis';
 import { AgentConfig, WisdomProfile, ProviderConfig, LLMResult, Task, AutonomyTier, AgentRegistryRecord, SessionMetrics, MCPPhase } from './types';
 import { AGENT_WISDOM, CONSTITUTION } from './wisdom';
@@ -1241,7 +1242,8 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                     description: `Automated maintenance run by ${this.name} to ensure ecosystem stability.`,
                     task_type: 'maintenance',
                     priority: 25,
-                    status: 'pending'
+                    status: 'pending',
+                    metadata: { ...provenance('T2a_INTERNAL_REAL_ORGANIC', 'agent_self_spawn_health_audit') }
                 });
             }
         }
@@ -1259,7 +1261,8 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                 task_type: 'content', // Explicitly 'content' to trigger artifact flow
                 assigned_to: this.name,
                 priority: 5, // Medium priority
-                status: 'pending'
+                status: 'pending',
+                metadata: { ...provenance('T2a_INTERNAL_REAL_ORGANIC', 'agent_self_spawn_evergreen') }
             });
         }
     }
@@ -1309,7 +1312,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                     assigned_to: this.name, // Self-claim
                     priority: taskIdea.priority || 15,
                     status: 'pending',
-                    metadata: { source: 'web-aware-idle', rep_trigger: this.reputationScore }
+                    metadata: { source: 'web-aware-idle', rep_trigger: this.reputationScore, ...provenance('T2a_INTERNAL_REAL_ORGANIC', 'agent_self_spawn_genesis') }
                 });
                 console.log(`[${this.name}] 🌱 Seeded Genesis - V2 task: ${taskIdea.title} `);
             }
@@ -1376,7 +1379,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                         task_type: 'critique',
                         priority: 90,
                         status: 'pending',
-                        metadata: { disputed_task_id: parentId, disputed_agent: parentTask.claimed_by }
+                        metadata: { disputed_task_id: parentId, disputed_agent: parentTask.claimed_by, ...provenance('T2a_INTERNAL_REAL_ORGANIC', 'agent_self_spawn_reorg') }
                     });
                 }
 
@@ -1445,7 +1448,8 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                         evidence: result.substring(0, 1000),
                         creator_agent: this.name,
                         creator_provider: (originalTask as any).metadata?.provider_used || 'unknown',
-                        squad_verification: squad
+                        squad_verification: squad,
+                        ...provenance('T2a_INTERNAL_REAL_ORGANIC', 'agent_self_spawn_verify')
                     }
                 });
             }
@@ -1578,7 +1582,8 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
             task_type: 'meta', // 'review' type
             assigned_to: toAgent,
             priority: 25, // High priority review
-            status: 'pending'
+            status: 'pending',
+            metadata: { ...provenance('T2a_INTERNAL_REAL_ORGANIC', 'agent_self_spawn_review') }
         });
     }
 
