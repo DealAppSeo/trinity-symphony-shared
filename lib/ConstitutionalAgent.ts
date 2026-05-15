@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import ws from 'ws';
 import { Redis } from '@upstash/redis';
 import { AgentConfig, WisdomProfile, ProviderConfig, LLMResult, Task, AutonomyTier, AgentRegistryRecord, SessionMetrics, MCPPhase } from './types';
 import { AGENT_WISDOM, CONSTITUTION } from './wisdom';
@@ -203,9 +204,8 @@ export class ConstitutionalAgent {
         // this.startTrinityHealingLoop();
 
         this.supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        );
+            process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        , { realtime: { transport: ws } });
 
         if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
             this.redis = new Redis({
@@ -1784,7 +1784,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                         // Re-read env vars directly to be safe
                         const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://qnnpjhlxljtqyigedwkb.supabase.co';
                         const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-                        clientToUse = createClient(url, key, { auth: { persistSession: false } });
+                        clientToUse = createClient(url, key, { auth: { persistSession: false }, realtime: { transport: ws } });
                     }
 
                     const payload: any = {
