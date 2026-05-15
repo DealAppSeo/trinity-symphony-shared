@@ -9,6 +9,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 const express = require('express');
+const { inheritProvenance } = require('../lib/provenance');
 
 class ConstitutionalAgentV4 {
     constructor(config) {
@@ -193,12 +194,18 @@ class ConstitutionalAgentV4 {
 
     async saveArtifact(taskId, content) {
         try {
+            let parentMetadata = {};
+            const { data: tData } = await this.supabase.from('trinity_tasks').select('metadata').eq('id', taskId).single();
+            if (tData && tData.metadata) parentMetadata = tData.metadata;
+            const metadata = inheritProvenance(parentMetadata, 'trinity_artifacts');
+
             const { data } = await this.supabase.from('trinity_artifacts').insert({
                 task_id: taskId,
                 agent_name: this.name,
                 artifact_type: 'text',
                 content_preview: content.substring(0, 50),
-                status: 'created'
+                status: 'created',
+                metadata
             }).select().single();
             console.log(`[ARTIFACT] Saved: ${data?.id}`);
             return data ? `db://trinity_artifacts/${data.id}` : null;
