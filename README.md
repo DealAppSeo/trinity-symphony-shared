@@ -3,29 +3,26 @@
   <p><strong>Part of the HyperDAG Ecosystem</strong></p>
   <p>
     <img src="https://img.shields.io/badge/status-active-success.svg" alt="Status" />
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" />
+    <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" />
   </p>
 </div>
-
-## 🌐 Ecosystem Context
-
-The HyperDAG ecosystem is a suite of purpose-aligned agentic infrastructure. `trinity-symphony-shared` plays a critical role in the broader architecture, interacting closely with its sibling repositories to provide verifiable trust and scalable coordination.
-
-# 🎵 Trinity Symphony Shared: The Shared Soul
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Core](https://img.shields.io/badge/Logic-Constitutional-orange)](https://aitrinitysymphony.com)
 [![BFT](https://img.shields.io/badge/Protocol-3--Ply_BFT-green)](https://github.com/DealAppSeo/trinity-ecosystem/blob/main/docs/CORE_CONCEPTS.md#byzantine-fault-tolerance-bft)
 
-**The Foundational Brain and Constitutional Logic of the Sovereign Multi-Agent Ecosystem.**
+**Constitutional logic and core BFT primitives for the AI Trinity Symphony.**
 
-The "Shared Soul" contains the immutable guardrails, fuzzy inference models, and consensus protocols that power the AI Trinity Symphony. It is the repository where ethics meets execution, serving as the foundational logic for the **HyperDAG Algorithmic Bridge**.
+`trinity-symphony-shared` contains the guardrails, fuzzy-inference models, and consensus protocols used by
+the Trinity Symphony agents. It provides the constitutional agent base, the ANFIS bid resolver, and the
+shared BFT validation primitives the swarm relies on.
 
 ---
 
 ## 🏗️ Technical Architecture: BFT 3x3+3
 
-The Shared Soul implements a **Triple-Ply Byzantine Fault Tolerant** model. This ensures that no single LLM family or agent can compromise the integrity of the system.
+This package implements a **Triple-Ply Byzantine Fault Tolerant** model, so that no single LLM family or
+agent can compromise the integrity of a decision.
 
 ```mermaid
 graph LR
@@ -47,25 +44,26 @@ graph LR
 ```
 
 ### Core Primitives
-- **Constitutional Agent Base**: The foundation for all agents, enforcing strict [Philippians 4:8](CONSTITUTION.md) adherence at the system level.
-- **ANFIS Bid Resolver**: An Adaptive Neuro-Fuzzy Inference System that scores agent bids based on **Cost, Efficiency, and Flexibility**.
-- **Evolutionary Logger**: A recursive feedback system that logs every "learning event" into a decentralized vault for self-optimization.
-- **Pruning Engine**: Implements **Evolutionary Swarm Pruning (ESP)** to dynamically cull inefficient behaviors and evolve the swarm.
+- **Constitutional Agent Base**: The foundation for all agents, enforcing [Philippians 4:8](CONSTITUTION.md) adherence at the system level.
+- **ANFIS Bid Resolver**: An Adaptive Neuro-Fuzzy Inference System that scores agent bids on **Cost, Efficiency, and Flexibility**.
+- **Evolutionary Logger**: A recursive feedback system that logs each "learning event" into a vault for self-optimization.
+- **Pruning Engine**: Implements **Evolutionary Swarm Pruning (ESP)** to cull inefficient behaviors over time.
 
 ---
 
 ## 🧬 Squad Specializations
 
-- **ALPHA (Truth Squad)**: Focuses on ethics verification, deep research, and BFT governance.
-- **BETA (Care Squad)**: Manages UI choreography, user experience, and compassionate interaction.
-- **GAMMA (Build Squad)**: Handles infrastructure orchestration, Web3 bridging, and deployment automation.
+- **ALPHA (Truth Squad)**: Ethics verification, deep research, and BFT governance.
+- **BETA (Care Squad)**: UI choreography, user experience, and interaction.
+- **GAMMA (Build Squad)**: Infrastructure orchestration, Web3 bridging, and deployment automation.
 
 ---
 
 ## 🛠️ Implementation Details
 
 ### ANFIS Fuzzy Logic
-Our routing doesn't just use simple thresholds. We use triangular membership functions to handle the "grey areas" of computational triage.
+Routing uses triangular membership functions rather than simple thresholds, to handle the "grey areas" of
+computational triage.
 ```typescript
 // Example membership function from our core
 const isLow = (v: number) => Math.max(0, 1 - v * 2);
@@ -73,7 +71,8 @@ const isHigh = (v: number) => Math.max(0, (v - 0.5) * 2);
 ```
 
 ### Self-Healing Loop
-When the **Evolutionary Logger** detects a persistent failure pattern, it triggers a **Self-Healing Pulse**, which can automatically demote underperforming LLM providers or re-route tasks to high-reputation "Elite" agents.
+When the **Evolutionary Logger** detects a persistent failure pattern, it triggers a **Self-Healing Pulse**,
+which can demote underperforming LLM providers or re-route tasks to higher-reputation agents.
 
 ---
 
@@ -100,4 +99,5 @@ When the **Evolutionary Logger** detects a persistent failure pattern, it trigge
 
 ## 🤝 Contributing
 
-We actively welcome community contributions! Please check out our [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) to get started. Whether you're fixing bugs, improving docs, or proposing new features, we're excited to have you on board.
+Community contributions are welcome. See [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) to get
+started — bug fixes, documentation improvements, and feature proposals are all appreciated.
