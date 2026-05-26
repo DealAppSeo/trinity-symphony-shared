@@ -9,7 +9,6 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Core](https://img.shields.io/badge/Logic-Constitutional-orange)](https://aitrinitysymphony.com)
-[![BFT](https://img.shields.io/badge/Protocol-3--Ply_BFT-green)](https://github.com/DealAppSeo/trinity-ecosystem/blob/main/docs/CORE_CONCEPTS.md#byzantine-fault-tolerance-bft)
 
 **Constitutional logic and core BFT primitives for the AI Trinity Symphony.**
 
@@ -80,24 +79,38 @@ which can demote underperforming LLM providers or re-route tasks to higher-reput
 
 | Repository | Role | Technology Stack |
 | :--- | :--- | :--- |
-| **[trinity-ecosystem](https://github.com/DealAppSeo/trinity-ecosystem)** | Conductor | Next.js, RadixUI, Supabase |
 | **[hyperdag-protocol](https://github.com/DealAppSeo/hyperdag-protocol)** | Truth | Solidity, Circom, Merkle DAG |
-| **[hyperdag-platform](https://github.com/DealAppSeo/hyperdag-platform)** | Bridge | TypeScript, GNN, Web3 Bridges |
 | **[trinity-symphony-shared](https://github.com/DealAppSeo/trinity-symphony-shared)** | Soul | Custom BFT, ANFIS, Ethics Logic |
 
 [Constitution](CONSTITUTION.md) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
 
 ---
 
-## 🔗 Related Projects in the Ecosystem
+## 🔗 Ecosystem Projects
 
-- [hyperdag-protocol](https://github.com/DealAppSeo/hyperdag-protocol) — The L1 specification.
-- [hyperdag-core](https://github.com/DealAppSeo/hyperdag-core) — ZKP primitives.
-- [trinity-symphony-shared](https://github.com/DealAppSeo/trinity-symphony-shared) — Agent infrastructure.
-- [repid](https://github.com/DealAppSeo/repid) — The reputation engine.
-- [trustrepid](https://github.com/DealAppSeo/trustrepid) — SDK and integration layer.
+- [TrustShell](https://trustshell.dev) — Web3 Agent SDK
+- [TrustRepID](https://trustrepid.dev) — Reputation leaderboard and verification dashboard
+- [TrustChat](https://trustchat.dev) — Secure client chat experience
+- [hyperdag-protocol](https://github.com/DealAppSeo/hyperdag-protocol) — L1 validation specification
+- [repid-engine](https://github.com/DealAppSeo/repid-engine) — Open-source behavioral reputation scoring engine
+
+---
 
 ## 🤝 Contributing
 
-Community contributions are welcome. See [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) to get
-started — bug fixes, documentation improvements, and feature proposals are all appreciated.
+Community contributions are welcome. See [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) to get started — bug fixes, documentation improvements, and feature proposals are all appreciated.
+
+---
+
+**Part of the HyperDAG Protocol ecosystem.**
+
+- [TrustShell](https://trustshell.dev) — SDK
+- [TrustRepID](https://trustrepid.dev) — Reputation leaderboard
+- [TrustChat](https://trustchat.dev) — Consumer experience
+- [HyperDAG Protocol](https://github.com/DealAppSeo/hyperdag-protocol) — Protocol spec
+
+ERC-8004 compatible. Apache 2.0 licensed. Micah 6:8.
+
+**On-chain footprint (Base Sepolia, chain ID 84532):**
+- IdentityRegistry — [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e)
+- ReputationRegistry — [`0x8004B663056A597Dffe9eCcC1965A193B7388713`](https://sepolia.basescan.org/address/0x8004B663056A597Dffe9eCcC1965A193B7388713)
