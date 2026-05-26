@@ -5,12 +5,15 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [orch, sophia, veritas, torch, nexus, hdm, gcm, mel, apm, w3c, chesed, shofet]
     steps:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Install Railway CLI
         run: npm install -g @railway/cli
       - name: Deploy to Railway
-        run: railway up --service trinity-orch
+        run: railway up --service trinity-${{ matrix.service }}
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
