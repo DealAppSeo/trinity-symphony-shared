@@ -1323,6 +1323,10 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
     }
 
     async spawnNextStep(originalTask: Task, result: string, evaluation: { score: number; handoff_required: boolean; handoff_to?: string }) {
+        if (originalTask.title.includes('[SURGERY]') || originalTask.title.startsWith('[SURGERY]')) {
+            console.log(`[SURGERY] 🛑 Loop breaker triggered in spawnNextStep for Task ${originalTask.id}. Not spawning recursive review.`);
+            return;
+        }
         // [ANTIGRAVITY] ROBUST LOOP BREAKER: Do NOT spawn verification for a verification task.
         const titleMatch = originalTask.title.includes('[VERIFY]') ||
             originalTask.title.includes('[REVIEW]') ||
@@ -1575,6 +1579,10 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
     }
 
     async handoffTask(originalTask: Task, result: string, toAgent: string) {
+        if (originalTask.title.includes('[SURGERY]') || originalTask.title.startsWith('[SURGERY]')) {
+            console.log(`[SURGERY] 🛑 Loop breaker triggered in handoffTask for Task ${originalTask.id}. Not handing off.`);
+            return;
+        }
         console.log(`[HANDOFF] 🤝 ${this.name} -> ${toAgent} `);
         await this.supabase.from('trinity_tasks').insert({
             title: `[REVIEW] ${originalTask.title} `,
