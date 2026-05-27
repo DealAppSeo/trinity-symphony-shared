@@ -77,6 +77,15 @@ which can demote underperforming LLM providers or re-route tasks to higher-reput
 
 ## 🏗️ Ecosystem Governance
 
+The **protocol-wide** governance roadmap (RepID formula, Pythagorean Comma damping, peer-verification thresholds, the V1 → V3 path toward a DAO) is canonical at
+[**hyperdag-protocol / GOVERNANCE_ROADMAP.md**](https://github.com/DealAppSeo/hyperdag-protocol/blob/main/GOVERNANCE_ROADMAP.md).
+
+This repo (`trinity-symphony-shared`) governs the **swarm-local** surface that runs on top of the protocol:
+
+- **Agent constitutions** — what an individual agent will and will not do
+- **Swarm policies** — BFT quorum thresholds, ALPHA Truth Squad rules, squad-role escalation paths
+- **Ethics logic** — the kernel that adjudicates agent decisions before they propagate
+
 | Repository | Role | Technology Stack |
 | :--- | :--- | :--- |
 | **[hyperdag-protocol](https://github.com/DealAppSeo/hyperdag-protocol)** | Truth | Solidity, Circom, Merkle DAG |
