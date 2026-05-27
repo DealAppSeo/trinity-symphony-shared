@@ -273,6 +273,19 @@ const PROVIDERS = {
   openrouter: { baseUrl: 'https://openrouter.ai/api/v1/chat/completions', envKey: 'OPENROUTER_API_KEY', model: 'deepseek/deepseek-chat', priority: 3, isOpenRouter: true }
 };
 
+function canonicalizeProvider(providerKey) {
+  if (!providerKey) return null;
+  const clean = providerKey.toLowerCase().trim();
+  if (clean.includes('gemini')) return 'gemini';
+  if (clean.includes('anthropic') || clean.includes('claude')) return 'anthropic';
+  if (clean.includes('openai') || clean.includes('gpt')) return 'openai';
+  if (clean.includes('deepseek')) return 'deepseek';
+  if (clean.includes('groq') || clean.includes('grok')) return 'groq';
+  if (clean.includes('cerebras')) return 'cerebras';
+  if (clean.includes('cohere')) return 'cohere';
+  return clean;
+}
+
 class ConstitutionalAgent {
   constructor(config = {}) {
     this.supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, { realtime: { transport: WebSocket } });
@@ -923,6 +936,7 @@ RATIONALE: [2-3 sentences explaining why]
       return `Error during tool delegation to ${toolName}: ${e.message}`;
     }
   }
+
   async callLLM(prompt, options = {}) {
     const startTime = Date.now();
     const cacheKey = this.hashPrompt(prompt);
@@ -933,7 +947,7 @@ RATIONALE: [2-3 sentences explaining why]
       if (redisCached) {
         this.sessionMetrics.cacheHits++;
         console.log(`[${this.name}] ⚡ Redis cache HIT`);
-        return { output: redisCached, provider: 'redis-cache', fromCache: true, latency: Date.now() - startTime };
+        return { output: redisCached, provider: canonicalizeProvider('redis-cache'), fromCache: true, latency: Date.now() - startTime };
       }
     }
 
@@ -942,7 +956,7 @@ RATIONALE: [2-3 sentences explaining why]
     if (cached && !options.skipCache) {
       this.sessionMetrics.cacheHits++;
       console.log(`[${this.name}] 💾 Wisdom cache HIT`);
-      return { output: cached, provider: 'cache', fromCache: true, latency: Date.now() - startTime };
+      return { output: cached, provider: canonicalizeProvider('cache'), fromCache: true, latency: Date.now() - startTime };
     }
 
     for (const providerKey of this.availableProviders) {
@@ -977,7 +991,7 @@ RATIONALE: [2-3 sentences explaining why]
         });
 
         console.log(`[${this.name}] 🧠 ${provider.name} responded in ${Date.now() - startTime}ms`);
-        return { ...result, provider: providerKey, latency: Date.now() - startTime };
+        return { ...result, provider: canonicalizeProvider(providerKey), latency: Date.now() - startTime };
 
       } catch (err) {
         console.log(`[${this.name}] ⚠️ ${provider.name} failed: ${err.message}`);
@@ -1528,8 +1542,9 @@ If relevant patterns were provided above, USE THEM.
           artifact_url: externalArtifactUrl,
           completed_at: new Date().toISOString(),
           metadata: JSON.stringify({
-            ...(task.metadata ? JSON.parse(task.metadata) : {}),
+            ...(task.metadata ? (typeof task.metadata === 'string' ? JSON.parse(task.metadata) : task.metadata) : {}),
             provider: result.provider,
+            provider_used: result.provider,
             latency: result.latency,
             certainty: certainty,
             fromCache: result.fromCache || false,
