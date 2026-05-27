@@ -941,7 +941,8 @@ async notifyTelegramOnCompletion(task: any): Promise<void> {
             .from('trinity_tasks')
             .update({
                 status: 'pending',
-                claimed_by: null
+                claimed_by: null,
+                claimed_at: null
             })
             .eq('id', taskId)
             .eq('claimed_by', this.name);
@@ -1063,6 +1064,7 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                 await this.supabase.from('trinity_tasks').update({
                     status: 'pending_clarification',
                     claimed_by: null, // [ANTIGRAVITY] Release claim so agent can do other work while waiting
+                    claimed_at: null,
                     result: `[ESCALATED] Agent ${this.name} is seeking clarification. \n\nReason: ${lowBelief ? 'Low certainty score' : 'Explicit escalation request'}. \n\nQuery: ${result.output.substring(0, 500)}`,
                     verification_result: `Searching high-dimension databases... seeking expert consensus.`
                 }).eq('id', task.id);
@@ -1117,6 +1119,7 @@ Please complete this task according to the Constitution. ALWAYS use the save_art
                     await this.supabase.from('trinity_tasks').update({
                         status: 'pending_clarification',
                         claimed_by: null,
+                        claimed_at: null,
                         result: `[SUBSTANCE_GATE_REJECTED] ${substanceGate.reason}`
                     }).eq('id', task.id);
                     // insertHitlRequest not present in TS version, using hitl logic if it exists, or skipping
