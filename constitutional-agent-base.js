@@ -329,8 +329,15 @@ class ConstitutionalAgent {
       truthChoices: 0
     };
 
+    this.agent_id = null;
+    this.resolveAgentUuid();
+
     console.log(`[${this.name}] 🚀 v${this.version} - 3x3 ARCHITECTURE ONLINE`);
     console.log(`[${this.name}] 🛡️ Group: ${this.groupName} | Survivor: ${this.isSurvivor ? 'YES' : 'NO'}`);
+    this.inFlightCount = 0;
+    this.maxConcurrency = parseInt(process.env.MAX_CONCURRENCY || '5', 10);
+    this.activeTaskIds = new Set();
+    this.recentlySkippedTasks = new Set();
   }
 
   // Safe RPC call - swallows errors for non-critical operations
@@ -959,6 +966,42 @@ RATIONALE: [2-3 sentences explaining why]
       return { output: cached, provider: canonicalizeProvider('cache'), fromCache: true, latency: Date.now() - startTime };
     }
 
+    try {
+      const engineUrl = process.env.REPID_ENGINE_URL || 'http://localhost:3000';
+      const token = 'test-key-123';
+      const url = `${engineUrl}/api/v1/llm/complete`;
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          prompt,
+          tier_preference: 'auto',
+          task_hint: 'swarm',
+          agent_id: this.agent_id || this.name
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.answer) {
+          console.log(`[${this.name}] Routed LLM complete via engine successfully. Provider: ${data.provider}`);
+          
+          await this.setRedisCachedResponse(cacheKey, data.answer);
+          await this.cacheWisdom(cacheKey, data.answer);
+          
+          return { output: data.answer, provider: data.provider, fromEngine: true, latency: Date.now() - startTime };
+        }
+      } else {
+        console.warn(`[${this.name}] Routing engine returned status ${res.status}: ${await res.text()}`);
+      }
+    } catch (e) {
+      console.warn(`[${this.name}] Routing engine connection failed, falling back to direct provider loop. Error: ${e.message}`);
+    }
+
     for (const providerKey of this.availableProviders) {
       if (await this.isCircuitOpen(providerKey)) {
         console.log(`[${this.name}] ⏭️ Skipping ${providerKey} (circuit open)`);
@@ -970,6 +1013,7 @@ RATIONALE: [2-3 sentences explaining why]
       }
 
       const provider = PROVIDERS[providerKey];
+      const call_id = require('crypto').randomUUID();
       try {
         const result = await this.callProvider(provider, prompt, options);
         this.sessionMetrics.llmCalls++;
@@ -978,15 +1022,58 @@ RATIONALE: [2-3 sentences explaining why]
         await this.cacheWisdom(cacheKey, result.output);
         await this.trackProviderPerformance(providerKey, true, Date.now() - startTime);
 
-        // Fixed: Use safeRpc for logging
+        const latency = Date.now() - startTime;
+        let tokensIn = 0;
+        let tokensOut = 0;
+
+        if (result.rawResponse) {
+          const data = result.rawResponse;
+          if (provider.isGemini) {
+            if (data.usageMetadata) {
+              tokensIn = data.usageMetadata.promptTokenCount || 0;
+              tokensOut = data.usageMetadata.candidatesTokenCount || 0;
+            }
+          } else if (provider.isAnthropic) {
+            if (data.usage) {
+              tokensIn = data.usage.input_tokens || 0;
+              tokensOut = data.usage.output_tokens || 0;
+            }
+          } else {
+            if (data.usage) {
+              tokensIn = data.usage.prompt_tokens || 0;
+              tokensOut = data.usage.completion_tokens || 0;
+            }
+          }
+        }
+
+        if (tokensIn === 0 && tokensOut === 0) {
+          tokensIn = Math.ceil(prompt.length / 4);
+          tokensOut = Math.ceil((result.output || '').length / 4);
+        }
+
+        const cost = this.calculateCostLocal(providerKey, provider.model, tokensIn, tokensOut);
+
+        this.directLogLlmCall({
+          call_id,
+          provider: providerKey,
+          tier: provider.priority === 3 ? '1' : '0a',
+          model: provider.model,
+          prompt_tokens: tokensIn,
+          completion_tokens: tokensOut,
+          cost_usd: cost,
+          latency_ms: latency,
+          status: 'success',
+          task_hint: 'swarm'
+        }).catch(err => console.error('Error logging direct LLM call:', err));
+
         await this.safeRpc('log_execution', {
           p_agent: this.name,
           p_provider: providerKey,
           p_model: provider.model,
           p_task_type: options.taskType || null,
           p_task_id: options.taskId || null,
-          p_tokens: Math.ceil((prompt.length + (result.output?.length || 0)) / 4),
-          p_latency_ms: Date.now() - startTime,
+          p_tokens: tokensIn + tokensOut,
+          p_latency_ms: latency,
           p_success: true
         });
 
@@ -997,11 +1084,121 @@ RATIONALE: [2-3 sentences explaining why]
         console.log(`[${this.name}] ⚠️ ${provider.name} failed: ${err.message}`);
         await this.markProviderFailure(providerKey);
         await this.trackProviderPerformance(providerKey, false, Date.now() - startTime);
+
+        const latency = Date.now() - startTime;
+        const isRate = err.message.toLowerCase().includes('rate limit') || err.message.toLowerCase().includes('429') || err.message.toLowerCase().includes('too many requests');
+        this.directLogLlmCall({
+          call_id,
+          provider: providerKey,
+          tier: provider.priority === 3 ? '1' : '0a',
+          model: provider.model,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          cost_usd: 0,
+          latency_ms: latency,
+          status: isRate ? 'rate_limited' : 'failed',
+          error_message: err.message,
+          task_hint: 'swarm'
+        }).catch(lerr => console.error('Error logging failed direct LLM call:', lerr));
       }
     }
 
     throw new Error('All LLM providers failed');
   }
+
+  calculateCostLocal(provider, model, tokensIn, tokensOut) {
+    const PRICING = {
+      openai: {
+        'gpt-4o': { in: 2.50, out: 10.00 },
+        'gpt-4o-mini': { in: 0.15, out: 0.60 }
+      },
+      anthropic: {
+        'claude-3-5-sonnet-20241022': { in: 3.00, out: 15.00 },
+        'claude-haiku-4-5': { in: 1.00, out: 5.00 },
+        'claude-sonnet-4-6': { in: 3.00, out: 15.00 }
+      },
+      gemini: {
+        'gemini-1.5-flash-latest': { in: 0.075, out: 0.30 },
+        'gemini-1.5-flash': { in: 0.075, out: 0.30 },
+        'gemini-2.0-flash': { in: 0.075, out: 0.30 },
+        'gemini-1.5-pro': { in: 1.25, out: 5.00 }
+      },
+      deepseek: {
+        'deepseek-chat': { in: 0.27, out: 1.10 }
+      },
+      grok: {
+        'grok-2': { in: 2.00, out: 10.00 }
+      },
+      together: {
+        'meta-llama/Llama-3.3-70B-Instruct-Turbo': { in: 0.59, out: 0.79 }
+      },
+      openrouter: {
+        'deepseek/deepseek-chat': { in: 0.27, out: 1.10 }
+      },
+      cerebras: {
+        'llama3.1-8b': { in: 0.10, out: 0.10 },
+        'llama3.1-70b': { in: 0.60, out: 0.60 }
+      },
+      sambanova: {
+        'Meta-Llama-3.1-70B-Instruct': { in: 0.60, out: 0.60 }
+      }
+    };
+
+    const p = PRICING[provider];
+    if (!p) return 0;
+    let m = p[model];
+    if (!m) {
+      const keys = Object.keys(p);
+      if (keys.length > 0) m = p[keys[0]];
+    }
+    if (!m) return 0;
+    const costIn = (tokensIn / 1000000) * m.in;
+    const costOut = (tokensOut / 1000000) * m.out;
+    return Math.round((costIn + costOut) * 1000000) / 1000000;
+  }
+
+  async resolveAgentUuid() {
+    try {
+      const lcName = this.name.toLowerCase();
+      const lookupName = lcName.startsWith('trinity-') ? lcName : `trinity-${lcName}`;
+      const { data } = await this.supabase
+        .from('repid_agents')
+        .select('id')
+        .eq('agent_name', lookupName)
+        .maybeSingle();
+      if (data && data.id) {
+        this.agent_id = data.id;
+        console.log(`[INIT] Resolved agent_id UUID: ${this.agent_id} for ${this.name}`);
+      }
+    } catch (e) {
+      console.warn(`[INIT] Failed to resolve agent_id UUID:`, e.message);
+    }
+  }
+
+  async directLogLlmCall(entry) {
+    try {
+      const { error } = await this.supabase.from('llm_call_log').insert({
+        call_id: entry.call_id,
+        provider: entry.provider,
+        tier: entry.tier,
+        model: entry.model,
+        prompt_tokens: entry.prompt_tokens || 0,
+        completion_tokens: entry.completion_tokens || 0,
+        cost_usd: entry.cost_usd || 0,
+        latency_ms: entry.latency_ms || 0,
+        status: entry.status,
+        error_message: entry.error_message || null,
+        agent_id: this.agent_id || null,
+        task_hint: entry.task_hint || 'swarm'
+      });
+      if (error) {
+        console.warn(`[${this.name}] directLogLlmCall error:`, error.message);
+      }
+    } catch (e) {
+      console.error(`[${this.name}] directLogLlmCall exception:`, e.message);
+    }
+  }
+
   async callProvider(provider, prompt, options = {}) {
     const apiKey = process.env[provider.envKey];
     if (!apiKey) throw new Error(`No API key for ${provider.name}`);
@@ -1041,7 +1238,7 @@ RATIONALE: [2-3 sentences explaining why]
     if (data.error) throw new Error(`${provider.name} API Error: ${JSON.stringify(data.error)}`);
     if (!data.choices || data.choices.length === 0) throw new Error(`${provider.name} returned no choices`);
 
-    return { output: data.choices[0].message.content };
+    return { output: data.choices[0].message.content, rawResponse: data };
   }
   async callGemini(provider, prompt, apiKey, options = {}) {
     const url = `${provider.baseUrl}?key=${apiKey}`;
@@ -1073,7 +1270,7 @@ RATIONALE: [2-3 sentences explaining why]
       throw new Error("Gemini candidate missing content parts");
     }
 
-    return { output: candidate.content.parts[0].text };
+    return { output: candidate.content.parts[0].text, rawResponse: data };
   }
   async callAnthropic(provider, prompt, apiKey, options = {}) {
     const response = await fetch(provider.baseUrl, {
@@ -1100,7 +1297,7 @@ RATIONALE: [2-3 sentences explaining why]
     if (data.error) throw new Error(`Anthropic API Error: ${JSON.stringify(data.error)}`);
     if (!data.content || data.content.length === 0) throw new Error("Anthropic returned no content");
 
-    return { output: data.content[0].text };
+    return { output: data.content[0].text, rawResponse: data };
   }
   getSystemPrompt() {
     const virtue = CONSTITUTION.VIRTUES[this.wisdom.primaryVirtue];
@@ -1315,30 +1512,85 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
           continue;
         }
 
+        if (this.inFlightCount >= this.maxConcurrency) {
+          await this.sleep(1000);
+          continue;
+        }
+
         await this.checkApprovedActions();
 
         const task = await this.getNextTask();
 
         if (task) {
-          console.log(`[${this.name}] 📋 Processing: ${task.title}`);
-          await this.heartbeat(`Claimed: ${task.title}`);
-          await this.processTask(task);
-          await this.heartbeat(`Completed: ${task.title}`);
+          const claimed = await this.claimTask(task.id);
+          if (!claimed) {
+            console.log(`[${this.name}] ⚠️ Task ${task.id} already claimed. Skipping.`);
+            this.recentlySkippedTasks.add(task.id);
+            setTimeout(() => this.recentlySkippedTasks.delete(task.id), 30000);
+            continue;
+          }
+
+          this.inFlightCount++;
+          this.activeTaskIds.add(task.id);
+
+          (async () => {
+            try {
+              console.log(`[${this.name}] 📋 Processing: ${task.title}`);
+              try {
+                await this.heartbeat(`Claimed: ${task.title}`);
+              } catch (e) {
+                console.warn(`[${this.name}] heartbeat non-fatal in run(claimed): ${e?.message ?? e}`);
+              }
+              await this.processTask(task, true);
+              try {
+                await this.heartbeat(`Completed: ${task.title}`);
+              } catch (e) {
+                console.warn(`[${this.name}] heartbeat non-fatal in run(completed): ${e?.message ?? e}`);
+              }
+            } catch (err) {
+              console.error(`[${this.name}] Task processing error:`, err.message);
+            } finally {
+              this.activeTaskIds.delete(task.id);
+              this.inFlightCount--;
+            }
+          })();
         } else {
           console.log(`[${this.name}] 💤 No tasks available, waiting...`);
+          await this.checkSurvivorStatus();
+          await this.sleep(10000);
         }
-
-        // [ANTIGRAVITY] ARBITRAGE: Periodic heartbeat removed from loop.
-        // await this.heartbeat();
-        // 3x3: Continuous Monitoring
-        await this.checkSurvivorStatus();
-        await this.sleep(30000);
 
       } catch (err) {
         console.error(`[${this.name}] Main loop error:`, err.message);
         await this.log('main_loop_error', err.message);
-        await this.sleep(60000);
+        await this.sleep(10000);
       }
+    }
+  }
+
+  async claimTask(taskId) {
+    try {
+      const { data, error } = await this.supabase
+        .from('trinity_tasks')
+        .update({
+          status: 'doing',
+          claimed_by: this.name,
+          claimed_at: new Date().toISOString(),
+          assigned_to: this.name,
+          started_at: new Date().toISOString()
+        })
+        .eq('id', taskId)
+        .is('claimed_by', null)
+        .select('id');
+
+      if (error) {
+        console.error(`[${this.name}] ❌ Claim error:`, error.message);
+        return false;
+      }
+      return data && data.length > 0;
+    } catch (e) {
+      console.error(`[${this.name}] ❌ Claim exception:`, e.message);
+      return false;
     }
   }
   async getNextTask() {
@@ -1347,29 +1599,34 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
     // tagged for an offline agent don't sit unclaimed.
     const statusFilter = ['pending', 'assigned', 'todo'];
 
-    let { data: task } = await this.supabase
+    let { data: tasks } = await this.supabase
       .from('trinity_tasks')
       .select('*')
       .eq('assigned_to', this.name)
       .in('status', statusFilter)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true })
-      .limit(1)
-      .single();
-    if (task) return task;
+      .limit(10);
+    
+    if (tasks && tasks.length > 0) {
+      const found = tasks.find(t => !this.recentlySkippedTasks.has(t.id));
+      if (found) return found;
+    }
 
-    ({ data: task } = await this.supabase
+    ({ data: tasks } = await this.supabase
       .from('trinity_tasks')
       .select('*')
       .is('assigned_to', null)
       .in('status', statusFilter)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true })
-      .limit(1)
-      .single());
-    if (task) return task;
+      .limit(10));
+    if (tasks && tasks.length > 0) {
+      const found = tasks.find(t => !this.recentlySkippedTasks.has(t.id));
+      if (found) return found;
+    }
 
-    ({ data: task } = await this.supabase
+    ({ data: tasks } = await this.supabase
       .from('trinity_tasks')
       .select('*')
       .not('assigned_to', 'is', null)
@@ -1377,25 +1634,29 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
       .in('status', statusFilter)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true })
-      .limit(1)
-      .single());
+      .limit(10));
 
-    return task || null;
+    if (tasks && tasks.length > 0) {
+      const found = tasks.find(t => !this.recentlySkippedTasks.has(t.id));
+      if (found) return found;
+    }
+
+    return null;
   }
 
   // ============================================
   // TIER 1: LOCAL LOGIC (NO LLM CALLS)
   // ============================================
 
-  async processTask(task) {
+  async processTask(task, isAlreadyClaimed = false) {
     // TRY LOCAL FIRST
     if (this.canHandleLocally(task)) {
       console.log(`[LOCAL] ⚡ Handling ${task.id} without LLM (Tier 1)`);
-      return await this.handleLocal(task);
+      return await this.handleLocal(task, isAlreadyClaimed);
     }
 
     // ONLY THEN use LLM
-    return await this.processWithLLM(task);
+    return await this.processWithLLM(task, isAlreadyClaimed);
   }
 
   canHandleLocally(task) {
@@ -1407,9 +1668,12 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
     return false;
   }
 
-  async handleLocal(task) {
-    // Claim task first
-    await this.supabase.from('trinity_tasks').update({ status: 'in_progress', claimed_by: this.name }).eq('id', task.id);
+  async handleLocal(task, isAlreadyClaimed = false) {
+    // Claim task first if not already claimed
+    if (!isAlreadyClaimed) {
+      const claimed = await this.claimTask(task.id);
+      if (!claimed) return { success: false, reason: 'already_claimed' };
+    }
 
     let result = `[LOCAL] Processed by ${this.name} rule engine`;
 
@@ -1439,7 +1703,7 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
   // ============================================
   // TIER 2: LLM CALLS (ONLY FOR REAL WORK)
   // ============================================
-  async processWithLLM(task) {
+  async processWithLLM(task, isAlreadyClaimed = false) {
     console.log(`[LLM] 🧠 Calling API for task ${task.id} (${task.task_type})`);
     const startTime = Date.now();
 
@@ -1456,16 +1720,13 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
         return;
       }
       // STEP 2: CLAIM TASK
-      await this.supabase
-        .from('trinity_tasks')
-        .update({
-          status: 'in_progress',
-          claimed_by: this.name,
-          claimed_at: new Date().toISOString(),
-          assigned_to: this.name,
-          started_at: new Date().toISOString()
-        })
-        .eq('id', task.id);
+      if (!isAlreadyClaimed) {
+        const claimed = await this.claimTask(task.id);
+        if (!claimed) {
+          console.log(`[${this.name}] ⚠️ Task ${task.id} already claimed. Skipping.`);
+          return;
+        }
+      }
 
       // STEP 3: BUILD CONTEXT
       const enrichedDescription = await this.buildTaskContext(task);
