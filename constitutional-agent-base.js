@@ -966,40 +966,52 @@ RATIONALE: [2-3 sentences explaining why]
       return { output: cached, provider: canonicalizeProvider('cache'), fromCache: true, latency: Date.now() - startTime };
     }
 
-    try {
-      const engineUrl = process.env.REPID_ENGINE_URL || 'http://localhost:3000';
-      const token = 'test-key-123';
-      const url = `${engineUrl}/api/v1/llm/complete`;
-      
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          prompt,
-          tier_preference: 'auto',
-          task_hint: 'swarm',
-          agent_id: this.agent_id || this.name
-        })
-      });
+    let attempts = 0;
+    const maxAttempts = 3;
+    const baseDelay = 1000;
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const engineUrl = process.env.REPID_ENGINE_URL || 'http://localhost:3000';
+        const token = 'test-key-123';
+        const url = `${engineUrl}/api/v1/llm/complete`;
+        
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            prompt,
+            tier_preference: 'auto',
+            task_hint: 'swarm',
+            agent_id: this.agent_id || this.name
+          })
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.answer) {
-          console.log(`[${this.name}] Routed LLM complete via engine successfully. Provider: ${data.provider}`);
-          
-          await this.setRedisCachedResponse(cacheKey, data.answer);
-          await this.cacheWisdom(cacheKey, data.answer);
-          
-          return { output: data.answer, provider: data.provider, fromEngine: true, latency: Date.now() - startTime };
+        if (res.ok) {
+          const data = await res.json();
+          if (data.answer) {
+            console.log(`[${this.name}] Routed LLM complete via engine successfully. Provider: ${data.provider}`);
+            
+            await this.setRedisCachedResponse(cacheKey, data.answer);
+            await this.cacheWisdom(cacheKey, data.answer);
+            
+            return { output: data.answer, provider: data.provider, fromEngine: true, latency: Date.now() - startTime };
+          }
+        } else if (res.status === 429) {
+          console.warn(`[${this.name}] Engine rate limited (429). Retrying after backoff (attempt ${attempts}/${maxAttempts})...`);
+          await this.sleep(baseDelay * Math.pow(2, attempts));
+          continue;
+        } else {
+          console.warn(`[${this.name}] Routing engine returned status ${res.status}: ${await res.text()}`);
         }
-      } else {
-        console.warn(`[${this.name}] Routing engine returned status ${res.status}: ${await res.text()}`);
+      } catch (e) {
+        console.warn(`[${this.name}] Routing engine connection failed or error: ${e.message}`);
       }
-    } catch (e) {
-      console.warn(`[${this.name}] Routing engine connection failed, falling back to direct provider loop. Error: ${e.message}`);
+      break;
     }
 
     for (const providerKey of this.availableProviders) {
@@ -1013,93 +1025,108 @@ RATIONALE: [2-3 sentences explaining why]
       }
 
       const provider = PROVIDERS[providerKey];
-      const call_id = require('crypto').randomUUID();
-      try {
-        const result = await this.callProvider(provider, prompt, options);
-        this.sessionMetrics.llmCalls++;
+      let providerAttempts = 0;
+      const maxProviderAttempts = 3;
+      const providerDelay = 1000;
+      
+      while (providerAttempts < maxProviderAttempts) {
+        providerAttempts++;
+        const call_id = require('crypto').randomUUID();
+        try {
+          const result = await this.callProvider(provider, prompt, options);
+          this.sessionMetrics.llmCalls++;
 
-        await this.setRedisCachedResponse(cacheKey, result.output);
-        await this.cacheWisdom(cacheKey, result.output);
-        await this.trackProviderPerformance(providerKey, true, Date.now() - startTime);
+          await this.setRedisCachedResponse(cacheKey, result.output);
+          await this.cacheWisdom(cacheKey, result.output);
+          await this.trackProviderPerformance(providerKey, true, Date.now() - startTime);
 
-        const latency = Date.now() - startTime;
-        let tokensIn = 0;
-        let tokensOut = 0;
+          const latency = Date.now() - startTime;
+          let tokensIn = 0;
+          let tokensOut = 0;
 
-        if (result.rawResponse) {
-          const data = result.rawResponse;
-          if (provider.isGemini) {
-            if (data.usageMetadata) {
-              tokensIn = data.usageMetadata.promptTokenCount || 0;
-              tokensOut = data.usageMetadata.candidatesTokenCount || 0;
-            }
-          } else if (provider.isAnthropic) {
-            if (data.usage) {
-              tokensIn = data.usage.input_tokens || 0;
-              tokensOut = data.usage.output_tokens || 0;
-            }
-          } else {
-            if (data.usage) {
-              tokensIn = data.usage.prompt_tokens || 0;
-              tokensOut = data.usage.completion_tokens || 0;
+          if (result.rawResponse) {
+            const data = result.rawResponse;
+            if (provider.isGemini) {
+              if (data.usageMetadata) {
+                tokensIn = data.usageMetadata.promptTokenCount || 0;
+                tokensOut = data.usageMetadata.candidatesTokenCount || 0;
+              }
+            } else if (provider.isAnthropic) {
+              if (data.usage) {
+                tokensIn = data.usage.input_tokens || 0;
+                tokensOut = data.usage.output_tokens || 0;
+              }
+            } else {
+              if (data.usage) {
+                tokensIn = data.usage.prompt_tokens || 0;
+                tokensOut = data.usage.completion_tokens || 0;
+              }
             }
           }
+
+          if (tokensIn === 0 && tokensOut === 0) {
+            tokensIn = Math.ceil(prompt.length / 4);
+            tokensOut = Math.ceil((result.output || '').length / 4);
+          }
+
+          const cost = this.calculateCostLocal(providerKey, provider.model, tokensIn, tokensOut);
+
+          this.directLogLlmCall({
+            call_id,
+            provider: providerKey,
+            tier: provider.priority === 3 ? '1' : '0a',
+            model: provider.model,
+            prompt_tokens: tokensIn,
+            completion_tokens: tokensOut,
+            cost_usd: cost,
+            latency_ms: latency,
+            status: 'success',
+            task_hint: 'swarm'
+          }).catch(err => console.error('Error logging direct LLM call:', err));
+
+          await this.safeRpc('log_execution', {
+            p_agent: this.name,
+            p_provider: providerKey,
+            p_model: provider.model,
+            p_task_type: options.taskType || null,
+            p_task_id: options.taskId || null,
+            p_tokens: tokensIn + tokensOut,
+            p_latency_ms: latency,
+            p_success: true
+          });
+
+          console.log(`[${this.name}] 🧠 ${provider.name} responded in ${Date.now() - startTime}ms`);
+          return { ...result, provider: canonicalizeProvider(providerKey), latency: Date.now() - startTime };
+
+        } catch (err) {
+          const isRate = err.message.toLowerCase().includes('rate limit') || err.message.toLowerCase().includes('429') || err.message.toLowerCase().includes('too many requests');
+          
+          if (isRate && providerAttempts < maxProviderAttempts) {
+            console.warn(`[${this.name}] Direct provider ${provider.name} rate limited. Backoff retry ${providerAttempts}/${maxProviderAttempts}...`);
+            await this.sleep(providerDelay * Math.pow(2, providerAttempts));
+            continue;
+          }
+
+          console.log(`[${this.name}] ⚠️ ${provider.name} failed: ${err.message}`);
+          await this.markProviderFailure(providerKey);
+          await this.trackProviderPerformance(providerKey, false, Date.now() - startTime);
+
+          const latency = Date.now() - startTime;
+          this.directLogLlmCall({
+            call_id,
+            provider: providerKey,
+            tier: provider.priority === 3 ? '1' : '0a',
+            model: provider.model,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            cost_usd: 0,
+            latency_ms: latency,
+            status: isRate ? 'rate_limited' : 'failed',
+            error_message: err.message,
+            task_hint: 'swarm'
+          }).catch(lerr => console.error('Error logging failed direct LLM call:', lerr));
+          break;
         }
-
-        if (tokensIn === 0 && tokensOut === 0) {
-          tokensIn = Math.ceil(prompt.length / 4);
-          tokensOut = Math.ceil((result.output || '').length / 4);
-        }
-
-        const cost = this.calculateCostLocal(providerKey, provider.model, tokensIn, tokensOut);
-
-        this.directLogLlmCall({
-          call_id,
-          provider: providerKey,
-          tier: provider.priority === 3 ? '1' : '0a',
-          model: provider.model,
-          prompt_tokens: tokensIn,
-          completion_tokens: tokensOut,
-          cost_usd: cost,
-          latency_ms: latency,
-          status: 'success',
-          task_hint: 'swarm'
-        }).catch(err => console.error('Error logging direct LLM call:', err));
-
-        await this.safeRpc('log_execution', {
-          p_agent: this.name,
-          p_provider: providerKey,
-          p_model: provider.model,
-          p_task_type: options.taskType || null,
-          p_task_id: options.taskId || null,
-          p_tokens: tokensIn + tokensOut,
-          p_latency_ms: latency,
-          p_success: true
-        });
-
-        console.log(`[${this.name}] 🧠 ${provider.name} responded in ${Date.now() - startTime}ms`);
-        return { ...result, provider: canonicalizeProvider(providerKey), latency: Date.now() - startTime };
-
-      } catch (err) {
-        console.log(`[${this.name}] ⚠️ ${provider.name} failed: ${err.message}`);
-        await this.markProviderFailure(providerKey);
-        await this.trackProviderPerformance(providerKey, false, Date.now() - startTime);
-
-        const latency = Date.now() - startTime;
-        const isRate = err.message.toLowerCase().includes('rate limit') || err.message.toLowerCase().includes('429') || err.message.toLowerCase().includes('too many requests');
-        this.directLogLlmCall({
-          call_id,
-          provider: providerKey,
-          tier: provider.priority === 3 ? '1' : '0a',
-          model: provider.model,
-          prompt_tokens: 0,
-          completion_tokens: 0,
-          cost_usd: 0,
-          latency_ms: latency,
-          status: isRate ? 'rate_limited' : 'failed',
-          error_message: err.message,
-          task_hint: 'swarm'
-        }).catch(lerr => console.error('Error logging failed direct LLM call:', lerr));
       }
     }
 
@@ -1529,6 +1556,9 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
             setTimeout(() => this.recentlySkippedTasks.delete(task.id), 30000);
             continue;
           }
+
+          // Stampede guard stagger delay to avoid simultaneous API requests
+          await this.sleep(500);
 
           this.inFlightCount++;
           this.activeTaskIds.add(task.id);

@@ -74,6 +74,19 @@ function makeMockSupabase(tasks) {
           rows = rows.slice(0, limitN);
           return Promise.resolve({ data: rows[0] || null, error: null });
         },
+        then(onfulfilled, onrejected) {
+          let rows = tasks.filter(t => filters.every(f => f(t)));
+          rows = rows.slice().sort((a, b) => {
+            for (const o of orders) {
+              const av = a[o.col], bv = b[o.col];
+              if (av < bv) return o.asc ? -1 : 1;
+              if (av > bv) return o.asc ? 1 : -1;
+            }
+            return 0;
+          });
+          rows = rows.slice(0, limitN);
+          return Promise.resolve({ data: rows, error: null }).then(onfulfilled, onrejected);
+        },
       };
       return builder;
     },
@@ -84,6 +97,7 @@ function makeAgent(name, tasks) {
   // Bypass the real constructor (which spins up supabase + redis clients)
   const agent = Object.create(ConstitutionalAgent.prototype);
   agent.name = name;
+  agent.recentlySkippedTasks = new Set();
   agent.supabase = makeMockSupabase(tasks);
   return agent;
 }
