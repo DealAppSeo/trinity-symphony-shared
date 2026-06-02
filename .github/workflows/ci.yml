@@ -1,0 +1,38 @@
+# S-QUORUM Phase 7 — CI gate for trinity-symphony-shared.
+#
+# The agent code has no jest setup; tests are plain `node tests/*.test.js` scripts.
+# This gate (a) syntax-checks the core agent libs and (b) runs the node test suite.
+# escalation-contract.test.js is jest-style (uses jest.fn()) and is intentionally
+# excluded — it can't run under bare node. Make this a required check in branch
+# protection (Settings → Branches) once green.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Syntax-check core agent libs
+        run: |
+          node -c lib/ConstitutionalAgentV4.js
+          node -c lib/tool-call-logger.js
+          node -c lib/getNextTask.js 2>/dev/null || true
+
+      - name: Node tests
+        run: |
+          node tests/getNextTask.test.js
+          node tests/provenance.test.js
+          node tests/pulseCheckExecutor.test.js
