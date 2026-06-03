@@ -15,6 +15,22 @@ const WebSocket = require('ws');
 const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
 const Merkle = require('./utils/merkle');
+const { Pool } = require('pg');
+
+let pgPool = null;
+function getPgPool() {
+  if (!pgPool) {
+    const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+    if (connectionString) {
+      pgPool = new Pool({
+        connectionString,
+        max: 2,
+        idleTimeoutMillis: 30000,
+      });
+    }
+  }
+  return pgPool;
+}
 
 // ============================================
 // THE CONSTITUTION - IMMUTABLE PRINCIPLES
@@ -262,6 +278,7 @@ const AGENT_WISDOM = {
 // LLM PROVIDER CONFIGURATION
 // ============================================
 const PROVIDERS = {
+  groq: { baseUrl: 'https://api.groq.com/openai/v1/chat/completions', envKey: 'GROQ_API_KEY', model: 'llama-3.3-70b-versatile', priority: 1 },
   openai: { baseUrl: 'https://api.openai.com/v1/chat/completions', envKey: 'OPENAI_API_KEY', model: 'gpt-4o', priority: 3 },
   anthropic: { baseUrl: 'https://api.anthropic.com/v1/messages', envKey: 'ANTHROPIC_API_KEY', model: 'claude-3-5-sonnet-20241022', priority: 3, isAnthropic: true },
   gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', envKey: 'GEMINI_API_KEY', model: 'gemini-1.5-flash-latest', priority: 2, isGemini: true },
@@ -331,6 +348,7 @@ class ConstitutionalAgent {
 
     console.log(`[${this.name}] 🚀 v${this.version} - 3x3 ARCHITECTURE ONLINE`);
     console.log(`[${this.name}] 🛡️ Group: ${this.groupName} | Survivor: ${this.isSurvivor ? 'YES' : 'NO'}`);
+    this.resolveAgentUuid();
   }
 
   // Safe RPC call - swallows errors for non-critical operations
@@ -908,8 +926,16 @@ RATIONALE: [2-3 sentences explaining why]
         available.push(key);
       }
     }
+    const order = ['cerebras', 'groq', 'together', 'sambanova', 'deepseek', 'gemini', 'grok', 'openrouter', 'anthropic', 'openai'];
+    available.sort((a, b) => {
+      let idxA = order.indexOf(a);
+      let idxB = order.indexOf(b);
+      if (idxA === -1) idxA = 999;
+      if (idxB === -1) idxB = 999;
+      return idxA - idxB;
+    });
     this.loadArbitrageConfig();
-    return available.sort((a, b) => PROVIDERS[a].priority - PROVIDERS[b].priority);
+    return available;
   }
   loadArbitrageConfig() {
     try {
@@ -937,6 +963,136 @@ RATIONALE: [2-3 sentences explaining why]
     }
   }
 
+  async resolveAgentUuid() {
+    try {
+      const lcName = this.name.toLowerCase();
+      const lookupName = lcName.startsWith('trinity-') ? lcName : `trinity-${lcName}`;
+      const { data } = await this.supabase
+        .from('repid_agents')
+        .select('id')
+        .eq('agent_name', lookupName)
+        .maybeSingle();
+      if (data && data.id) {
+        this.agent_id = data.id;
+        console.log(`[INIT] Resolved agent_id UUID: ${this.agent_id} for ${this.name}`);
+      }
+    } catch (e) {
+      console.warn(`[INIT] Failed to resolve agent_id UUID:`, e.message);
+    }
+  }
+
+  calculateCostLocal(provider, model, tokensIn, tokensOut) {
+    const PRICING = {
+      openai: {
+        'gpt-4o': { in: 2.50, out: 10.00 },
+        'gpt-4o-mini': { in: 0.15, out: 0.60 }
+      },
+      anthropic: {
+        'claude-3-5-sonnet-20241022': { in: 3.00, out: 15.00 },
+        'claude-haiku-4-5': { in: 1.00, out: 5.00 },
+        'claude-sonnet-4-6': { in: 3.00, out: 15.00 }
+      },
+      gemini: {
+        'gemini-1.5-flash-latest': { in: 0.075, out: 0.30 },
+        'gemini-1.5-flash': { in: 0.075, out: 0.30 },
+        'gemini-2.0-flash': { in: 0.075, out: 0.30 },
+        'gemini-1.5-pro': { in: 1.25, out: 5.00 }
+      },
+      deepseek: {
+        'deepseek-chat': { in: 0.27, out: 1.10 }
+      },
+      openrouter: {
+        'deepseek/deepseek-chat': { in: 0.27, out: 1.10 }
+      },
+      grok: {
+        'grok-2': { in: 2.00, out: 10.00 }
+      },
+      together: {
+        'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free': { in: 0.0, out: 0.0 }
+      }
+    };
+
+    const p = PRICING[provider];
+    if (!p) return 0;
+    let m = p[model];
+    if (!m) {
+      const keys = Object.keys(p);
+      if (keys.length > 0) m = p[keys[0]];
+    }
+    if (!m) return 0;
+    const costIn = (tokensIn / 1000000) * m.in;
+    const costOut = (tokensOut / 1000000) * m.out;
+    return Math.round((costIn + costOut) * 1000000) / 1000000;
+  }
+
+  async getRecentLlmSpend() {
+    try {
+      const pool = getPgPool();
+      if (pool) {
+        const { rows } = await pool.query(
+          "SELECT COALESCE(SUM(cost_usd), 0) as total_spend FROM llm_call_log WHERE created_at > NOW() - INTERVAL '24 hours'"
+        );
+        return parseFloat(rows[0].total_spend || '0');
+      }
+    } catch (e) {
+      console.error('[SPEND-TRACKER] Error querying spend:', e.message);
+    }
+    return 0;
+  }
+
+  async directLogLlmCall(entry) {
+    try {
+      const pool = getPgPool();
+      if (pool) {
+        await pool.query(
+          `INSERT INTO llm_call_log (
+            call_id, provider, tier, model, prompt_tokens, completion_tokens, cost_usd, latency_ms, status, error_message, agent_id, task_hint
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [
+            entry.call_id,
+            entry.provider,
+            entry.tier,
+            entry.model,
+            entry.prompt_tokens || 0,
+            entry.completion_tokens || 0,
+            entry.cost_usd || 0,
+            entry.latency_ms || 0,
+            entry.status,
+            entry.error_message || null,
+            this.agent_id || null,
+            entry.task_hint || 'swarm'
+          ]
+        );
+        console.log(`[${this.name}] directLogLlmCall direct-pg successful write for ${entry.provider}`);
+        return;
+      }
+    } catch (e) {
+      console.error(`[${this.name}] directLogLlmCall direct-pg exception:`, e.message);
+    }
+
+    try {
+      const { error } = await this.supabase.from('llm_call_log').insert({
+        call_id: entry.call_id,
+        provider: entry.provider,
+        tier: entry.tier,
+        model: entry.model,
+        prompt_tokens: entry.prompt_tokens || 0,
+        completion_tokens: entry.completion_tokens || 0,
+        cost_usd: entry.cost_usd || 0,
+        latency_ms: entry.latency_ms || 0,
+        status: entry.status,
+        error_message: entry.error_message || null,
+        agent_id: this.agent_id || null,
+        task_hint: entry.task_hint || 'swarm'
+      });
+      if (error) {
+        console.warn(`[${this.name}] directLogLlmCall error:`, error.message);
+      }
+    } catch (e) {
+      console.error(`[${this.name}] directLogLlmCall exception:`, e.message);
+    }
+  }
+
   async callLLM(prompt, options = {}) {
     const startTime = Date.now();
     const cacheKey = this.hashPrompt(prompt);
@@ -959,6 +1115,41 @@ RATIONALE: [2-3 sentences explaining why]
       return { output: cached, provider: canonicalizeProvider('cache'), fromCache: true, latency: Date.now() - startTime };
     }
 
+    // Attempt engine routing call first
+    try {
+      console.log(`[${this.name}] 🤖 Routing call to repid-engine complete API...`);
+      if (!this.agent_id) {
+        await this.resolveAgentUuid();
+      }
+      const response = await fetch('http://localhost:3000/api/v1/llm/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.REPID_API_KEY || 'test-key-123'}`
+        },
+        body: JSON.stringify({
+          prompt,
+          tier_preference: 'auto',
+          task_hint: 'swarm',
+          agent_id: this.name
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.answer) {
+          console.log(`[${this.name}] 🚀 Engine routing success: ${data.provider} (${data.tier_used})`);
+          await this.setRedisCachedResponse(cacheKey, data.answer);
+          await this.cacheWisdom(cacheKey, data.answer);
+          return { output: data.answer, provider: data.provider, fromEngine: true, latency: Date.now() - startTime };
+        }
+      } else {
+        const errText = await response.text();
+        console.warn(`[${this.name}] ⚠️ Engine API failed with status ${response.status}: ${errText}`);
+      }
+    } catch (e) {
+      console.warn(`[${this.name}] ⚠️ Engine API unreachable, falling back to direct provider loop:`, e.message);
+    }
+
     for (const providerKey of this.availableProviders) {
       if (await this.isCircuitOpen(providerKey)) {
         console.log(`[${this.name}] ⏭️ Skipping ${providerKey} (circuit open)`);
@@ -969,10 +1160,37 @@ RATIONALE: [2-3 sentences explaining why]
         continue;
       }
 
+      const spendCeiling = parseFloat(process.env.SPEND_CEILING_USD || '5.00');
+      const currentSpend = await this.getRecentLlmSpend();
+      const isFree = providerKey === 'groq' || providerKey === 'cerebras' || providerKey === 'together' || providerKey === 'sambanova';
+      if (currentSpend >= spendCeiling && !isFree) {
+        console.warn(`[SPEND-CEILING] 🚨 SPEND CEILING REACHED ($${currentSpend.toFixed(4)} >= $${spendCeiling.toFixed(2)})! Blocked paid provider: ${providerKey}`);
+        continue;
+      }
+
       const provider = PROVIDERS[providerKey];
+      const call_id = crypto.randomUUID();
       try {
         const result = await this.callProvider(provider, prompt, options);
         this.sessionMetrics.llmCalls++;
+
+        const prompt_tokens = Math.ceil(prompt.length / 4);
+        const completion_tokens = Math.ceil((result.output || '').length / 4);
+        const cost = this.calculateCostLocal(providerKey, provider.model, prompt_tokens, completion_tokens);
+        const tier = (providerKey === 'openai' || providerKey === 'anthropic' || providerKey === 'openrouter') ? '1' : '0a';
+
+        this.directLogLlmCall({
+          call_id,
+          provider: providerKey,
+          tier,
+          model: provider.model,
+          prompt_tokens,
+          completion_tokens,
+          cost_usd: cost,
+          latency_ms: Date.now() - startTime,
+          status: 'success',
+          task_hint: 'swarm'
+        }).catch(err => console.error('Error logging direct LLM call:', err));
 
         await this.setRedisCachedResponse(cacheKey, result.output);
         await this.cacheWisdom(cacheKey, result.output);
@@ -985,7 +1203,7 @@ RATIONALE: [2-3 sentences explaining why]
           p_model: provider.model,
           p_task_type: options.taskType || null,
           p_task_id: options.taskId || null,
-          p_tokens: Math.ceil((prompt.length + (result.output?.length || 0)) / 4),
+          p_tokens: prompt_tokens + completion_tokens,
           p_latency_ms: Date.now() - startTime,
           p_success: true
         });
@@ -995,6 +1213,24 @@ RATIONALE: [2-3 sentences explaining why]
 
       } catch (err) {
         console.log(`[${this.name}] ⚠️ ${provider.name} failed: ${err.message}`);
+        const isRate = err.message?.toLowerCase().includes('rate limit') || err.message?.toLowerCase().includes('429') || err.message?.toLowerCase().includes('too many requests');
+        const status = isRate ? 'rate_limited' : 'failed';
+        const tier = (providerKey === 'openai' || providerKey === 'anthropic' || providerKey === 'openrouter') ? '1' : '0a';
+
+        this.directLogLlmCall({
+          call_id,
+          provider: providerKey,
+          tier,
+          model: provider.model,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          cost_usd: 0,
+          latency_ms: Date.now() - startTime,
+          status,
+          error_message: err.message || String(err),
+          task_hint: 'swarm'
+        }).catch(lerr => console.error('Error logging failed direct LLM call:', lerr));
+
         await this.markProviderFailure(providerKey);
         await this.trackProviderPerformance(providerKey, false, Date.now() - startTime);
       }

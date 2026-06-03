@@ -4,10 +4,25 @@ import { provenance } from './provenance';
 import { Redis } from '@upstash/redis';
 import { AgentConfig, WisdomProfile, ProviderConfig, LLMResult, Task, AutonomyTier, AgentRegistryRecord, SessionMetrics, MCPPhase } from './types';
 import { AGENT_WISDOM, CONSTITUTION } from './wisdom';
-// Dynamic imports for graphology/fs handled inside methods to avoid build issues
 import { mcpManager } from '../mcp/MCPManager';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Pool } from 'pg';
+
+let pgPool: Pool | null = null;
+function getPgPool() {
+  if (!pgPool) {
+    const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+    if (connectionString) {
+      pgPool = new Pool({
+        connectionString,
+        max: 2,
+        idleTimeoutMillis: 30000,
+      });
+    }
+  }
+  return pgPool;
+}
 
 const MCP_BASE_URL = 'https://raw.githubusercontent.com/dealappseo/trinity-ecosystem/main/docs/MCPs';
 
@@ -112,6 +127,7 @@ export class ConstitutionalAgent {
     isSurvivor: boolean = false;
     survivorName: string = '';
     heartbeatInterval: any = null;
+    agent_id: string | null = null;
 
     // BRAIN TRANSPLANT: New Organs
     private arbitrageConfig: any = null;
@@ -228,6 +244,7 @@ export class ConstitutionalAgent {
         }
         
         console.log(`[${this.name}] 🚀 Initialized v${this.version}`);
+        this.resolveAgentUuid();
     }
 
     private loadArbitrageConfig() {
@@ -2257,12 +2274,13 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
             const excludeProvider = (task as any)?.metadata?.creator_provider;
 
             const LLM_PRIORITY = [
-                { provider: 'groq', key: process.env.GROQ_API_KEY, direct: true },
                 { provider: 'cerebras', key: process.env.CEREBRAS_API_KEY, direct: true },
+                { provider: 'groq', key: process.env.GROQ_API_KEY, direct: true },
+                { provider: 'together', key: process.env.TOGETHER_API_KEY, direct: true },
+                { provider: 'sambanova', key: process.env.SAMBANOVA_API_KEY, direct: true },
                 { provider: 'deepseek', key: process.env.DEEPSEEK_API_KEY, direct: true },
                 { provider: 'gemini', key: process.env.GEMINI_API_KEY, direct: true },
                 { provider: 'openrouter', key: process.env.OPENROUTER_API_KEY, direct: true },
-                { provider: 'together', key: process.env.TOGETHER_API_KEY, direct: true },
                 { provider: 'anthropic', key: process.env.ANTHROPIC_API_KEY, direct: true },
                 { provider: 'openai', key: process.env.OPENAI_API_KEY, direct: true },
                 { provider: 'litellm', key: process.env.LITELLM_URL, proxy: true }
@@ -2281,6 +2299,15 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
                 }
 
                 if (!await this.checkProviderLimit(providerKey)) {
+                    continue;
+                }
+
+                // SPEND_CEILING_USD check
+                const spendCeiling = parseFloat(process.env.SPEND_CEILING_USD || '5.00');
+                const currentSpend = await this.getRecentLlmSpend();
+                const isFree = providerKey === 'groq' || providerKey === 'cerebras' || providerKey === 'together' || providerKey === 'sambanova';
+                if (currentSpend >= spendCeiling && !isFree) {
+                    console.warn(`[SPEND-CEILING] 🚨 SPEND CEILING REACHED ($${currentSpend.toFixed(4)} >= $${spendCeiling.toFixed(2)})! Blocked paid provider: ${providerKey}`);
                     continue;
                 }
 
@@ -2366,7 +2393,202 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         }
     }
 
+    async resolveAgentUuid() {
+        try {
+            const lcName = this.name.toLowerCase();
+            const lookupName = lcName.startsWith('trinity-') ? lcName : `trinity-${lcName}`;
+            const { data } = await this.supabase
+                .from('repid_agents')
+                .select('id')
+                .eq('agent_name', lookupName)
+                .maybeSingle();
+            if (data && data.id) {
+                this.agent_id = data.id;
+                console.log(`[INIT] Resolved agent_id UUID: ${this.agent_id} for ${this.name}`);
+            }
+        } catch (e: any) {
+            console.warn(`[INIT] Failed to resolve agent_id UUID:`, e.message);
+        }
+    }
+
+    calculateCostLocal(provider: string, model: string, tokensIn: number, tokensOut: number): number {
+        const PRICING: Record<string, Record<string, { in: number; out: number }>> = {
+            openai: {
+                'gpt-4o': { in: 2.50, out: 10.00 },
+                'gpt-4o-mini': { in: 0.15, out: 0.60 }
+            },
+            anthropic: {
+                'claude-3-5-sonnet-20241022': { in: 3.00, out: 15.00 },
+                'claude-haiku-4-5': { in: 1.00, out: 5.00 },
+                'claude-sonnet-4-6': { in: 3.00, out: 15.00 }
+            },
+            gemini: {
+                'gemini-1.5-flash-latest': { in: 0.075, out: 0.30 },
+                'gemini-1.5-flash': { in: 0.075, out: 0.30 },
+                'gemini-2.0-flash': { in: 0.075, out: 0.30 },
+                'gemini-1.5-pro': { in: 1.25, out: 5.00 }
+            },
+            deepseek: {
+                'deepseek-chat': { in: 0.27, out: 1.10 }
+            },
+            openrouter: {
+                'deepseek/deepseek-chat': { in: 0.27, out: 1.10 }
+            },
+            grok: {
+                'grok-2': { in: 2.00, out: 10.00 }
+            },
+            together: {
+                'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free': { in: 0.0, out: 0.0 }
+            }
+        };
+
+        const p = PRICING[provider];
+        if (!p) return 0;
+        let m = p[model];
+        if (!m) {
+            const keys = Object.keys(p);
+            if (keys.length > 0) m = p[keys[0]];
+        }
+        if (!m) return 0;
+        const costIn = (tokensIn / 1000000) * m.in;
+        const costOut = (tokensOut / 1000000) * m.out;
+        return Math.round((costIn + costOut) * 1000000) / 1000000;
+    }
+
+    async getRecentLlmSpend(): Promise<number> {
+        try {
+            const pool = getPgPool();
+            if (pool) {
+                const { rows } = await pool.query(
+                    "SELECT COALESCE(SUM(cost_usd), 0) as total_spend FROM llm_call_log WHERE created_at > NOW() - INTERVAL '24 hours'"
+                );
+                return parseFloat(rows[0].total_spend || '0');
+            }
+        } catch (e: any) {
+            console.error('[SPEND-TRACKER] Error querying spend:', e.message);
+        }
+        return 0;
+    }
+
+    async directLogLlmCall(entry: any) {
+        try {
+            const pool = getPgPool();
+            if (pool) {
+                await pool.query(
+                    `INSERT INTO llm_call_log (
+                        call_id, provider, tier, model, prompt_tokens, completion_tokens, cost_usd, latency_ms, status, error_message, agent_id, task_hint
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                    [
+                        entry.call_id,
+                        entry.provider,
+                        entry.tier,
+                        entry.model,
+                        entry.prompt_tokens || 0,
+                        entry.completion_tokens || 0,
+                        entry.cost_usd || 0,
+                        entry.latency_ms || 0,
+                        entry.status,
+                        entry.error_message || null,
+                        this.agent_id || null,
+                        entry.task_hint || 'swarm'
+                    ]
+                );
+                console.log(`[${this.name}] directLogLlmCall direct-pg successful write for ${entry.provider}`);
+                return;
+            }
+        } catch (e: any) {
+            console.error(`[${this.name}] directLogLlmCall direct-pg exception:`, e.message);
+        }
+
+        try {
+            const { error } = await this.supabase.from('llm_call_log').insert({
+                call_id: entry.call_id,
+                provider: entry.provider,
+                tier: entry.tier,
+                model: entry.model,
+                prompt_tokens: entry.prompt_tokens || 0,
+                completion_tokens: entry.completion_tokens || 0,
+                cost_usd: entry.cost_usd || 0,
+                latency_ms: entry.latency_ms || 0,
+                status: entry.status,
+                error_message: entry.error_message || null,
+                agent_id: this.agent_id || null,
+                task_hint: entry.task_hint || 'swarm'
+            });
+            if (error) {
+                console.warn(`[${this.name}] directLogLlmCall error:`, error.message);
+            }
+        } catch (e: any) {
+            console.error(`[${this.name}] directLogLlmCall exception:`, e.message);
+        }
+    }
+
     async callSpecificProvider(provider: string, prompt: string, tools: any[]): Promise<LLMResult> {
+        const startTime = Date.now();
+        const crypto = require('crypto');
+        const call_id = crypto.randomUUID();
+        let finalModel = 'unknown';
+
+        if (provider === 'openai') finalModel = 'gpt-4o';
+        else if (provider === 'litellm') finalModel = 'groq/llama-3.1-70b-versatile';
+        else if (provider === 'anthropic') finalModel = 'claude-3-5-sonnet-latest';
+        else if (provider === 'gemini') finalModel = 'gemini-1.5-flash';
+        else if (provider === 'grok') finalModel = 'grok-beta';
+        else if (provider === 'groq') finalModel = 'llama-3.3-70b-versatile';
+        else if (provider === 'cerebras') finalModel = 'llama3.1-70b';
+        else if (provider === 'deepseek') finalModel = 'deepseek-chat';
+        else if (provider === 'sambanova') finalModel = 'Llama-3.1-405B-Instruct';
+        else if (provider === 'together') finalModel = 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free';
+        else if (provider === 'openrouter') finalModel = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat';
+        else if (provider === 'perplexity') finalModel = 'llama-3.1-sonar-large-128k-online';
+
+        try {
+            const result = await this._innerCallSpecificProvider(provider, prompt, tools);
+            const latency = Date.now() - startTime;
+            const prompt_tokens = Math.ceil(prompt.length / 4);
+            const completion_tokens = Math.ceil((result.output || '').length / 4);
+            const cost = this.calculateCostLocal(provider, finalModel, prompt_tokens, completion_tokens);
+            const tier = (provider === 'openai' || provider === 'anthropic' || provider === 'openrouter') ? '1' : '0a';
+
+            this.directLogLlmCall({
+                call_id,
+                provider,
+                tier,
+                model: finalModel,
+                prompt_tokens,
+                completion_tokens,
+                cost_usd: cost,
+                latency_ms: latency,
+                status: 'success',
+                task_hint: 'swarm'
+            }).catch(err => console.error('Error logging direct LLM call:', err));
+
+            return result;
+        } catch (e: any) {
+            const latency = Date.now() - startTime;
+            const isRate = e.message?.toLowerCase().includes('rate limit') || e.message?.toLowerCase().includes('429') || e.message?.toLowerCase().includes('too many requests');
+            const status = isRate ? 'rate_limited' : 'failed';
+            const tier = (provider === 'openai' || provider === 'anthropic' || provider === 'openrouter') ? '1' : '0a';
+
+            this.directLogLlmCall({
+                call_id,
+                provider,
+                tier,
+                model: finalModel,
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                cost_usd: 0,
+                latency_ms: latency,
+                status,
+                error_message: e.message || String(e),
+                task_hint: 'swarm'
+            }).catch(err => console.error('Error logging failed direct LLM call:', err));
+
+            throw e;
+        }
+    }
+
+    async _innerCallSpecificProvider(provider: string, prompt: string, tools: any[]): Promise<LLMResult> {
         const bible = await this.fetchBible();
         const systemPrompt = `You are ${this.name}. ${CONSTITUTION.ARTICLE_MINUS_1.text}\n\nCONTEXT:\n${bible}`;
 
