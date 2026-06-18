@@ -10,16 +10,104 @@ const assert = require('node:assert/strict');
 // Stub the missing local require './utils/merkle' that constitutional-agent-base.js
 // imports at module top. Without this, requiring the file throws MODULE_NOT_FOUND.
 const STUB_ID = '__test_stub_utils_merkle__';
+const STUB_DIRECT_PG = '__test_stub_direct_pg__';
+
+let currentMockTasks = [];
+
+function mockPgQuery(sql, params, opts) {
+  // If it's the getNextTask query:
+  if (sql.includes('SELECT') && sql.includes('trinity_tasks')) {
+    const agentName = params[0];
+    
+    let filtered = currentMockTasks.filter(t => {
+      // status = 'pending'
+      const statusMatch = t.status === 'pending';
+      // claimed_by is null
+      const unclaimed = !t.claimed_by;
+      
+      // Blacklist filter (if present in SQL)
+      let notBlacklisted = true;
+      if (sql.includes('NOT (id = ANY')) {
+        const blacklist = params[1] || [];
+        notBlacklisted = !blacklist.includes(t.id);
+      }
+      
+      return statusMatch && unclaimed && notBlacklisted;
+    });
+
+    // ORDER BY CASE WHEN assigned_to = $1 THEN 1 WHEN assigned_to IS NULL THEN 2 ELSE 3 END ASC, priority DESC, created_at ASC
+    filtered.sort((a, b) => {
+      const getWeight = (t) => {
+        if (t.assigned_to === agentName) return 1;
+        if (t.assigned_to === null || t.assigned_to === undefined) return 2;
+        return 3;
+      };
+      const wa = getWeight(a);
+      const wb = getWeight(b);
+      if (wa !== wb) return wa - wb;
+      
+      // priority DESC
+      const pa = a.priority || 0;
+      const pb = b.priority || 0;
+      if (pa !== pb) return pb - pa;
+      
+      // created_at ASC
+      const ca = a.created_at || '';
+      const cb = b.created_at || '';
+      if (ca < cb) return -1;
+      if (ca > cb) return 1;
+      return 0;
+    });
+
+    // LIMIT 1
+    const result = filtered.slice(0, 1);
+    return Promise.resolve(result);
+  }
+  
+  // If it's the claimTask query:
+  if (sql.includes('UPDATE trinity_tasks') && sql.includes('SET status = \'doing\'')) {
+    const agentName = params[0];
+    const taskId = params[2] !== undefined ? params[2] : params[1];
+    
+    const task = currentMockTasks.find(t => t.id === taskId);
+    if (task && task.status === 'pending' && !task.claimed_by) {
+      task.status = 'doing';
+      task.claimed_by = agentName;
+      return Promise.resolve([task]);
+    }
+    return Promise.resolve([]);
+  }
+  
+  return Promise.resolve([]);
+}
+
 const origResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, ...rest) {
   if (request === './utils/merkle') return STUB_ID;
+  if (request === './lib/direct-pg' || request === './direct-pg' || request === '../lib/direct-pg') {
+    return STUB_DIRECT_PG;
+  }
   return origResolve.call(this, request, parent, ...rest);
 };
+
 require.cache[STUB_ID] = {
   id: STUB_ID,
   filename: STUB_ID,
   loaded: true,
   exports: {},
+  children: [],
+  paths: [],
+};
+
+require.cache[STUB_DIRECT_PG] = {
+  id: STUB_DIRECT_PG,
+  filename: STUB_DIRECT_PG,
+  loaded: true,
+  exports: {
+    pgQuery: mockPgQuery,
+    pgPing: () => Promise.resolve({ ok: true }),
+    getPgPool: () => ({})
+  },
   children: [],
   paths: [],
 };
@@ -81,10 +169,13 @@ function makeMockSupabase(tasks) {
 }
 
 function makeAgent(name, tasks) {
+  currentMockTasks = tasks;
   // Bypass the real constructor (which spins up supabase + redis clients)
   const agent = Object.create(ConstitutionalAgent.prototype);
   agent.name = name;
   agent.supabase = makeMockSupabase(tasks);
+  agent.claimHistory = new Map();
+  agent.MAX_CLAIM_RETRIES = 3;
   return agent;
 }
 

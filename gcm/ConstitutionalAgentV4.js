@@ -9,6 +9,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 const express = require('express');
+const { pgQuery } = require('../lib/direct-pg');
 
 class ConstitutionalAgentV4 {
     constructor(config) {
@@ -109,16 +110,27 @@ class ConstitutionalAgentV4 {
     }
 
     async getNextTask() {
-        const { data } = await this.supabase
-            .from('trinity_tasks')
-            .select('*')
-            .or(`assigned_to.eq.${this.name},assigned_to.is.null`)
-            .eq('status', 'pending')
-            .order('priority', { ascending: false })
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .single();
-        return data;
+        try {
+            const tasks = await pgQuery(
+                `SELECT id, title, description, task_type, success_criteria, max_duration_minutes, metadata, parent_task_id, assigned_to, agent_assigned, status, priority, created_at, context, github_issue_number, requires_external_artifact, claimed_by, verify_count, verified_by
+                 FROM trinity_tasks
+                 WHERE (assigned_to = $1 OR assigned_to IS NULL)
+                   AND status = 'pending'
+                   AND claimed_by IS NULL
+                 ORDER BY priority DESC, created_at ASC
+                 LIMIT 1
+                 FOR UPDATE SKIP LOCKED`,
+                [this.name],
+                { retries: 1, timeoutMs: 10000, label: 'getNextTask' }
+            );
+            return tasks?.[0] || null;
+        } catch (error) {
+            console.error(`[${this.name}] ❌ getNextTask query error:`, {
+                message: error.message,
+                code: error.code || null
+            });
+            return null;
+        }
     }
 
     async processRouter(task) {
