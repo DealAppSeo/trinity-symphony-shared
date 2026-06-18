@@ -24,6 +24,8 @@ function getPgPool() {
   return pgPool;
 }
 
+const { pgQuery } = require('./direct-pg') as any;
+
 const MCP_BASE_URL = 'https://raw.githubusercontent.com/dealappseo/trinity-ecosystem/main/docs/MCPs';
 
 // ============================================
@@ -868,30 +870,29 @@ async notifyTelegramOnCompletion(task: any): Promise<void> {
         // Handle both 'trinity-mel' and 'MEL'
         const shortName = this.name.includes('-') ? this.name.split('-')[1].toUpperCase() : this.name.toUpperCase();
 
-        let query = this.supabase
-            .from('trinity_tasks')
-            .select('*')
-            .in('status', ['pending', 'todo', 'assigned']);
+        try {
+            const assignmentClause = strictlyAssigned
+                ? `(assigned_to = $1 OR assigned_to = $2)`
+                : `assigned_to IS NULL`;
 
-        if (strictlyAssigned) {
-            // Check for both trinity-mel AND MEL
-            query = query.or(`assigned_to.eq.${this.name},assigned_to.eq.${shortName}`);
-        } else {
-            query = query.is('assigned_to', null);
-        }
+            const tasks = await pgQuery(
+                `SELECT id, title, description, task_type, success_criteria, max_duration_minutes, metadata, parent_task_id, assigned_to, agent_assigned, status, priority, created_at, context, github_issue_number, requires_external_artifact, claimed_by, verify_count, verified_by
+                 FROM trinity_tasks
+                 WHERE ${assignmentClause}
+                   AND status = 'pending'
+                   AND claimed_by IS NULL
+                 ORDER BY priority DESC, created_at ASC
+                 LIMIT 1
+                 FOR UPDATE SKIP LOCKED`,
+                [this.name, shortName],
+                { retries: 1, timeoutMs: 10000, label: 'getNextTask' }
+            );
 
-        const { data: task, error } = await query
-            .order('priority', { ascending: false })
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-
-        if (error) {
+            return (tasks && tasks.length > 0) ? tasks[0] : null;
+        } catch (error: any) {
             console.error(`[${this.name}] Error fetching task:`, error.message);
             return null;
         }
-
-        return task || null;
     }
 
     // ============================================
@@ -928,29 +929,25 @@ async notifyTelegramOnCompletion(task: any): Promise<void> {
     }
 
     async claimTask(taskId: number | string): Promise<boolean> {
-        // [PHASE 22] ATOMIC SUPABASE TRANSACTION
-        const { data, error } = await this.supabase
-            .from('trinity_tasks')
-            .update({
-                status: 'doing',
-                claimed_by: this.name,
-                started_at: new Date().toISOString()
-            })
-            .eq('id', taskId)
-            .eq('status', 'pending')
-            .is('claimed_by', null)
-            .select();
-
-        if (error) {
+        try {
+            const rows = await pgQuery(
+                `UPDATE trinity_tasks
+                 SET status = 'doing', claimed_by = $1, started_at = now()
+                 WHERE id = $2 AND status = 'pending' AND claimed_by IS NULL
+                 RETURNING id`,
+                [this.name, taskId],
+                { retries: 1, timeoutMs: 10000, label: 'claimTask' }
+            );
+            
+            const success = rows.length > 0;
+            if (success) {
+                console.log(`[${this.name}] 🛡️ Atomic claim SECURED for task ${taskId}`);
+            }
+            return success;
+        } catch (error: any) {
             console.error(`[${this.name}] 🚨 Atomic claim failed:`, error.message);
             return false;
         }
-
-        const success = !!(data && data.length > 0);
-        if (success) {
-            console.log(`[${this.name}] 🛡️ Atomic claim SECURED for task ${taskId}`);
-        }
-        return success;
     }
 
     async releaseClaim(taskId: number | string) {
