@@ -515,11 +515,40 @@ To help people help people.
     } else if (genesis.genesis_path === 'discovers') {
       genesisContext = '\n\n--- DISCOVERY PATH ---\nYou are on the discovery path. Learn everything fresh. Document what you find.';
     }
+
+    // S-EVOLVE Phase 5: Swarm Learning Feed integration — GATED, default OFF.
+    // When S_EVOLVE_ENABLED !== 'true' the query never runs: no per-task DB call and no
+    // change to agent prompt behavior. Flip the env to 'true' to inject recent swarm
+    // lessons into the agent's context; reversible in one env change. (CC 2026-06-19 —
+    // split out of the egress hotfix #27 per Sean: controls before behavior changes.)
+    let lessonsContext = '';
+    if (process.env.S_EVOLVE_ENABLED === 'true') {
+      try {
+        const { data: lessons, error: lessonsErr } = await this.supabase
+          .from('agent_learning_events')
+          .select('lesson, confidence')
+          .or(`applicable_agents.cs.{${this.name}},applicable_agents.eq.{}`)
+          .order('confidence', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (lessonsErr) {
+          console.log(`[${this.name}] ⚠️ Failed to query learning lessons: ${lessonsErr.message}`);
+        } else if (lessons && lessons.length > 0) {
+          lessonsContext = '\n\n--- RECENT LESSONS FROM THE SWARM ---\n' +
+            lessons.map(l => `• ${l.lesson}`).join('\n');
+        }
+      } catch (e) {
+        console.log(`[${this.name}] ⚠️ Error fetching learning lessons: ${e.message}`);
+      }
+    }
+
     const enrichedDescription = `
 ${bible}
 ${blueprintContext}
 ${patternContext}
 ${genesisContext}
+${lessonsContext}
 ---
 TASK: ${task.title}
 ---
