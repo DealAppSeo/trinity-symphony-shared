@@ -36,3 +36,4 @@ jobs:
           node tests/getNextTask.test.js
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
+          node tests/heartbeatDbWritesGate.test.js
