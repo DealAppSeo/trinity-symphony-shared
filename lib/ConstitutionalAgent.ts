@@ -52,8 +52,10 @@ export class WebResearchTool implements ResearchTool {
     async searchWeb(query: string): Promise<{ url: string; title: string; content: string }[]> {
         const apiKey = process.env.TAVILY_API_KEY;
         if (!apiKey) {
-            console.warn('[ResearchTool] ⚠️ No TAVILY_API_KEY. Returning mock.');
-            return [{ url: "https://example.com", title: "Missing API Key", content: "Please set TAVILY_API_KEY." }];
+            // DEGRADE LOUDLY — never fabricate a fake result. Callers already
+            // treat an empty array as "no sources" (searchResults.length === 0).
+            console.warn('[ResearchTool] ⚠️ TAVILY_API_KEY unset — web search DEGRADED (no live sources). Returning [].');
+            return [];
         }
 
         try {
@@ -78,8 +80,9 @@ export class WebResearchTool implements ResearchTool {
                 content: r.content
             }));
         } catch (e: any) {
-            console.error(`[ResearchTool] Error: ${e.message}`);
-            return [{ url: "error", title: "Search Failed", content: e.message }];
+            // DEGRADE LOUDLY — no fabricated "error" row; empty = no sources.
+            console.warn(`[ResearchTool] ⚠️ Tavily search failed (${e.message}) — DEGRADED (no fabricated result).`);
+            return [];
         }
     }
 
