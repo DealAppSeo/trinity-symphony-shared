@@ -288,7 +288,7 @@ function canonicalizeProvider(providerKey) {
 
 class ConstitutionalAgent {
   constructor(config = {}) {
-    this.supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, { realtime: { transport: WebSocket } });
+    this.supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY, { realtime: { transport: WebSocket } });
         console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
     this.redis = new Redis({
       url: process.env.UPSTASH_REDIS_REST_URL,
