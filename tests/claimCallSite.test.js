@@ -280,6 +280,99 @@ async function run() {
     assert.equal(A.isClaimExhausted({ claim_count: null }, 12), false, 'a pre-migration NULL is 0, not parked');
   });
 
+  await test('the recovery tool BINDS the cap the claim enforces, including the env override', async () => {
+    // Pinning the SQL string is not pinning what the tool sends. Three one-line mutations left the
+    // whole suite green while making `list()` print "No parked tasks" forever: binding
+    // REAPABLE_STATUSES instead of CLAIMABLE_STATUSES (parked rows are 'pending', never 'doing'),
+    // binding DEFAULT_MAX_TASK_CLAIMS instead of maxTaskClaims() (the operator raises the cap and
+    // the tool ignores it), and binding cap+1 (the first parked task is invisible). Each produces
+    // the exact silent failure the tool's own header says is worse than having no tool.
+    process.env.MAX_TASK_CLAIMS = '5';
+    const script = require('../scripts/ops/claim-exhausted');
+    nextResult = [{ id: 7, title: 't', task_type: 'research', status: 'pending', claim_count: 9, updated_at: null }];
+    await script.list(25);
+    assert.equal(calls[0].sql, A.EXHAUSTED_TASKS_SQL);
+    assert.equal(calls[0].params[0], 5, 'the tool must look for the cap the CLAIM is using, not the default');
+    assert.deepEqual(calls[0].params[1], A.CLAIMABLE_STATUSES,
+      'parked tasks sit in a CLAIMABLE status — searching the in-flight statuses finds nothing, forever');
+    assert.equal(calls[0].params[2], 25, 'the limit must reach the query');
+  });
+
+  await test('the recovery tool resets exactly the task it was asked to', async () => {
+    const script = require('../scripts/ops/claim-exhausted');
+    nextResult = [{ id: 435029, claim_count: 0, status: 'pending' }];
+    await script.reset('435029');
+    assert.equal(calls[0].sql, A.RESET_CLAIM_COUNT_SQL);
+    assert.deepEqual(calls[0].params, ['435029']);
+  });
+
+  await test('the recovery tool refuses a non-numeric id without touching the database', async () => {
+    // trinity_tasks.id is BIGINT (CLAUDE-RULE-5). A flag arriving where an id belongs
+    // (`--reset --limit 5` parses taskId as '--limit') must not reach a query.
+    const script = require('../scripts/ops/claim-exhausted');
+    const prior = process.exitCode;
+    await script.reset('--limit');
+    assert.equal(calls.length, 0, 'a rejected id must not produce a query');
+    process.exitCode = prior;
+  });
+
+  await test('no argv reaches the database with anything but a single numeric id', async () => {
+    // Asserted END-TO-END rather than at the parser, because the two layers disagree and the
+    // parser is the wrong place to look: `--reset all` DOES parse to {mode:'reset', taskId:'all'},
+    // and a first draft of this test failed on exactly that — correctly, since it was checking the
+    // parser when the guard lives in reset(). The property that actually matters is that no
+    // argument list produces a query that could touch more than one row, so that is what is
+    // checked, by driving each argv through to the wire.
+    const script = require('../scripts/ops/claim-exhausted');
+    const prior = process.exitCode;
+    for (const argv of [['--reset-all'], ['--all'], ['--reset', 'all'], ['--reset', '*'],
+      ['--reset', '1 OR 1=1'], ['--reset'], ['--reset', '--limit'], []]) {
+      calls.length = 0;
+      nextResult = [];
+      const a = script.parseArgs(argv);
+      if (a.mode === 'reset') await script.reset(a.taskId);
+      else if (a.mode === 'list') await script.list(a.limit);
+      for (const c of calls) {
+        if (c.sql === A.RESET_CLAIM_COUNT_SQL) {
+          assert.equal(c.params.length, 1, `${argv.join(' ')} sent a reset with more than one bind`);
+          assert.match(String(c.params[0]), /^\d+$/, `${argv.join(' ')} sent a non-numeric id to a reset`);
+        } else {
+          assert.equal(c.sql, A.EXHAUSTED_TASKS_SQL, `${argv.join(' ')} sent an unexpected statement`);
+        }
+      }
+    }
+    process.exitCode = prior;
+  });
+
+  await test('a failing reap abandons the batch before it can open the shared pg breaker', async () => {
+    // The reap moved to pgQuery, which sits behind direct-pg's PROCESS-WIDE circuit breaker:
+    // 5 consecutive failed calls open a 5-minute cool-down that throws for every caller —
+    // getNextTask, claimTask and the heartbeat included. Continuing past failures across a 50-row
+    // batch would guarantee that, letting a background janitor idle the fleet's claim path.
+    // (The zero-row path was pinned earlier; this is the THROW path, which was left unpinned in
+    // the first version of this file even though the harness already had nextThrow.)
+    assert.ok(A.REAP_FAILURE_BUDGET < 5, 'the budget must stay under direct-pg\'s 5-failure breaker threshold');
+    const rows = Array.from({ length: 20 }, (_, i) => (
+      { id: 100 + i, claimed_by: 'x', claimed_at: '2026-07-27T00:00:00Z', metadata: {} }));
+    const a = agent({ supabase: staleSupabase(rows) });
+    resultFor = () => { throw new Error('connection refused'); };
+    await a.runStaleTaskReaper();
+    assert.equal(calls.length, A.REAP_FAILURE_BUDGET,
+      `expected the reaper to stop after ${A.REAP_FAILURE_BUDGET} consecutive failures, not to walk all 20 rows`);
+  });
+
+  await test('an intermittent failure does NOT abandon the batch', async () => {
+    // The budget counts CONSECUTIVE failures. A reaper that gave up on the first transient error
+    // would leave stale tasks claimed for another hour — trading one failure mode for another.
+    const rows = Array.from({ length: 6 }, (_, i) => (
+      { id: 200 + i, claimed_by: 'x', claimed_at: '2026-07-27T00:00:00Z', metadata: {} }));
+    const a = agent({ supabase: staleSupabase(rows) });
+    let n = 0;
+    resultFor = () => { n++; if (n % 2 === 1) throw new Error('transient'); return [{ id: 200 + n, claim_count: 1 }]; };
+    await a.runStaleTaskReaper();
+    assert.equal(calls.length, 6, 'alternating failures never reach the consecutive budget');
+  });
+
   await test('recovery resets one task at a time, and cannot un-park the whole queue', async () => {
     const sql = A.RESET_CLAIM_COUNT_SQL.replace(/\s+/g, ' ');
     assert.match(sql, /WHERE id = \$1/, 'reset must be scoped to a single id');

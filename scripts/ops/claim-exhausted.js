@@ -108,4 +108,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgs, DEFAULT_LIMIT };
+// `list` and `reset` are exported for the SAME reason the SQL is hoisted into
+// ConstitutionalAgentV4: an independent verification found that pinning the SQL string is not
+// pinning what this tool BINDS. Three one-line mutations — binding REAPABLE_STATUSES instead of
+// CLAIMABLE_STATUSES, binding DEFAULT_MAX_TASK_CLAIMS instead of maxTaskClaims(), or binding
+// cap+1 — each left the whole suite green while making the tool print "No parked tasks" forever.
+// That is precisely the silent failure the header warns about, so the behaviour is now reachable
+// from a test rather than only from production.
+module.exports = { parseArgs, list, reset, DEFAULT_LIMIT };
