@@ -24,6 +24,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { checkAndApplyUpdates } = require('./auto_updater');
 const { startMutualWakeLoop } = require('./mutual-wake');
+const { shouldParkForHalt } = require('./lib/emergency-halt'); // L0 gate 0.4 — GLOBAL kill switch
 const analyzeRoutes = require('./routes/analyze');
 
 (async () => {
@@ -274,6 +275,11 @@ async function startSeedingLoop(agent) {
 
   setInterval(async () => {
     try {
+      // L0 gate 0.4 — GLOBAL emergency halt, checked FIRST. This loop is a
+      // PRODUCER: past the threshold it shells out and seeds evergreen tasks.
+      // A kill switch that stops the consumers but leaves the thing that
+      // CREATES work running just refills the queue it was meant to drain.
+      if (await shouldParkForHalt('trinity-worker:seeder')) return;
       // 1. Load Arbitrage Config for thresholds
       const configPath = path.resolve(__dirname, './config/trinity-arbitrage-config.json');
       const configRaw = await fs.readFile(configPath, 'utf8').catch(() => null);
