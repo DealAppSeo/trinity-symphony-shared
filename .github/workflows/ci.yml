@@ -32,12 +32,14 @@ jobs:
         run: |
           node -c lib/ConstitutionalAgentV4.js
           node -c lib/tool-call-logger.js
+          node -c scripts/ops/claim-exhausted.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
         run: |
           node tests/getNextTask.test.js
           node tests/claimCap.test.js
+          node tests/claimCallSite.test.js
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
           node tests/heartbeatDbWritesGate.test.js
