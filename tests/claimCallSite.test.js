@@ -31,6 +31,13 @@ const Module = require('node:module');
 // to happen first. Pre-seeding require.cache is the plain-node equivalent of jest.mock (this repo
 // has no jest: tests are bare `node tests/*.test.js` scripts).
 const PG_PATH = require.resolve('../lib/direct-pg');
+// Capture the REAL breaker threshold before the stub replaces the module. The reap budget has to
+// stay under this number, and the round-2 verification found the old test asserting against a
+// literal 5 copied into the test file — so lowering direct-pg's threshold would have left the
+// suite green while silently disarming the guard. Read from the real module, not duplicated.
+// (Importing it is side-effect-free: the pool is lazy, only constants run at module scope.)
+const REAL_CIRCUIT_BREAKER_THRESHOLD = require('../lib/direct-pg').CIRCUIT_BREAKER_THRESHOLD;
+delete require.cache[PG_PATH];
 const calls = [];
 let nextResult = [];
 let nextThrow = null;
@@ -180,13 +187,30 @@ async function run() {
 
   // ---------- the reaper: the refund actually sent ----------
 
-  /** Supabase stub returning one stale row from the reaper's select. */
+  /**
+   * Supabase stub returning stale rows from the reaper's select — and RECORDING what the reaper
+   * actually asked for.
+   *
+   * The first version of this stub implemented select/in/lt/limit as argument-ignoring chainables.
+   * The round-2 verification showed what that cost: mutating the staleness window from one HOUR to
+   * one SECOND left all 44 tests green, and that single mutation neutralises the whole cap — a
+   * 1-second window rips tasks back mid-work and refunds the claim before the counter can ever
+   * accumulate, reproducing exactly the runaway this PR exists to stop. Four further
+   * trigger-condition mutations (status filter, batch size, survivor gate, release status) were
+   * equally invisible. A stub that discards its arguments does not test a query; it tests only
+   * that some query was issued.
+   */
   function staleSupabase(rows) {
+    const seen = { table: null, select: null, in: [], lt: [], limit: null };
     const q = {
-      select: () => q, in: () => q, lt: () => q,
-      limit: async () => ({ data: rows, error: null }),
+      select: (cols) => { seen.select = cols; return q; },
+      in: (col, vals) => { seen.in.push([col, vals]); return q; },
+      lt: (col, val) => { seen.lt.push([col, val]); return q; },
+      limit: async (n) => { seen.limit = n; return { data: rows, error: null }; },
     };
-    return { from: () => q };
+    const client = { from: (t) => { seen.table = t; return q; } };
+    client.seen = seen;
+    return client;
   }
 
   await test('the reaper refunds the claim it is undoing', async () => {
@@ -202,7 +226,7 @@ async function run() {
     await a.runStaleTaskReaper();
     assert.equal(calls.length, 1, 'the reaper must release through one statement');
     assert.equal(calls[0].sql, A.REAP_SQL);
-    assert.match(A.REAP_SQL.replace(/\s+/g, ' '), /claim_count = GREATEST\(COALESCE\(claim_count, 0\) - 1, 0\)/,
+    assert.match(A.REAP_SQL.replace(/\s+/g, ' '), /THEN GREATEST\(COALESCE\(claim_count, 0\) - 1, 0\)/,
       'the release must refund the claim, saturating at zero');
     assert.equal(logged[0].kind, 'task_reaped');
     assert.equal(logged[0].meta.claimCountAfterRefund, 4, 'the refunded count must be recorded, not just logged to stdout');
@@ -344,6 +368,46 @@ async function run() {
     process.exitCode = prior;
   });
 
+  await test('main() routes each mode to the action with the field parsed FOR it', async () => {
+    const script = require('../scripts/ops/claim-exhausted');
+    // Round-2 verifier, MEDIUM: exporting parseArgs/list/reset still left the tool's only real
+    // entry point untested. `return reset(args.taskId)` -> `reset(args.limit)` survived the whole
+    // suite — and it does not fail loudly. It resets task #20 (the default list limit), reports
+    // success, and leaves the task the operator actually meant still parked.
+    const prior = process.exitCode;
+    const cases = [
+      { argv: ['--reset', '4242'], sql: () => A.RESET_CLAIM_COUNT_SQL, bind: 4242 },
+      { argv: ['--limit', '4242'], sql: () => A.EXHAUSTED_TASKS_SQL, bind: 4242 },
+    ];
+    for (const c of cases) {
+      calls.length = 0;
+      nextResult = [{ id: 4242, claim_count: 12, status: 'pending', title: 't', updated_at: null, metadata: {} }];
+      await script.main(c.argv);
+      assert.equal(calls.length, 1, `${c.argv.join(' ')} sent ${calls.length} statements, expected 1`);
+      assert.equal(calls[0].sql, c.sql(), `${c.argv.join(' ')} sent the wrong statement`);
+      // Loose compare: parseArgs keeps the id as the raw argv string and the limit as a number.
+      assert.ok(calls[0].params.map(String).includes(String(c.bind)),
+        `${c.argv.join(' ')} did not carry ${c.bind} to the wire — the modes' fields are crossed`);
+    }
+    // 4242 is deliberately distinct from DEFAULT_LIMIT and from the cap, so a crossed field cannot
+    // coincide with a plausible-looking value and pass.
+    assert.notEqual(4242, script.DEFAULT_LIMIT);
+    assert.notEqual(4242, A.maxTaskClaims());
+    process.exitCode = prior;
+  });
+
+  await test('main() --help prints and touches no database at all', async () => {
+    const script = require('../scripts/ops/claim-exhausted');
+    const prior = process.exitCode;
+    const log = console.log;
+    console.log = () => {};
+    try {
+      calls.length = 0;
+      await script.main(['--help']);
+      assert.equal(calls.length, 0, 'help must not query');
+    } finally { console.log = log; process.exitCode = prior; }
+  });
+
   await test('a failing reap abandons the batch before it can open the shared pg breaker', async () => {
     // The reap moved to pgQuery, which sits behind direct-pg's PROCESS-WIDE circuit breaker:
     // 5 consecutive failed calls open a 5-minute cool-down that throws for every caller —
@@ -351,7 +415,12 @@ async function run() {
     // batch would guarantee that, letting a background janitor idle the fleet's claim path.
     // (The zero-row path was pinned earlier; this is the THROW path, which was left unpinned in
     // the first version of this file even though the harness already had nextThrow.)
-    assert.ok(A.REAP_FAILURE_BUDGET < 5, 'the budget must stay under direct-pg\'s 5-failure breaker threshold');
+    // Asserted against the REAL exported threshold, not a literal copied into this file. And the
+    // property is the doubled one, because the failure counter is global and the reaper's
+    // abandonment does not reset it: what is actually guaranteed is that TWO full failing passes
+    // stay under the threshold. The old `< 5` let 3 -> 4 pass while making that false.
+    assert.ok(2 * A.REAP_FAILURE_BUDGET < REAL_CIRCUIT_BREAKER_THRESHOLD,
+      `two full failing reaper passes (2 x ${A.REAP_FAILURE_BUDGET}) must stay under direct-pg's ${REAL_CIRCUIT_BREAKER_THRESHOLD}-failure breaker`);
     const rows = Array.from({ length: 20 }, (_, i) => (
       { id: 100 + i, claimed_by: 'x', claimed_at: '2026-07-27T00:00:00Z', metadata: {} }));
     const a = agent({ supabase: staleSupabase(rows) });
@@ -359,6 +428,88 @@ async function run() {
     await a.runStaleTaskReaper();
     assert.equal(calls.length, A.REAP_FAILURE_BUDGET,
       `expected the reaper to stop after ${A.REAP_FAILURE_BUDGET} consecutive failures, not to walk all 20 rows`);
+  });
+
+  // ---------- the reaper: the TRIGGER CONDITIONS (round-2 verifier, HIGH #1) ----------
+  // Every assertion below was absent, and every one of these mutations survived the full 44-test
+  // suite. They are grouped so it is obvious what class of defect was invisible: not the SQL the
+  // reaper sends, which was well pinned, but WHEN it decides to send it.
+
+  await test('the reaper only reaps tasks stale by a FULL HOUR, not by a moment', async () => {
+    // THE ONE THAT MATTERS. `Date.now() - 60*60*1000` -> `- 1000` left 44/44 green while completely
+    // neutralising the cap: a 1-second window reaps tasks mid-work and refunds the claim before the
+    // counter can accumulate, which is the 365-claims-in-100-minutes runaway this PR exists to stop.
+    // A tolerance rather than an equality because the reaper stamps its own `now`.
+    const sb = staleSupabase([]);
+    const before = Date.now();
+    await agent({ supabase: sb }).runStaleTaskReaper();
+    const after = Date.now();
+
+    assert.equal(sb.seen.lt.length, 1, 'the reaper must bound staleness with exactly one lt()');
+    const [col, iso] = sb.seen.lt[0];
+    assert.equal(col, 'claimed_at', 'staleness is measured from when the task was CLAIMED');
+    const cutoff = Date.parse(iso);
+    assert.ok(Number.isFinite(cutoff), 'the cutoff must be a parseable ISO timestamp');
+    // The cutoff must sit REAP_STALE_AFTER_MS in the past, within the runtime of the call itself.
+    assert.ok(before - cutoff >= A.REAP_STALE_AFTER_MS - 1 && after - cutoff <= A.REAP_STALE_AFTER_MS + 5000,
+      `cutoff is ${before - cutoff}ms back; expected ~${A.REAP_STALE_AFTER_MS}ms`);
+    // …and the constant itself is pinned, so shrinking it fails here rather than silently.
+    assert.equal(A.REAP_STALE_AFTER_MS, 60 * 60 * 1000, 'the staleness window is one hour by decision');
+  });
+
+  await test('the reaper reads the in-flight statuses, from the right table, in a bounded batch', async () => {
+    // Mutations that survived: `.in('status', ['pending'])` (reaps nothing, ever — the cap then
+    // never gets its refunds and real tasks park), and `.limit(50)` -> `.limit(50000)` (a batch far
+    // larger than the failure budget can protect, on a path behind a process-wide breaker).
+    const sb = staleSupabase([]);
+    await agent({ supabase: sb }).runStaleTaskReaper();
+    assert.equal(sb.seen.table, 'trinity_tasks');
+    assert.deepEqual(sb.seen.in, [['status', A.REAPABLE_STATUSES]]);
+    assert.equal(sb.seen.limit, A.REAP_BATCH_LIMIT);
+    assert.equal(A.REAP_BATCH_LIMIT, 50);
+    assert.match(String(sb.seen.select), /\bmetadata\b/,
+      'the reaper rewrites metadata, so it must select it or it will clobber the existing object');
+  });
+
+  await test('a non-survivor agent issues NO reaper query at all', async () => {
+    // Deleting `if (!this.isSurvivor) return;` survived because the stub agent is always a survivor.
+    // Every agent reaping means N copies of a 50-row batch racing the same rows every pass.
+    const sb = staleSupabase([{ id: 1, claimed_by: 'x', claimed_at: '2026-07-27T00:00:00Z', metadata: {} }]);
+    await agent({ supabase: sb, isSurvivor: false }).runStaleTaskReaper();
+    assert.equal(sb.seen.table, null, 'a non-survivor must not even touch the table');
+    assert.equal(calls.length, 0);
+  });
+
+  await test('the release returns the task to a CLAIMABLE status and clears the claimer', async () => {
+    // Two survivors, both of which strand every reaped task permanently: releasing to 'blocked'
+    // (not in CLAIMABLE_STATUSES, so nothing serves it again) and dropping `claimed_by = NULL`
+    // (CLAIM_SQL requires claimed_by IS NULL, so the row is un-claimable forever). Neither is
+    // detectable by asserting the SQL is "the reap SQL" — the property is what that SQL RESTORES.
+    const sql = A.REAP_SQL.replace(/\s+/g, ' ');
+    assert.ok(A.CLAIMABLE_STATUSES.includes(A.REAP_RELEASE_STATUS),
+      `a reap must release into a claimable status; ${A.REAP_RELEASE_STATUS} is a permanent strand`);
+    assert.ok(sql.includes(`status = '${A.REAP_RELEASE_STATUS}'`), 'the release status left the statement');
+    assert.match(sql, /claimed_by = NULL/, 'without clearing claimed_by the row can never be claimed again');
+    assert.match(sql, /claimed_at = NULL/, 'a stale claimed_at would make the row instantly re-reapable');
+  });
+
+  await test('ONLY a claim that was counted is refunded — the uncapped paths cannot drain the cap', async () => {
+    // Round-2 verifier HIGH #2. constitutional-agent-base.js:1441/:1491 and w3c.index.js:241 move
+    // tasks to 'in_progress' WITHOUT incrementing claim_count. Refunding those was a monotone
+    // downward driver — claim uncounted, reap, -1 — which walks the counter to zero and disables
+    // the cap entirely. 'doing' is the only status CLAIM_SQL sets, and CLAIM_SQL is the only
+    // incrementing path, so the refund is conditioned on it. Both statuses are still RELEASED;
+    // the rescue is the point and is not in question.
+    const sql = A.REAP_SQL.replace(/\s+/g, ' ');
+    assert.equal(A.REFUNDABLE_STATUS, 'doing');
+    assert.match(A.CLAIM_SQL.replace(/\s+/g, ' '), new RegExp(`SET status = '${A.REFUNDABLE_STATUS}'`),
+      'the refundable status must be the one the COUNTED claim sets');
+    assert.match(sql, new RegExp(`claim_count = CASE WHEN status = '${A.REFUNDABLE_STATUS}' THEN GREATEST`),
+      'the refund must be conditional on the claim having been counted');
+    assert.match(sql, /ELSE COALESCE\(claim_count, 0\) END/, 'an uncounted claim must leave the counter alone');
+    // The reap still rescues both, or the uncapped paths would leak claimed rows forever.
+    assert.ok(A.REAPABLE_STATUSES.includes('in_progress'),
+      'in_progress must still be reaped — only its REFUND is withheld');
   });
 
   await test('an intermittent failure does NOT abandon the batch', async () => {

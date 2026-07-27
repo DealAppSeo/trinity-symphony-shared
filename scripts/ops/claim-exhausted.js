@@ -91,12 +91,15 @@ async function reset(taskId) {
   console.log('the problem, not the cap — read its artifacts before resetting it again.');
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+async function main(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
   if (args.mode === 'help') {
     console.log(require('fs').readFileSync(__filename, 'utf8').split('*/')[0]);
     return;
   }
+  // Each action gets the field parsed FOR it. Crossing them (reset(args.limit)) is a one-character
+  // edit that turns "un-park task 42" into "un-park task 20, the default list limit" — it targets a
+  // real, arbitrary row and reports success. Pinned end-to-end from argv rather than by inspection.
   if (args.mode === 'reset') return reset(args.taskId);
   return list(Number.isFinite(args.limit) && args.limit > 0 ? args.limit : DEFAULT_LIMIT);
 }
@@ -115,4 +118,9 @@ if (require.main === module) {
 // cap+1 — each left the whole suite green while making the tool print "No parked tasks" forever.
 // That is precisely the silent failure the header warns about, so the behaviour is now reachable
 // from a test rather than only from production.
-module.exports = { parseArgs, list, reset, DEFAULT_LIMIT };
+//
+// `main` is exported for the round-2 follow-up of the SAME finding: exporting the PARTS still left
+// the tool's only real entry point untested, and `return reset(args.limit)` — passing the list
+// limit where a task id belongs — survived the entire suite. The wiring between parseArgs and the
+// two actions is itself behaviour, so it is now reachable from a test rather than trusted.
+module.exports = { parseArgs, list, reset, main, DEFAULT_LIMIT };
