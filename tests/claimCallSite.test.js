@@ -467,8 +467,51 @@ async function run() {
     assert.deepEqual(sb.seen.in, [['status', A.REAPABLE_STATUSES]]);
     assert.equal(sb.seen.limit, A.REAP_BATCH_LIMIT);
     assert.equal(A.REAP_BATCH_LIMIT, 50);
-    assert.match(String(sb.seen.select), /\bmetadata\b/,
-      'the reaper rewrites metadata, so it must select it or it will clobber the existing object');
+    assert.equal(String(sb.seen.select), A.REAP_SELECT_COLUMNS,
+      'the select must be the hoisted constant, not an inline string only this test can see');
+  });
+
+  await test('every column the reaper CONSUMES is a column it SELECTS', async () => {
+    // Round-3 verifier HIGH #1. The old assertion required only the word `metadata` to appear in
+    // the select string. Dropping `id` -- the value bound to `WHERE id = $1` -- left all 28 tests
+    // green; in production `task.id` becomes undefined, node-pg binds undefined as SQL NULL, and
+    // `WHERE id = NULL` matches nothing. The reaper would reap and refund NOTHING, forever, while
+    // logging as if it had. Nothing about that is visible from outside.
+    //
+    // Deliberately DERIVED, not restated. Re-listing the columns here would pin this test to a
+    // copy of the constant and prove only that two strings written together agree. Reading the
+    // reaper's own source for the properties it dereferences pins the actual invariant -- the
+    // fetch covers the use -- and keeps holding when someone adds a consumer later.
+    const src = String(A.prototype.runStaleTaskReaper);
+    const consumed = [...new Set([...src.matchAll(/\btask\.([A-Za-z_]\w*)/g)].map((m) => m[1]))];
+    assert.ok(consumed.includes('id'),
+      'guard on the guard: if this stops finding `task.id` the extraction broke, not the code');
+    assert.ok(consumed.length >= 3, `expected several consumed columns, found ${consumed.join(',')}`);
+    const selected = A.REAP_SELECT_COLUMNS.split(',').map((c) => c.trim());
+    for (const prop of consumed) {
+      assert.ok(selected.includes(prop),
+        `the reaper reads task.${prop} but never selects it -- it will be undefined at runtime ` +
+        `(select is: ${A.REAP_SELECT_COLUMNS})`);
+    }
+  });
+
+  await test('the reap binds the task id in the position the statement reads it from', async () => {
+    // Round-3 verifier HIGH #2. Bind positions 2 and 3 of buildReapParams were asserted; position
+    // 1 -- the id -- was not, anywhere. Hardcoding it to a constant left all 28 tests green and
+    // produces the same permanent silent no-op as HIGH #1: every reap targets a row that does not
+    // exist. The symmetric test for buildClaimParams already existed; this is the missing twin.
+    const params = A.buildReapParams(4242, { reap_count: 1 });
+    assert.equal(params.length, 3, 'the statement has exactly three placeholders');
+    assert.equal(params[0], 4242, 'the id passed in must reach $1 -- else the reap targets a row at random, or none');
+    assert.deepEqual(JSON.parse(params[1]), { reap_count: 1 }, '$2 carries the rewritten metadata');
+    assert.deepEqual(params[2], A.REAPABLE_STATUSES, '$3 is the in-flight status guard');
+
+    // And the statement really does read the id from $1, so the pairing above is not two halves
+    // that agree with each other while both disagreeing with the SQL.
+    const sql = A.REAP_SQL.replace(/\s+/g, ' ');
+    assert.match(sql, /WHERE id = \$1\b/, 'the id must be bound at $1 for the assertion above to mean anything');
+    assert.match(sql, /metadata = \$2/, '$2 is the metadata position');
+    assert.match(sql, /status = ANY\(\$3\)/, '$3 is the status-guard position');
   });
 
   await test('a non-survivor agent issues NO reaper query at all', async () => {
@@ -488,6 +531,11 @@ async function run() {
     const sql = A.REAP_SQL.replace(/\s+/g, ' ');
     assert.ok(A.CLAIMABLE_STATUSES.includes(A.REAP_RELEASE_STATUS),
       `a reap must release into a claimable status; ${A.REAP_RELEASE_STATUS} is a permanent strand`);
+    // Round-3 verifier, LOW: the only reaper trigger constant without a literal pin. The
+    // structural check above catches an unclaimable value, but 'pending' -> another CLAIMABLE
+    // status passed everything, and where a reaped task lands is a decision, not an
+    // implementation detail. Its three siblings are pinned this way; this one now matches.
+    assert.equal(A.REAP_RELEASE_STATUS, 'pending', 'reaped tasks return to the open pool by decision');
     assert.ok(sql.includes(`status = '${A.REAP_RELEASE_STATUS}'`), 'the release status left the statement');
     assert.match(sql, /claimed_by = NULL/, 'without clearing claimed_by the row can never be claimed again');
     assert.match(sql, /claimed_at = NULL/, 'a stale claimed_at would make the row instantly re-reapable');
