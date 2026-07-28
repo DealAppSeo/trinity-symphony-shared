@@ -276,6 +276,35 @@ async function run() {
     await a.runStaleTaskReaper();
     assert.deepEqual(seen, [42], 'the lost race must be skipped, and the next task still reaped');
     assert.equal(calls.length, 2, 'both rows must be attempted');
+
+    // THE WIRE BETWEEN THE FETCH AND THE BIND (round-4 verification, HIGH).
+    // buildReapParams was pinned as a unit (`buildReapParams(4242,…)` → `params[0] === 4242`) and
+    // the select was pinned to cover every `task.<prop>` the reaper dereferences — but NOTHING
+    // asserted that the id reaching buildReapParams is the id of the row being reaped. Four
+    // single-edit mutations of that one call-site argument each left the whole suite green while
+    // turning the reaper into a permanent silent no-op:
+    //   buildReapParams(999999, …)      → WHERE id = 999999 matches nothing; reaps and refunds
+    //                                     NOTHING, forever, logging as though it worked
+    //   buildReapParams(task.claimed_by)→ same, plus 22P02 on a text→bigint bind
+    //   buildReapParams(task.title, …)  → same, and burns the failure budget every pass
+    //   buildReapParams(stale[0].id, …) → reaps the SAME row up to 50x per pass (an infinitely
+    //                                     re-claimable task) while stranding every other row
+    // The two ids here are deliberately DISTINCT so that `stale[0].id` cannot coincide with the
+    // right answer — a single-row batch would pass under that mutant.
+    assert.deepEqual(calls.map((c) => c.params[0]), [41, 42],
+      'each reap must bind the id of the row it is reaping — not a constant, not another column, ' +
+      'and not the first row of the batch repeated');
+
+    // The options are captured by the stub but were asserted nowhere: `retries: 1 → 25` and
+    // dropping the options object entirely both survived. runStaleTaskReaper is wrapped in
+    // withTimeout(15s), which ABANDONS but does not cancel, so a retry storm leaks connections
+    // from a POOL_MAX=5 pool — and REAP_FAILURE_BUDGET's arithmetic assumes one attempt per row.
+    for (const c of calls) {
+      assert.equal(c.opts && c.opts.retries, 1,
+        'the reap must not retry-storm: the failure budget assumes one attempt per row');
+      assert.ok(c.opts && typeof c.opts.timeoutMs === 'number',
+        'the reap must carry an explicit timeout');
+    }
   });
 
   await test('the reap carries forward reap_count metadata', async () => {

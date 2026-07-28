@@ -185,8 +185,16 @@ async function run() {
 
   test('CLAIM_SQL refuses to select a task at or above the cap', () => {
     const sql = A.CLAIM_SQL.replace(/\s+/g, ' ');
-    assert.match(sql, /AND COALESCE\(claim_count, ?0\) < \$6/,
+    // ANCHORED to the end of the predicate. Round-4 verification found the unanchored form
+    // (/< \$6/) is satisfied by anything appended to the right-hand side: `< $6 + 1` (cap
+    // silently 13), `< $6 + 1000000` (cap silently 1,000,012 — the 365-claim runaway returns
+    // with no other symptom and no failing test), and `< $6 OR TRUE` (the whole WHERE
+    // short-circuits, so agents claim rows already claimed by others). All three passed the old
+    // assertion, and the call-site test cannot catch them because the BIND VALUE is unchanged.
+    assert.match(sql, /AND COALESCE\(claim_count, ?0\) < \$6 ORDER BY/,
       'the cap predicate is the whole fix; without it claim_count is just telemetry');
+    assert.ok(!/< \$6 *(\+|OR\b|AND\b)/.test(sql),
+      'nothing may be appended to the cap comparison — a widened right-hand side disarms the cap silently');
   });
 
   test('CLAIM_SQL still carries the race-safety guards it had before', () => {
