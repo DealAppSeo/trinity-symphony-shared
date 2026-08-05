@@ -92,12 +92,42 @@ console.log('\nALLOWLIST — egress is scoped, not open');
 
 t('matches our hosts and rejects lookalikes', () => {
   assert.ok(belt.hostAllowed('repid-engine-production.up.railway.app'));
-  assert.ok(belt.hostAllowed('anything.up.railway.app'), 'suffix entries must match subdomains');
   assert.ok(!belt.hostAllowed('evil.com'));
-  // The attack this stops: a suffix entry like `.up.railway.app` must not be
-  // satisfied by an attacker-controlled domain that merely CONTAINS it.
-  assert.ok(!belt.hostAllowed('up.railway.app.evil.com'), 'suffix match must anchor at the END');
+  assert.ok(!belt.hostAllowed('up.railway.app.evil.com'));
   assert.ok(!belt.hostAllowed('notrepid-engine-production.up.railway.app.attacker.io'));
+});
+
+// THE REGRESSION THAT MATTERS. The shipped version allowlisted `.up.railway.app`
+// as a suffix. That is a PUBLIC SUFFIX — anyone can deploy to it — so one entry
+// meaning "our services" actually meant "any Railway customer's service". Caught
+// the same day it merged, by running it rather than reading it.
+t('NO wildcard: a public-suffix sibling is refused', () => {
+  assert.ok(!belt.hostAllowed('attacker.up.railway.app'),
+    'ANY Railway customer can register this — it must never be reachable');
+  assert.ok(!belt.hostAllowed('totally-attacker-controlled.up.railway.app'));
+  // read-only does not mean harmless: http_get puts the URL on the wire, so a
+  // reachable attacker host is an EXFILTRATION channel via the query string.
+  assert.ok(!belt.hostAllowed('exfil.up.railway.app'));
+});
+
+t('same host, different string: case and trailing dot normalise', () => {
+  assert.ok(belt.hostAllowed('REPID-ENGINE-PRODUCTION.UP.RAILWAY.APP'), 'DNS is case-insensitive');
+  assert.ok(belt.hostAllowed('repid-engine-production.up.railway.app.'), 'canonical trailing dot is the same host');
+  // ...but normalising must not become a bypass.
+  assert.ok(!belt.hostAllowed('attacker.up.railway.app.'));
+});
+
+t('an operator cannot silently reintroduce a wildcard via the env var', () => {
+  // The entry is dropped at load with a loud console.error rather than honoured.
+  assert.ok(!belt.ALLOWED_HOSTS.some((h) => h.startsWith('.') || h.includes('*')),
+    'no wildcard may survive into the effective allowlist');
+});
+
+t('URL parsing resolves the two classic host-spoofing forms', () => {
+  // Not hostAllowed's job, but the caller depends on it, so pin the behaviour.
+  assert.equal(new URL('https://repid-engine-production.up.railway.app@evil.com/x').hostname, 'evil.com',
+    'credentials-before-@ must not be mistaken for the host');
+  assert.ok(new URL('https://exampIe.com/').hostname.length > 0);
 });
 
 t('is read-only — no tool can mutate anything', () => {
