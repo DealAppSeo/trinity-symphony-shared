@@ -15,6 +15,7 @@ const WebSocket = require('ws');
 const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
 const Merkle = require('./utils/merkle');
+const { shouldParkForHalt } = require('./lib/emergency-halt'); // L0 gate 0.4 — GLOBAL kill switch
 
 // ============================================
 // THE CONSTITUTION - IMMUTABLE PRINCIPLES
@@ -697,6 +698,10 @@ ${task.description || 'No description provided'}
     setInterval(() => this.askEternalQuestions(), 15 * 60 * 1000);
   }
   async runSelfDiagnostic() {
+    // L0 gate 0.4 — this is not observability: it can trigger a HEALING CASCADE
+    // and writes a genome report. A halt must stop the machine acting on the
+    // system, especially while a human is trying to work on that same system.
+    if (await shouldParkForHalt(`${this.name}:self-diagnostic`)) return;
     console.log(`[${this.name}] 🔍 Running self-diagnostic...`);
 
     try {
@@ -787,6 +792,8 @@ ${task.description || 'No description provided'}
     return allHealthy;
   }
   async askEternalQuestions() {
+    // L0 gate 0.4 — writes `eternal_question` log rows on a 15-min interval.
+    if (await shouldParkForHalt(`${this.name}:eternal-questions`)) return;
     console.log(`[${this.name}] 🙏 Asking the Three Eternal Questions...`);
 
     for (const question of CONSTITUTION.THREE_ETERNAL_QUESTIONS) {
@@ -1338,6 +1345,14 @@ If a task violates the Eight Virtues, refuse it and explain why.`;
 
     while (true) {
       try {
+        // L0 gate 0.4 — GLOBAL emergency halt, checked first: this loop claims
+        // and processes tasks and has NO agent_controls gate of its own, so the
+        // global switch is the only lever that reaches it. 30s re-check so a
+        // resume is picked up promptly, matching the V4 loops' idle cadence.
+        if (await shouldParkForHalt(this.name)) {
+          await this.sleep(30000);
+          continue;
+        }
         if (this.isSabbathTime()) {
           await this.observeSabbath();
           await this.sleep(30 * 60 * 1000);

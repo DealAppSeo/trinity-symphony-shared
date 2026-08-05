@@ -33,6 +33,10 @@ jobs:
           node -c lib/ConstitutionalAgentV4.js
           node -c lib/tool-call-logger.js
           node -c scripts/ops/claim-exhausted.js
+          node -c lib/emergency-halt.js
+          node -c constitutional-agent-base.js
+          node -c trinity-worker.js
+          node -c lib/swarm-toolbelt.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
@@ -43,3 +47,13 @@ jobs:
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
           node tests/heartbeatDbWritesGate.test.js
+          # L0 gate 0.4 — the kill switch. The coverage pin FAILS when a new
+          # loop is added without gating it, so it must run on every PR or the
+          # switch silently stops being global (which is how the engine's
+          # version came to cover 3 of 14 loops).
+          node tests/emergency-halt.test.js
+          node tests/emergency-halt-coverage.test.js
+          # agent-controls.test.js already existed and passed but was never in
+          # this list — a test that never runs proves nothing. Added because it
+          # covers the sibling lever the halt composes with.
+          node tests/agent-controls.test.js
