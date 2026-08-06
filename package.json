@@ -2,6 +2,7 @@
   "name": "trinity-symphony-shared",
   "version": "7.2.0",
   "description": "Trinity Symphony - Constitutional Multi-Agent AI System with Artifact Creation",
+  "license": "Apache-2.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
