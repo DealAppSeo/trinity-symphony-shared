@@ -31,6 +31,7 @@ jobs:
       - name: Syntax-check core agent libs
         run: |
           node -c lib/ConstitutionalAgentV4.js
+          node -c lib/resolve-supabase-service-key.js
           node -c lib/tool-call-logger.js
           node -c scripts/ops/claim-exhausted.js
           node -c lib/emergency-halt.js
@@ -42,6 +43,10 @@ jobs:
       - name: Node tests
         run: |
           node tests/getNextTask.test.js
+          # Fail-closed Supabase service-key resolution — proves a missing service
+          # key THROWS instead of silently degrading the admin client to anon
+          # (the RLS-loop that killed the fleet heartbeat quietly).
+          node tests/supabaseServiceKeyResolve.test.js
           node tests/claimCap.test.js
           node tests/claimCallSite.test.js
           node tests/provenance.test.js
