@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import ws from 'ws';
+import { resolveSupabaseServiceKey } from './supabase';
 import { provenance } from './provenance';
 import { Redis } from '@upstash/redis';
 import { AgentConfig, WisdomProfile, ProviderConfig, LLMResult, Task, AutonomyTier, AgentRegistryRecord, SessionMetrics, MCPPhase } from './types';
@@ -207,8 +208,10 @@ export class ConstitutionalAgent {
         // Start the Trinity Healing Loop - REMOVED (Called by run-agent.ts)
         // this.startTrinityHealingLoop();
 
+        // Fail-closed: SUPABASE_SECRET_KEY first, then legacy service keys. No anon
+        // fallback — resolveSupabaseServiceKey throws loudly if none resolve.
         this.supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+            process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!, resolveSupabaseServiceKey(process.env)
         , { realtime: { transport: ws } });
 
         if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
@@ -1800,9 +1803,10 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                         // FORCE FRESH CLIENT
                         console.log("[ARTIFACT] ⚠️ Retrying with FRESH Supabase Client due to schema error...");
                         const { createClient } = require('@supabase/supabase-js');
-                        // Re-read env vars directly to be safe
-                        const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://qnnpjhlxljtqyigedwkb.supabase.co';
-                        const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                        // Re-read env vars directly to be safe. Fail-closed service-key
+                        // resolution — no anon fallback (anon is silently RLS-rejected).
+                        const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'https://qnnpjhlxljtqyigedwkb.supabase.co';
+                        const key = resolveSupabaseServiceKey(process.env);
                         clientToUse = createClient(url, key, { auth: { persistSession: false }, realtime: { transport: ws } });
                     }
 

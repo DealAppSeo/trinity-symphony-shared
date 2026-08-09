@@ -16,6 +16,7 @@ const { Redis } = require('@upstash/redis');
 const crypto = require('crypto');
 const Merkle = require('./utils/merkle');
 const { shouldParkForHalt } = require('./lib/emergency-halt'); // L0 gate 0.4 — GLOBAL kill switch
+const { resolveSupabaseServiceKey } = require('./lib/resolve-supabase-service-key');
 
 // ============================================
 // THE CONSTITUTION - IMMUTABLE PRINCIPLES
@@ -289,8 +290,11 @@ function canonicalizeProvider(providerKey) {
 
 class ConstitutionalAgent {
   constructor(config = {}) {
-    this.supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY, { realtime: { transport: WebSocket } });
-        console.log('[SUPABASE] ? Client initialized with ws transport (Node ' + process.version + ')');
+    // Fail-closed service-key resolution (SUPABASE_SECRET_KEY first, then legacy
+    // SERVICE_ROLE_KEY / SERVICE_KEY / SUPABASE_KEY). No anon fallback — throws
+    // loudly if none resolve rather than building an anon client RLS rejects.
+    this.supabase = createClient(process.env.SUPABASE_URL, resolveSupabaseServiceKey(process.env), { realtime: { transport: WebSocket } });
+    console.log('[SUPABASE] Client initialized with ws transport (Node ' + process.version + ')');
     this.redis = new Redis({
       url: process.env.UPSTASH_REDIS_REST_URL,
       token: process.env.UPSTASH_REDIS_REST_TOKEN,
