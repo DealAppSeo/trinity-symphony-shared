@@ -12,9 +12,13 @@
 
 **Constitutional logic and core BFT primitives for the AI Trinity Symphony.**
 
-`trinity-symphony-shared` contains the guardrails, fuzzy-inference models, and consensus protocols used by
-the Trinity Symphony agents. It provides the constitutional agent base, the ANFIS bid resolver, and the
-shared BFT validation primitives the swarm relies on.
+`trinity-symphony-shared` is the shared runtime for the 12 Trinity Symphony agents: the constitutional
+agent base they all extend, the tool loop they act through, and the safety primitives that can stop them.
+
+**Read the "Live today vs designed" table below before relying on anything here.** An earlier version of
+this README described three components — an ANFIS bid resolver, an Evolutionary Logger and a Pruning
+Engine — that do not exist in this repository, alongside a fuzzy-membership code sample that was never
+lifted from any file here. Those claims have been removed rather than softened.
 
 ---
 
@@ -42,11 +46,39 @@ graph LR
     ANFIS --> Truth[Verifiable Truth]
 ```
 
-### Core Primitives
-- **Constitutional Agent Base**: The foundation for all agents, enforcing [Philippians 4:8](CONSTITUTION.md) adherence at the system level.
-- **ANFIS Bid Resolver**: An Adaptive Neuro-Fuzzy Inference System that scores agent bids on **Cost, Efficiency, and Flexibility**.
-- **Evolutionary Logger**: A recursive feedback system that logs each "learning event" into a vault for self-optimization.
-- **Pruning Engine**: Implements **Evolutionary Swarm Pruning (ESP)** to cull inefficient behaviors over time.
+### Core primitives — what is actually in this repo
+
+| Primitive | File | What it does |
+|---|---|---|
+| **Constitutional agent base** | `constitutional-agent-base.js` (2,627 lines) | The foundation every agent extends, enforcing [Philippians 4:8](CONSTITUTION.md) adherence at the system level |
+| **Constitutional agent V4** | `lib/ConstitutionalAgentV4.js` (3,049 lines) | The current agent implementation — HTTP surface, tool-call loop, hash-chained audit |
+| **Swarm toolbelt** | `lib/swarm-toolbelt.js` (287 lines) | The instruments an agent acts through: `http_get`, `read_engine_stats`, `report_unmeasurable`. Default OFF behind `SWARM_TOOLBELT=on` |
+| **L0 emergency halt** | across the tick loops | A global stop, with a coverage test that scans the filesystem for tick loops so it fails when a new one is added ungated |
+
+**Why the toolbelt matters more than it looks.** Before it existed the agents had exactly one tool —
+`save_artifact` — so an agent asked to *measure* something had no instrument and one affordance: write
+prose. 18 of 18 nightly smoke reports contained zero real measurements. That was fabrication by
+construction, not by disposition. `report_unmeasurable` is the tool that lets an agent decline.
+
+---
+
+## Live today vs designed
+
+| Live today | How to check |
+|---|---|
+| 12 constitutional agents on a shared base | `constitutional-agent-base.js`, `lib/ConstitutionalAgentV4.js` |
+| Tool-call loop with a real toolbelt | `lib/swarm-toolbelt.js`; proven 2026-08-05 — three probes returned live engine values matching independently-captured ground truth, and a fourth **declined to answer** a question no tool could reach |
+| `report_unmeasurable` — an agent can refuse | same file; this is what makes the refusal above possible |
+| L0 global emergency halt | filesystem-scanning coverage test fails when a new tick loop is added ungated |
+| Hash-chained audit of tool calls | `lib/ConstitutionalAgentV4.js` |
+| 13 test files | `tests/` |
+
+| Designed or partial — **not** live here | Actual state |
+|---|---|
+| ANFIS fuzzy inference / bid resolution | name only; no weights read or written (see above) |
+| Self-healing provider demotion | inputs collected, nothing reads them back |
+| Evolutionary pruning | not present in this repository |
+| Routing confidence | hardcoded `0.9`, persisted as if measured |
 
 ---
 
@@ -60,18 +92,30 @@ graph LR
 
 ## 🛠️ Implementation Details
 
-### ANFIS Fuzzy Logic
-Routing uses triangular membership functions rather than simple thresholds, to handle the "grey areas" of
-computational triage.
-```typescript
-// Example membership function from our core
-const isLow = (v: number) => Math.max(0, 1 - v * 2);
-const isHigh = (v: number) => Math.max(0, (v - 0.5) * 2);
-```
+### What "ANFIS" currently means in this repo
 
-### Self-Healing Loop
-When the **Evolutionary Logger** detects a persistent failure pattern, it triggers a **Self-Healing Pulse**,
-which can demote underperforming LLM providers or re-route tasks to higher-reputation agents.
+Two call sites carry the name, and neither performs fuzzy inference today:
+
+- `callAnfisReward()` (`constitutional-agent-base.js:1671`) records provider performance via
+  `trackProviderPerformance()` and writes an audit log line. Its comment says "ANFIS logic to adjust
+  weights based on performance"; **no weight is read or written.**
+- `selectStorageTier()` (`:1951`) is an if/else over query type, latency budget and sensitivity, with
+  `let confidence = 0.9` hardcoded — then persisted to `db_routing_decisions.confidence` as though it
+  had been measured.
+
+The adaptive-neuro-fuzzy design is real and specified elsewhere in the project. It is **not implemented
+here**, and this README previously implied otherwise with a code sample that exists in no file in this
+repository.
+
+### Self-healing — designed, partially built
+
+`trackProviderPerformance()` records provider success and latency, so the INPUT a self-healing loop
+needs is being collected. Automatic demotion of underperforming providers and reputation-based
+re-routing are **not wired**: nothing currently reads that record back to change a routing decision.
+
+The one safety loop that IS live is the opposite of self-healing — it is self-stopping. The L0 emergency
+halt can stop every tick loop, and its coverage test scans the filesystem for tick loops so that adding a
+new ungated one fails the build.
 
 ---
 
