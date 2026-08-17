@@ -5,3 +5,10 @@ dist/
 build/
 *.log
 .DS_Store
+
+# Agent worktrees. Ignored, never committed: repid-engine ignores the same path
+# (.gitignore:11), and trinity-ecosystem/CLAUDE.md records that .claude/worktrees/
+# has been committed to a repo here before and caused stale-deployment bugs. A
+# worktree is scratch state belonging to one session, not to the repo.
+.claude/worktrees/
+.claude/settings.local.json

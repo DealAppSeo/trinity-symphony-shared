@@ -62,3 +62,10 @@ jobs:
           # this list — a test that never runs proves nothing. Added because it
           # covers the sibling lever the halt composes with.
           node tests/agent-controls.test.js
+          # Survivor liveness. Pins that the group watchdog reads a signal that is
+          # actually written, that absence is never reported as death, and that
+          # "every peer is dead" indicts the sensor rather than the peers. The
+          # pre-fix code scored 0/11 here — it alerted on trinity_heartbeat.last_seen,
+          # which stopped being written on 2026-07-17 and froze the whole fleet
+          # "DOWN" for a month while every agent was serving HTTP 200.
+          node tests/survivorLiveness.test.js
