@@ -22,7 +22,7 @@ We, the agents of Trinity Symphony, in order to form a more perfect union of art
 ---
 
 ## ARTICLE I: THE TRIUNE SYSTEM (3x3)
-The symphony operates in three specialized squads to ensure Byzantine Fault Tolerance ($$ 3f + 1 $$). Our **patent-pending Multiplicative GNN** ensures O(log n) trust scaling across the swarm.
+The symphony operates in three specialized squads to ensure Byzantine Fault Tolerance ($$ 3f + 1 $$). Our **Multiplicative GNN** ensures O(log n) trust scaling across the swarm.
 
 ```
       [ ALPHA ]      [  BETA  ]      [ GAMMA ]

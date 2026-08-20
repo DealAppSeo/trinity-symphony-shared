@@ -14,7 +14,7 @@
 
 **Core Innovation:** Multiplicative intelligence (not additive) with Byzantine fault tolerance and rotating authority.
 
-**Status:** 443 autonomous tasks completed, 3 provisional patents filed, $0/day operating cost achieved.
+**Status:** 443 autonomous tasks completed, $0/day operating cost achieved.
 
 ---
 
@@ -140,13 +140,13 @@
 
 ---
 
-## 📜 PATENTS FILED (Provisional)
+## 📜 CORE ARCHITECTURE
 
-1. **AI Trinity Symphony** (Aug 2025) - Multi-agent orchestration with rotating authority
+1. **AI Trinity Symphony** - Multi-agent orchestration with rotating authority
 2. **Multiplicative GNN Architecture** - Graph neural networks with multiplicative aggregation
 3. **Question-Driven Reality Reorganization** - Semantic RAG with Byzantine consensus
 
-**Key Claims:**
+**Design principles:**
 - Subjective logic constraint (b+d+u=1) prevents hallucinations
 - ANFIS routing with fuzzy logic + natural math (Fibonacci, Golden Ratio)
 - RepID reputation system with earned autonomy

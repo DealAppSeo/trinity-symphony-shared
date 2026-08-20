@@ -396,7 +396,6 @@ TRINITY_SUPABASE_ANON_KEY=[your-key-here]
 - **Total Tasks:** 441 autonomous + 2 today = 443
 - **Cost Savings:** 82-98% vs. baseline
 - **Uptime:** 67 days (since HDM first deployment)
-- **Patents Filed:** 3 provisional applications
 
 ---
 

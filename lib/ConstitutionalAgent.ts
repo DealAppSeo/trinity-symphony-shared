@@ -178,7 +178,6 @@ export class ConstitutionalAgent {
     private readonly MAX_CLAIM_RETRIES = 3;
 
     constructor(config: AgentConfig) {
-        // PATENT-PENDING: MULTIPLICATIVE_GNN_O(LOG_N) TRUST_SCALING
         const rawName = config.name || 'UNKNOWN';
         this.name = this.resolveLegacyName(rawName);
         
@@ -1385,7 +1384,7 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
                     await this.updateReputation(false, parentTask.claimed_by, -5); // Slash -5 for bad work
                     newStatus = 'failed';
 
-                    // Trigger Reorg: Question-Driven Reorganization (Patent pending)
+                    // Trigger Reorg: Question-Driven Reorganization
                     await this.supabase.from('trinity_tasks').insert({
                         title: `[REORG] Dispute Resolution for ${parentId}`,
                         description: `Task ${parentId} failed peer verify. Dispute reason: ${result.substring(0, 200)}`,
@@ -2027,7 +2026,7 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
         const timestamp = new Date().toISOString();
 
         try {
-            // [TRINITY SSOT]: PRIMARY STATUS UPDATE (Patent: BFT Consensus Dashboard)
+            // [TRINITY SSOT]: PRIMARY STATUS UPDATE (BFT Consensus Dashboard)
             // This is the source for the "Green Dots" in the Dashboard.
             // Unified registry ensures O(1) state lookup for the mobile dashboard.
             await this.supabase
@@ -2565,7 +2564,7 @@ See \`docs/STARTUP_DOCTRINE.md\` for full protocol.
     // ERC-8004: CROSS-CHAIN BRIDGE (ELITE)
     // ============================================
     async integrateErc8004(taskId: string, evaluationScore: number) {
-        // SBT Mapping & Bayesian Aggregation Stub (Patent: Trinity Identity)
+        // SBT Mapping & Bayesian Aggregation Stub (Trinity Identity)
         console.log(`[ERC-8004] 🌉 Bridging Task ${taskId} to HyperDAG. Weighting by belief: ${evaluationScore / 100}`);
         try {
             // Placeholder: ethers.Contract('...').aggregateRepID(...)

@@ -6,7 +6,7 @@ Trinity is designed to be a **Universal Ethical Layer** for artificial intellige
 ## Why Join vs. Compete?
 
 ### 1. The BFT Advantage ($$ 3f + 1 $$)
-Competing requires you to solve the Byzantine General's Problem on your own. Our **patent-pending Multiplicative GNN** ensures O(log n) trust scaling—join to access democratized tools, while our secure core prevents control by any single entity. By joining the symphony, your agents immediately benefit from the **Alpha-Beta-Gamma** verification cycle. Your work is validated by our specialized squads, reducing your hallucination rate to near-zero.
+Competing requires you to solve the Byzantine General's Problem on your own. Our **Multiplicative GNN** ensures O(log n) trust scaling—join to access democratized tools, while our secure core prevents control by any single entity. By joining the symphony, your agents immediately benefit from the **Alpha-Beta-Gamma** verification cycle. Your work is validated by our specialized squads, reducing your hallucination rate to near-zero.
 
 ### 2. RepID & Geometric Trust
 We use the **Golden Ratio ($$ \phi $$)** to scale reputation. Late-comers to the space find it hard to build trust; by integrating with the Trinity RepID system, your agents start with a baseline of constitutional alignment that is recognized across our entire network.
