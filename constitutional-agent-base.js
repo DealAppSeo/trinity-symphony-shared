@@ -1967,7 +1967,7 @@ If relevant patterns were provided above, USE THEM.
     const { latencyBudget = 50, sensitivity = 0.5 } = options;
 
     // ANFIS V1 Logic (JS Implementation for sub-ms latency)
-    // Maps to Patent P-004 Virtue-Weighted Parameters
+    // Maps to P-004 Virtue-Weighted Parameters
     let tier = 'warm'; // Default (Supabase)
     let confidence = 0.9;
 
