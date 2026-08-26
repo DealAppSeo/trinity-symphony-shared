@@ -62,6 +62,11 @@ jobs:
           # this list — a test that never runs proves nothing. Added because it
           # covers the sibling lever the halt composes with.
           node tests/agent-controls.test.js
+          # Redis circuit breaker for the Upstash-backed control cache — pins
+          # that a dead UPSTASH_REDIS_REST_URL degrades to one warning burst
+          # plus a cooldown instead of a failing call (and a log line) forever,
+          # and that a recovered endpoint is used again once the cooldown ends.
+          node tests/agentControlsRedisBreaker.test.js
           # Survivor liveness. Pins that the group watchdog reads a signal that is
           # actually written, that absence is never reported as death, and that
           # "every peer is dead" indicts the sensor rather than the peers. The
