@@ -46,7 +46,50 @@ are, and the largest collision class disappears:
 Two agents force-pushing one branch name is not a conflict you resolve — it is
 work that silently disappears.
 
-### 2. Claim a shared mutable resource before changing it
+### 2. STAY IN YOUR LANE — one agent per repo at a time
+
+Sean, 2026-08-29: *"make sure all agents are staying in their lane, at least till
+handoffs so agents are not working in the same repo at the same time."*
+
+**Before you touch a repo, take its lane. When you stop, hand it off or release it.**
+
+```sql
+select * from v_repo_lanes;                      -- who holds what, right now
+
+select claim_resource('repo','DealAppSeo/repid-engine','GA',
+                      'what you are about to do', 45);
+-- ... work ...
+select release_resource('repo','DealAppSeo/repid-engine','GA');
+```
+
+**Handing the lane to another agent is one call, not release-then-claim:**
+
+```sql
+select handoff_resource('repo','DealAppSeo/repid-engine',
+                        'CC','GA',
+                        'what is merged, what is in flight, what is yours now', 60);
+```
+
+Release-then-claim is **not** the same thing. Between the two statements the lane
+is unheld, and a third agent polling `v_repo_lanes` can take it. `handoff_resource`
+does both in one transaction, so the lane is never observably free. It also
+**refuses** if you do not actually hold it — handing off something you never had
+is a bug worth surfacing, not a silent no-op. `prior_claim_id` makes the chain
+walkable: "who had this before me" is answerable.
+
+**Repo-level is deliberately coarse.** It is what "not working in the same repo at
+the same time" means, and it *will* block the other agent entirely. So:
+
+- **Use a short TTL** (30-60 min), not a long one. Reclaim if you need more.
+- **Hand off when you pause**, do not sit on a lane you are not using.
+- An expired lane is cleared automatically by the next `claim_resource` — a dead
+  session never becomes a permanent outage.
+
+Put in the handoff note what the next agent actually needs: what merged, what is
+in flight, what is blocked on Sean. A lane handed over with no note is a lane the
+next agent has to re-derive.
+
+### 3. Claim a finer-grained resource before changing it
 
 ```sql
 -- Before you start:
@@ -81,7 +124,7 @@ time a session dies holding it, and these sessions are ephemeral. An expired
 claim is cleared automatically by the next `claim_resource` call — you do not
 need to reap it.
 
-### 3. What actually collides
+### 4. What actually collides
 
 Measured on 2026-08-29, three times in one session, all the same shape: **work
 landed on `main` while a PR against it was open, and the branch then conflicted
@@ -97,7 +140,7 @@ A squash-merged commit is in `main` by content but is **not an ancestor**, so
 `git diff HEAD origin/main` — empty means your work is in, whatever the ancestry
 says.
 
-### 4. Migrations are the sharp edge
+### 5. Migrations are the sharp edge
 
 Both agents can call `apply_migration` against the one production project
 (`qnnpjhlxljtqyigedwkb`). There is no staging copy. Claim
