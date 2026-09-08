@@ -1612,7 +1612,29 @@ Format as JSON: { "title": "...", "description": "...", "priority": 15 }
             // A. Check Latency Opportunity (Via Python Brain)
             // Use dynamic import/require to avoid circular dependency/build issues
             const { ScienceClient } = require('../science/ScienceClient');
-            const scienceUrl = process.env.NEXT_PUBLIC_SCIENCE_URL || 'http://127.0.0.1:8000';
+            // The deployed variable is NEXT_PUBLIC_TRINITY_SCIENCE_URL; this line read
+            // NEXT_PUBLIC_SCIENCE_URL. Different names, so the configured value was never
+            // seen and every call fell through to 127.0.0.1:8000 — which is nothing inside
+            // a Railway container. The symptom was not an error but a quieter one: the
+            // ANFIS decision simply never arrived and the agent proceeded without it.
+            //
+            // TRINITY_SCIENCE_URL is the name this should have. There is no Next.js in this
+            // package, so NEXT_PUBLIC_ is inert here — it is a Next-only mechanism, and
+            // carrying the prefix into a plain Node service implies a browser exposure that
+            // does not exist. Both older names stay so nothing breaks before the platform
+            // variables are renamed.
+            const scienceUrl =
+                process.env.TRINITY_SCIENCE_URL ||
+                process.env.NEXT_PUBLIC_TRINITY_SCIENCE_URL ||
+                process.env.NEXT_PUBLIC_SCIENCE_URL ||
+                'http://127.0.0.1:8000';
+            if (!process.env.TRINITY_SCIENCE_URL &&
+                !process.env.NEXT_PUBLIC_TRINITY_SCIENCE_URL &&
+                !process.env.NEXT_PUBLIC_SCIENCE_URL) {
+                // Say so. A silent fallback to localhost is how this went unnoticed.
+                console.warn('[WISDOM] No science URL configured (set TRINITY_SCIENCE_URL); ' +
+                    'falling back to 127.0.0.1:8000, which resolves to nothing in a deployed container.');
+            }
             const science = new ScienceClient(scienceUrl);
 
             // Hardcoded simulation vals for now - in real prod, track actual latency
