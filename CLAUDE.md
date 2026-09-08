@@ -9,6 +9,16 @@
 - CLAUDE-RULE-5: Schema first. Query information_schema before SQL. trinity_tasks.id is BIGINT, not UUID.
 - CLAUDE-RULE-6: Efficiency. Shortest path to done. No busywork.
 
+## Wallet addresses: `trinity-ecosystem/docs/AGENT-ADDRESSES.md`
+
+Every agent that runs from this package has an on-chain wallet, and this repo
+names none of them. The registry does: all 12 T12 agents by squad, plus the
+deployer, custodian and ERC-8004 role addresses. It exists because the table was
+supplied by hand across several sessions while the values sat unnamed in another
+repo's scripts. **Grep it; do not ask for it again.**
+
+Addresses only — the private keys are named by variable and never by value.
+
 ## Architectural Principles (first-class)
 
 1. Persistent stateful channels beat repeated stateless calls when state is heavy and turns are short.
