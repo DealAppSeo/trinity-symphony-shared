@@ -27,6 +27,12 @@ process.env.UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || 'http
 process.env.UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || 'test-token';
 // Deterministic HMAC secret for the peer-verdict signature assertion.
 process.env.PEER_VERIFY_HMAC_SECRET = 'unit-test-secret';
+// _postPeerVerdict no longer falls back to a hardcoded 'test-key-123' when REPID_API_KEY is
+// unset — it refuses, because a service missing that variable used to POST every verdict with
+// an invalid credential, leaving the queue row stranded in `in_review` and indistinguishable
+// from a dead verifier. The tests below were relying on that fallback without saying so, which
+// is precisely why removing it had to surface here. They supply the credential explicitly now.
+process.env.REPID_API_KEY = 'unit-test-repid-api-key';
 // Ensure the web search tool sees NO key so we test the loud-degrade branch.
 delete process.env.TAVILY_API_KEY;
 
