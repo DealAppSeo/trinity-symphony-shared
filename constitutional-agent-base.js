@@ -306,6 +306,28 @@ class ConstitutionalAgent {
     this.groupName = process.env.AGENT_GROUP || 'local';
     this.isSurvivor = process.env.SURVIVOR_ENABLED === 'true';
 
+    // ANFIS_ROUTER — DECLARED OFF, AND DELIBERATELY INERT. Nothing branches on it.
+    //
+    // ANFIS is the Pareto first-pass router: it decides LLM / SLM / tool / HITL from the
+    // ask, history, PAI *features* and JTBD. It is NOT wired into this worker, and the
+    // status line for it is "router unwired; contract + log inventory in progress" —
+    // never "ANFIS is running".
+    //
+    // WHY A FLAG THAT DOES NOTHING. Before 2026-09-23 there was no ANFIS_ROUTER anywhere
+    // in any repo. That absence was not "off", it was UNDEFINED, and an undefined switch
+    // is not a decision anyone can audit: you cannot grep for it, you cannot read its
+    // state, and the first person to wire a router would have invented a name nobody
+    // agreed on. Declaring it off makes the wiring point visible and greppable while
+    // changing no behaviour.
+    //
+    // Fail-closed on purpose: anything other than the exact string 'on' is off, so a
+    // typo, an empty string or an unset variable all mean OFF rather than accidentally on.
+    //
+    // DO NOT FLIP THIS. Revival is a SECOND Railway service (never uvicorn and
+    // signal_fetcher.py --once in one container) and is gated on three conditions
+    // recorded in trinity-ecosystem/docs/ANFIS-ROUTER-2026-09-23.md.
+    this.anfisRouterEnabled = process.env.ANFIS_ROUTER === 'on';
+
     // Inline wisdom loading to be 100% sure
     this.wisdom = AGENT_WISDOM[this.name] || AGENT_WISDOM['ORCH'];
     if (!this.wisdom) {
