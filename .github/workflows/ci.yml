@@ -74,3 +74,8 @@ jobs:
           # which stopped being written on 2026-07-17 and froze the whole fleet
           # "DOWN" for a month while every agent was serving HTTP 200.
           node tests/survivorLiveness.test.js
+          # README edges. Pins README "Where this sits" (what the agents call, what
+          # calls them) and "Squads" against the code server.js actually runs, both
+          # ways. The README it replaced named a base class nothing extends and three
+          # squads where the code has four.
+          node tests/readme-edges.test.js
