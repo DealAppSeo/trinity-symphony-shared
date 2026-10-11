@@ -10,7 +10,7 @@ jobs:
         service: [orch, sophia, veritas, torch, nexus, hdm, gcm, mel, apm, w3c, chesed, shofet]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
       - name: Install Railway CLI
         run: npm install -g @railway/cli
       - name: Deploy to Railway
