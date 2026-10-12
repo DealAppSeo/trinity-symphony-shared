@@ -1,6 +1,9 @@
 # ADVISORY - version-update PRs only; nothing here is a required check.
 # Weekly, with minor and patch bumps grouped into one PR per ecosystem so the queue stays
 # reviewable. Major bumps arrive as their own PRs on purpose: they are the ones that break.
+# Exception: the npm majors under `ignore` were reviewed and deliberately closed unmerged
+# (PRs #60-#67), so Dependabot is told to stop reopening them. Delete an entry to be offered
+# that major again. Minor and patch bumps of the same packages still flow through the group.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -21,6 +24,23 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # #63-#67: express 4.x -> 5.2.1 in /, /apm, /gcm, /hdm, /mel
+      - dependency-name: "express"
+        update-types:
+          - "version-update:semver-major"
+      # #60: express-rate-limit 7.5.1 -> 8.7.1
+      - dependency-name: "express-rate-limit"
+        update-types:
+          - "version-update:semver-major"
+      # #61: helmet 7.2.0 -> 8.3.0
+      - dependency-name: "helmet"
+        update-types:
+          - "version-update:semver-major"
+      # #62: dotenv 16.6.1 -> 18.0.6
+      - dependency-name: "dotenv"
+        update-types:
+          - "version-update:semver-major"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
