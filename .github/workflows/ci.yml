@@ -53,6 +53,9 @@ jobs:
           # (#27 dropped success_criteria and mel released every claim for 4 months),
           # peer_verify ballots are understood structurally, and an idle agent says why.
           node tests/t12Claimable.test.js
+          # Peer-verify HMAC: PEER_VERIFY_HMAC_SECRET only; unset => refuse to post and say so at boot.
+          # It used to fall back to <AGENT>_PRIVATE_KEY, a wallet signing key used as an HMAC secret.
+          node tests/peerVerifyHmacKey.test.js
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
           node tests/heartbeatDbWritesGate.test.js
