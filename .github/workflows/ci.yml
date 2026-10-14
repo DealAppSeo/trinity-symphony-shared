@@ -49,6 +49,10 @@ jobs:
           node tests/supabaseServiceKeyResolve.test.js
           node tests/claimCap.test.js
           node tests/claimCallSite.test.js
+          # T12 claimability: the claimed row carries every field its consumers read
+          # (#27 dropped success_criteria and mel released every claim for 4 months),
+          # peer_verify ballots are understood structurally, and an idle agent says why.
+          node tests/t12Claimable.test.js
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
           node tests/heartbeatDbWritesGate.test.js
