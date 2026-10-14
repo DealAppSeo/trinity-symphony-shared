@@ -56,12 +56,13 @@ function agent(hint) {
 function mockFetch(calls, gatewayStatus = 200) {
   global.fetch = async (url, init) => {
     calls.push({ url, body: JSON.parse(init.body), auth: init.headers.Authorization });
-    const status = url.startsWith(GW) ? gatewayStatus : 200;
+    const isGateway = new URL(url).origin === GW;
+    const status = isGateway ? gatewayStatus : 200;
     return {
       ok: status === 200,
       status,
       text: async () => `status ${status}`,
-      json: async () => ({ choices: [{ message: { content: url.startsWith(GW) ? 'from gateway' : 'from groq' } }] }),
+      json: async () => ({ choices: [{ message: { content: isGateway ? 'from gateway' : 'from groq' } }] }),
     };
   };
 }
