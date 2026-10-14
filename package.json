@@ -15,7 +15,8 @@
     "w3c": "AGENT_NAME=trinity-w3c node server.js",
     "mcp": "AGENT_NAME=trinity-orch node server.js",
     "worker": "node trinity-worker.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "search:index": "zg index . --embedding local/potion-retrieval-32m --ignore-file .zvec-grep-ignore"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
