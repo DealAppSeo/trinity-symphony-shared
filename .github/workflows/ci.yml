@@ -61,6 +61,9 @@ jobs:
           # A provider failure logs WHY (HTTP status + body, keys redacted); 401/404 demote;
           # a 429 is quota exhaustion; the boot line names providers, never values.
           node tests/llm-failure-reason.test.js
+          # Peer-verify HMAC: PEER_VERIFY_HMAC_SECRET only; unset => refuse to post and say so at boot.
+          # It used to fall back to <AGENT>_PRIVATE_KEY, a wallet signing key used as an HMAC secret.
+          node tests/peerVerifyHmacKey.test.js
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
           node tests/heartbeatDbWritesGate.test.js
