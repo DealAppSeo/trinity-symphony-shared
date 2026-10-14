@@ -126,6 +126,7 @@ The agents run `server.js`, which creates one `ConstitutionalAgentV4`. This sect
   - Postgres at `DATABASE_URL` (or `SUPABASE_DB_URL`). The kill switch, `trinity_system_config.emergency_halt`. The per-agent switch, `agent_controls`. And `tool_call_log`, only when `TOOL_CALL_LOGGING=true`.
   - The kill switch is a database row that repid-engine also reads. It is not a call to repid-engine.
 - **The zkp-postcard prover**: `GET /health` at `https://zkp-postcard-production.up.railway.app`, only for a ZKP_PROOF_SELF_TEST pulse task. It checks health. It asks for no proof.
+- **The trinity-litellm gateway**, at `LITELLM_URL` with `LITELLM_MASTER_KEY` as the bearer token: `POST /v1/chat/completions` asking for a pool, `auto` (or `auto-coder` for code tasks), never a provider/model id. Only when `LLM_GATEWAY_FIRST=true`, and then it is tried before anything else. If `LITELLM_MASTER_KEY` is unset the hop is skipped with a warning. If it fails, the model gateway and providers below are tried as usual.
 - **LLM providers, directly**, when the gateway is off or fails. The list is the provider table near the top of `lib/ConstitutionalAgentV4.js`. Also Tavily web search.
 - **Upstash Redis**, optional, at `UPSTASH_REDIS_REST_URL`.
 
