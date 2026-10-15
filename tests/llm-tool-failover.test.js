@@ -65,6 +65,47 @@ const toolCall = (id) => ({
   tool_calls: [{ id, type: 'function', function: { name: 'save_artifact', arguments: JSON.stringify(ARTIFACT) } }],
 });
 
+/** A legacy-loop agent: the REAL processTask, callLLM and artifact guard; DB writes recorded. */
+function taskAgent() {
+  const updates = [];
+  const store = new Map(); // artifact id -> { id, content }
+  let next = 196835;
+  const a = Object.assign(Object.create(A.prototype), {
+    name: 'trinity-canary',
+    availableProviders: ['groq', 'nvidia'],
+    sessionMetrics: { tasksCompleted: 0, tasksFailed: 0, llmCalls: 0 },
+    claimHistory: new Map(),
+    wisdom: { squad: 'ALPHA', primaryVirtue: 'truth' },
+    supabase: {
+      from: (table) => ({
+        update: (row) => ({ eq: async (_c, id) => { updates.push({ table, id, row }); return { error: null }; } }),
+        select: () => ({ eq: (_c, id) => ({ maybeSingle: async () => ({ data: store.get(id) || null, error: null }) }) }),
+      }),
+    },
+  });
+  Object.assign(a, {
+    claimTask: async () => true,
+    log: async () => {},
+    trackProviderPerformance: async () => {},
+    evaluateResult: async () => ({ score: 80 }),
+    validateSubstance: async () => ({ ok: true }),
+    _postSubstanceGateEvent: async () => ({ recorded: false }),
+    spawnNextStep: async () => {},
+    updateReputation: async () => {},
+    insertEscalationLog: async () => {},
+    insertHitlRequest: async () => {},
+    saveArtifact: async (_taskId, content) => {
+      const id = next++;
+      store.set(id, { id, content });
+      a.lastArtifactId = id;
+      return `db://trinity_artifacts/${id}`;
+    },
+  });
+  return { a, updates, store };
+}
+const task = (id) => ({ id, title: `task ${id}`, description: 'confirm the routing', task_type: 'analysis', metadata: {} });
+const taskWrite = (updates, id) => updates.filter((u) => u.table === 'trinity_tasks' && u.id === id).at(-1)?.row;
+
 /** script: { [url]: [response, response, ...] } served in order; every request body is recorded. */
 function mockFetch(script, calls) {
   const served = new Map();
@@ -82,7 +123,7 @@ async function run() {
   let passed = 0;
   const test = async (name, fn) => {
     process.env = { ...ORIG_ENV, GROQ_API_KEY: 'gsk_testAAAAAAAAAAAA', NVIDIA_API_KEY: 'nvapi-testBBBBBBBBBB' };
-    for (const k of ['LLM_GATEWAY_FIRST', 'ENGINE_LLM_PROXY', 'SEAN_PAID_LOOP', 'ALLOW_PAID']) delete process.env[k];
+    for (const k of ['LLM_GATEWAY_FIRST', 'ENGINE_LLM_PROXY', 'SEAN_PAID_LOOP', 'ALLOW_PAID', 'ARTIFACT_GUARD_HARDENED']) delete process.env[k];
     freeTier.resetExhaustion();
     console.warn = () => {};
     console.log = () => {};
@@ -148,20 +189,75 @@ async function run() {
     assert.equal(saves.length, 1);
   });
 
-  await test('a second callLLM in the same claim does not save again; a new claim may', async () => {
+  await test('a second callLLM in the same claim does not save again; a new claim (processTask) may', async () => {
     const { a, saves } = agent();
     mockFetch({ [GROQ]: [ok(toolCall('c1')), ok({ role: 'assistant', content: 'one' })] }, []);
     await a.callLLM('first');
     mockFetch({ [GROQ]: [ok(toolCall('c2')), ok({ role: 'assistant', content: 'two' })] }, []);
     await a.callLLM('second, same claim');
     assert.equal(saves.length, 1, 'same claim: one artifact');
-    a._artifactSavedFor = null; // what a new claim of the task does
-    mockFetch({ [GROQ]: [ok(toolCall('c3')), ok({ role: 'assistant', content: 'three' })] }, []);
-    await a.callLLM('after a new claim');
-    assert.equal(saves.length, 2, 'a new claim may save a better artifact');
+    // A NEW claim goes through processTask, which must reset the guard itself (XC1: nulling the field
+    // here proved nothing). Two claims of the same task, each saving: both artifacts are written.
+    const t = taskAgent();
+    mockFetch({ [GROQ]: [ok(toolCall('p1')), ok({ role: 'assistant', content: 'one' })] }, []);
+    await t.a.processTask(task(435158));
+    mockFetch({ [GROQ]: [ok(toolCall('p2')), ok({ role: 'assistant', content: 'two' })] }, []);
+    await t.a.processTask(task(435158));
+    assert.equal(t.store.size, 2, 'each claim may save its own artifact');
   });
 
-  ORIG_LOG(`llm-tool-failover.test.js: ${passed}/4 passed`);
+  await test('every provider fails after a SHORT artifact was saved: needs_artifact, never done (guard forced, flag off)', async () => {
+    const t = taskAgent();
+    mockFetch({
+      [GROQ]: [ok(toolCall('call_1')), fail(429, '{"error":{"code":"rate_limit_exceeded"}}')],
+      [NVIDIA]: [fail(401, '{"error":"unauthorized"}')],
+    }, []);
+    await t.a.processTask(task(435158));
+    const row = taskWrite(t.updates, 435158);
+    assert.equal(row.status, 'needs_artifact');
+    assert.match(row.result, /^\[FAILOVER_ARTIFACT_REJECTED\] too_short/);
+    assert.ok(!t.updates.some((u) => u.row.status === 'done'), 'never done');
+  });
+
+  await test('every provider fails after a SUBSTANTIVE artifact was saved: the guard passes, the task completes', async () => {
+    const t = taskAgent();
+    const long = { ...ARTIFACT, content: '# NIM routing\n' + 'trinity-litellm routes the nim/* pool to integrate.api.nvidia.com; verified by config read. '.repeat(3) };
+    const call = { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'save_artifact', arguments: JSON.stringify(long) } }] };
+    mockFetch({
+      [GROQ]: [ok(call), fail(429, '{"error":{"code":"rate_limit_exceeded"}}')],
+      [NVIDIA]: [fail(401, '{"error":"unauthorized"}')],
+    }, []);
+    await t.a.processTask(task(435158));
+    assert.equal(taskWrite(t.updates, 435158).status, 'done');
+  });
+
+  await test('a tool call that THROWS is still answered: the next provider never sees an unanswered tool_calls row', async () => {
+    const calls = [];
+    mockFetch({
+      // `function` missing: reading toolCall.function.name throws inside the tool loop.
+      [GROQ]: [ok({ role: 'assistant', content: null, tool_calls: [{ id: 'bad1', type: 'function' }] }), fail(500, 'upstream down')],
+      [NVIDIA]: [ok({ role: 'assistant', content: 'recovered' })],
+    }, calls);
+    const { a } = agent();
+    const res = await a.callLLM('x');
+    assert.equal(res.output, 'recovered');
+    const nv = calls.find((c) => c.url === NVIDIA).body.messages;
+    const asked = nv.filter((m) => m.tool_calls).flatMap((m) => m.tool_calls.map((tc) => tc.id));
+    const answered = new Set(nv.filter((m) => m.role === 'tool').map((m) => m.tool_call_id));
+    assert.deepEqual(asked, ['bad1']);
+    assert.ok(asked.every((id) => answered.has(id)), `unanswered tool_calls: ${JSON.stringify(nv)}`);
+    assert.match(nv.find((m) => m.role === 'tool').content, /^FAILED: this tool call threw/);
+  });
+
+  await test('replayed tool bodies are capped, with a marker', async () => {
+    const big = 'x'.repeat(20000);
+    const capped = A.capReplayBody(big);
+    assert.ok(capped.length < A.REPLAY_TOOL_BODY_MAX + 80);
+    assert.match(capped, /…\[truncated 12000 chars of 20000\]$/);
+    assert.equal(A.capReplayBody('small'), 'small');
+  });
+
+  ORIG_LOG(`llm-tool-failover.test.js: ${passed}/8 passed`);
 }
 
 run();
