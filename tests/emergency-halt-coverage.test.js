@@ -40,8 +40,6 @@ const COVERED = {
 const EXEMPT = {
   'mutual-wake.js':
     'health-ping only — enumerated for writes, there are none. Observability must survive a halt.',
-  'lib/ConstitutionalAgent.ts':
-    'legacy TS agent — required/imported by no file in this repo (dead).',
   'w3c.index.js':
     'standalone agent loop referenced by no file and no deploy config (dead).',
   'trinity.hdm.js':
@@ -212,7 +210,7 @@ console.log(`  ok  all ${Object.keys(EXEMPT).length} exemptions carry a stated r
     !fs.existsSync(path.join(ROOT, 'scripts/run-agent.js')),
     'scripts/run-agent.js now exists — the trinity-*.js shims may be live again; re-check coverage'
   );
-  for (const dead of ['w3c.index.js', 'lib/ConstitutionalAgent.ts']) {
+  for (const dead of ['w3c.index.js']) {
     const base = path.basename(dead).replace(/\.(js|ts)$/, '');
     const referenced = enumerateLoopFiles()
       .filter((f) => f !== dead)
