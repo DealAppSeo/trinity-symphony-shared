@@ -164,7 +164,7 @@ async function run() {
     Object.assign(process.env, { ENGINE_LLM_PROXY: 'true', REPID_API_URL: 'https://engine.example', REPID_API_KEY: engineKey, SEAN_PAID_LOOP: 'test' });
     reload();
     global.fetch = async (url) => {
-      if (String(url).startsWith('https://engine.example')) throw new Error(`request failed with x-api-key: ${engineKey}`);
+      if (new URL(String(url)).origin === 'https://engine.example') throw new Error(`request failed with x-api-key: ${engineKey}`);
       return { ok: true, status: 200, text: async () => '', json: async () => ({ choices: [{ message: { content: 'direct' } }] }) };
     };
     await agent(['groq']).callLLM('ping');
