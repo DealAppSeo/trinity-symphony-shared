@@ -58,6 +58,9 @@ jobs:
           # the trinity-litellm pool ('auto'/'auto-coder') is hop one and a failure falls
           # through; a missing master key skips the hop loudly. Plus mel's 'analysis' type.
           node tests/llmGatewayFirst.test.js
+          # A provider failure logs WHY (HTTP status + body, keys redacted); 401/404 demote;
+          # a 429 is quota exhaustion; the boot line names providers, never values.
+          node tests/llm-failure-reason.test.js
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
           node tests/heartbeatDbWritesGate.test.js
