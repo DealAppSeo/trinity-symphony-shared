@@ -38,6 +38,7 @@ jobs:
           node -c constitutional-agent-base.js
           node -c trinity-worker.js
           node -c lib/swarm-toolbelt.js
+          node -c lib/llm-gateway.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
@@ -53,6 +54,10 @@ jobs:
           # (#27 dropped success_criteria and mel released every claim for 4 months),
           # peer_verify ballots are understood structurally, and an idle agent says why.
           node tests/t12Claimable.test.js
+          # LLM_GATEWAY_FIRST: flag off => callLLM's first request is unchanged; flag on =>
+          # the trinity-litellm pool ('auto'/'auto-coder') is hop one and a failure falls
+          # through; a missing master key skips the hop loudly. Plus mel's 'analysis' type.
+          node tests/llmGatewayFirst.test.js
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
           node tests/heartbeatDbWritesGate.test.js
