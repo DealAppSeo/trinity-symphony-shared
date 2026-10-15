@@ -94,9 +94,9 @@ function taskAgent() {
     updateReputation: async () => {},
     insertEscalationLog: async () => {},
     insertHitlRequest: async () => {},
-    saveArtifact: async (_taskId, content) => {
+    saveArtifact: async (taskId, content) => {
       const id = next++;
-      store.set(id, { id, content });
+      store.set(id, { id, content, task_id: taskId }); // the row names its task, as the real saveArtifact writes it
       a.lastArtifactId = id;
       return `db://trinity_artifacts/${id}`;
     },
