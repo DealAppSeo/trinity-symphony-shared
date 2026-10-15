@@ -97,3 +97,6 @@ jobs:
           # Failover on a tool follow-up turn carries the conversation; one artifact per claim;
           # every provider failing after save_artifact completes from the artifact.
           node tests/llm-tool-failover.test.js
+          # Per-task state resets on every claim in every claim path (one _beginTask): a previous
+          # task's artifact can never satisfy the next task's artifact guard.
+          node tests/per-task-reset.test.js
