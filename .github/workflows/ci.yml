@@ -73,6 +73,10 @@ jobs:
           # version came to cover 3 of 14 loops).
           node tests/emergency-halt.test.js
           node tests/emergency-halt-coverage.test.js
+          # Chamber stubs, each default-OFF (shadow logs only): C1 kill switch (halted => the
+          # toolbelt makes no fetch), C2 egressFetch default-deny, C4 worm brake (a self-copying
+          # task stops at generation 4; every V4 task insert asks the brake first).
+          node tests/chamber-stubs.test.js
           # agent-controls.test.js already existed and passed but was never in
           # this list — a test that never runs proves nothing. Added because it
           # covers the sibling lever the halt composes with.
