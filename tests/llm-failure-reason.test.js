@@ -122,7 +122,58 @@ async function run() {
     assert.equal(A.formatProviderBootLine([], [], false), '[LLM] providers key_present=none eligible=none allow_paid=false');
   });
 
-  ORIG_LOG(`llm-failure-reason.test.js: ${passed}/5 passed`);
+  // ---------- XC1 on #81: shapes the first redaction missed ----------
+  const reload = () => { if (typeof A.__reloadSecretValues === 'function') A.__reloadSecretValues(); };
+  // Fake keys are BUILT, not written out, so the repo's secret scanner has nothing to flag.
+  const fakeKey = (prefix, n) => prefix + Array.from({ length: n }, (_, i) => '7fA3e9Bc1d'[i % 10]).join('');
+
+  await test('a bare AIza… Google key in a JSON field is redacted', async () => {
+    const key = fakeKey('AIza', 30);
+    const s = A.redactForLog(`{"error":{"message":"API key not valid","details":[{"key":"${key}"}]}}`);
+    assert.ok(!s.includes(key), s);
+  });
+
+  await test('an UNPREFIXED key echoed in an x-api-key header or an api_key field is redacted', async () => {
+    const key = fakeKey('', 32);
+    for (const echo of [`x-api-key: ${key}`, `{"x-api-key":"${key}"}`, `{"api_key":"${key}"}`, `Authorization: Basic ${key}`]) {
+      const s = A.redactForLog(`upstream rejected the request; ${echo}`);
+      assert.ok(!s.includes(key), s);
+    }
+  });
+
+  await test('a key in a URL path is redacted; a UUID or a short id in a path is not', async () => {
+    const key = fakeKey('', 32);
+    const s = A.redactForLog(`GET https://api.example.com/v1/keys/${key}/usage failed`);
+    assert.ok(!s.includes(key), s);
+    const ids = A.redactForLog('GET https://api.example.com/v1/tasks/435158/runs/11111111-2222-4333-8444-555555555555 failed');
+    assert.match(ids, /tasks\/435158\/runs\/11111111-2222-4333-8444-555555555555/);
+  });
+
+  await test("ANOTHER provider's key in a failure body is redacted (every key in env, not just the failing one's)", async () => {
+    const together = 'ZZtogetherSecret99887766unprefixed';
+    process.env.TOGETHER_API_KEY = together;
+    reload();
+    mockFetch({ status: 401, body: `{"error":"bad key; did you mean ${together}?"}` });
+    await agent(['groq', 'nvidia']).callLLM('ping');
+    const line = warnings.find((w) => w.startsWith('groq failed'));
+    assert.ok(line && !line.includes(together), line);
+  });
+
+  await test('the ENGINE_LLM_PROXY fallback log is redacted too', async () => {
+    const engineKey = 'engineKeyQQQQ123456789abcdef';
+    Object.assign(process.env, { ENGINE_LLM_PROXY: 'true', REPID_API_URL: 'https://engine.example', REPID_API_KEY: engineKey, SEAN_PAID_LOOP: 'test' });
+    reload();
+    global.fetch = async (url) => {
+      if (new URL(String(url)).origin === 'https://engine.example') throw new Error(`request failed with x-api-key: ${engineKey}`);
+      return { ok: true, status: 200, text: async () => '', json: async () => ({ choices: [{ message: { content: 'direct' } }] }) };
+    };
+    await agent(['groq']).callLLM('ping');
+    const line = warnings.find((w) => w.includes('ENGINE_LLM_PROXY failed'));
+    assert.ok(line, `no engine fallback line in ${JSON.stringify(warnings)}`);
+    assert.ok(!line.includes(engineKey), line);
+  });
+
+  ORIG_LOG(`llm-failure-reason.test.js: ${passed}/10 passed`);
 }
 
 run();
