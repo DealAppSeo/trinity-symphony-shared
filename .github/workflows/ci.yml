@@ -66,6 +66,8 @@ jobs:
           node tests/peerVerifyHmacKey.test.js
           node tests/provenance.test.js
           node tests/pulseCheckExecutor.test.js
+          # P0 Contain: updateReputation is inert unless TRINITY_REPUTATION_WRITES === 'true'.
+          node tests/reputationWritesGate.test.js
           # S2-9: the ZKP pulse probe ignores the description URL and goes through checkedFetch
           # (allowlist, no IP literal, no private address after DNS, every redirect re-checked).
           node tests/pulseZkpSsrf.test.js
