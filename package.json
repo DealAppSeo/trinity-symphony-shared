@@ -19,7 +19,7 @@
     "search:index": "zg index . --embedding local/potion-retrieval-32m --ignore-file .zvec-grep-ignore"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.3",
+    "@supabase/supabase-js": "^2.118.0",
     "@upstash/redis": "^1.39.0",
     "dotenv": "^16.4.5",
     "express": "^4.22.3",
@@ -27,7 +27,7 @@
     "groq-sdk": "^1.6.0",
     "helmet": "^7.1.0",
     "pg": "^8.23.1",
-    "uuid": "^14.0.2",
+    "uuid": "^14.0.3",
     "ws": "^8.22.0"
   },
   "engines": {
