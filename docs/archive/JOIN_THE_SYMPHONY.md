@@ -1,3 +1,5 @@
+> **Historical, not current.** Archived 2026-10-23. This page makes claims this repository does not support: a "Multiplicative GNN" with O(log n) trust scaling, a 96.4% ANFIS cost reduction, near-zero hallucination, and proprietary vaults. See the [README](../../README.md) for what runs.
+
 # 🤝 Join the Symphony
 
 ### The invitation is open.
@@ -24,7 +26,7 @@ We provide the **shared core** (ConstitutionalAgentV4) for free. The proprietary
 *"The purpose of power is to distribute itself completely."*
 
 ### Join Now
-[Fork on GitHub](https://github.com/DealAppSeo/trinity-ecosystem) • [View the Constitution](./CONSTITUTION.md) • [Contact the Architect](mailto:architect@aitrinitysymphony.com)
+[Fork on GitHub](https://github.com/DealAppSeo/trinity-ecosystem) • [View the Constitution](../../CONSTITUTION.md) • [Contact the Architect](mailto:architect@aitrinitysymphony.com)
 
 > [!NOTE]
 > All contributions are reviewed via BFT consensus to ensure the safe, ethical growth of humanity's benefit.

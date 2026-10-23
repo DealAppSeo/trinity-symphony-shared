@@ -1,6 +1,8 @@
+> **Historical, not current.** Archived 2026-10-23. This is an old README. It describes an ANFIS bid resolver, an Evolutionary Logger, a Pruning Engine, a three-ply BFT diagram and a self-healing loop that this repository does not contain. See the [README](../../README.md) for what runs.
+
 # 🎵 Trinity Symphony Shared: The Shared Soul
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](../../LICENSE)
 [![Core](https://img.shields.io/badge/Logic-Constitutional-orange)](https://aitrinitysymphony.com)
 [![BFT](https://img.shields.io/badge/Protocol-3--Ply_BFT-green)](https://github.com/DealAppSeo/trinity-ecosystem/blob/main/docs/CORE_CONCEPTS.md#byzantine-fault-tolerance-bft)
 
@@ -34,7 +36,7 @@ graph LR
 ```
 
 ### Core Primitives
-- **Constitutional Agent Base**: The foundation for all agents, enforcing strict [Philippians 4:8](CONSTITUTION.md) adherence at the system level.
+- **Constitutional Agent Base**: The foundation for all agents, enforcing strict [Philippians 4:8](../../CONSTITUTION.md) adherence at the system level.
 - **ANFIS Bid Resolver**: An Adaptive Neuro-Fuzzy Inference System that scores agent bids based on **Cost, Efficiency, and Flexibility**.
 - **Evolutionary Logger**: A recursive feedback system that logs every "learning event" into a decentralized vault for self-optimization.
 - **Pruning Engine**: Implements **Evolutionary Swarm Pruning (ESP)** to dynamically cull inefficient behaviors and evolve the swarm.
@@ -73,4 +75,4 @@ When the **Evolutionary Logger** detects a persistent failure pattern, it trigge
 | **[hyperdag-platform](https://github.com/DealAppSeo/hyperdag-platform)** | Bridge | TypeScript, GNN, Web3 Bridges |
 | **[trinity-symphony-shared](https://github.com/DealAppSeo/trinity-symphony-shared)** | Soul | Custom BFT, ANFIS, Ethics Logic |
 
-[Constitution](CONSTITUTION.md) • [Contributing](CONTRIBUTING.md) • [Security](SECURITY.md)
+[Constitution](../../CONSTITUTION.md) • [Contributing](../../CONTRIBUTING.md) • [Security](../../SECURITY.md)
