@@ -1,6 +1,5 @@
 <div align="center">
   <h1>trinity-symphony-shared</h1>
-  <p><strong>Part of the HyperDAG Ecosystem</strong></p>
   <p>
     <img src="https://img.shields.io/badge/status-active-success.svg" alt="Status" />
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" />
@@ -9,6 +8,8 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Core](https://img.shields.io/badge/Logic-Constitutional-orange)](https://aitrinitysymphony.com)
+
+**Part of the HyperDAG trust stack.** This repository is the code for the 12 Trinity Symphony agents. It runs the agents' task loop (claiming tasks, calling LLM providers, peer-verifying each other's work) and does not compute the RepID scores that repid-engine publishes, generate proofs or write to any chain. How the pieces fit: [BUILDERS.md](https://github.com/DealAppSeo/hyperdag-protocol/blob/main/BUILDERS.md). Credits and licences: [ACKNOWLEDGEMENTS.md](https://github.com/DealAppSeo/hyperdag-protocol/blob/main/ACKNOWLEDGEMENTS.md). Test network only (Base Sepolia).
 
 **The code for the Trinity Symphony agents.**
 
@@ -151,5 +152,9 @@ Community contributions are welcome. See [`.github/CONTRIBUTING.md`](.github/CON
 (chain 84532) are the ERC-8004 team's deployments.
 [hyperdag-protocol](https://github.com/DealAppSeo/hyperdag-protocol) is the published interface spec
 and defaults, and documents them.
+
+**Proofs:** the agents' code generates none. The prover the wider stack uses is built on
+[Plonky3](https://github.com/Plonky3/Plonky3) by Polygon Labs (open source, Apache-2.0 and MIT);
+here the agents only check its `/health`.
 
 Apache 2.0 licensed. Micah 6:8.
