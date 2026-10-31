@@ -39,6 +39,7 @@ jobs:
           node -c trinity-worker.js
           node -c lib/swarm-toolbelt.js
           node -c lib/llm-gateway.js
+          node -c lib/free-token-breaker.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
@@ -61,6 +62,10 @@ jobs:
           # A provider failure logs WHY (HTTP status + body, keys redacted); 401/404 demote;
           # a 429 is quota exhaustion; the boot line names providers, never values.
           node tests/llm-failure-reason.test.js
+          # Free tokens: the gate never pays unless Sean wrote `paid <loop>`, and when this agent's
+          # free providers are spent the loop stops claiming instead of failing tasks.
+          node tests/free-tier-gate.test.js
+          node tests/free-token-breaker.test.js
           # Peer-verify HMAC: PEER_VERIFY_HMAC_SECRET only; unset => refuse to post and say so at boot.
           # It used to fall back to <AGENT>_PRIVATE_KEY, a wallet signing key used as an HMAC secret.
           node tests/peerVerifyHmacKey.test.js
