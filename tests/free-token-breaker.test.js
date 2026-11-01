@@ -25,6 +25,21 @@ assert.deepEqual(
   ['groq', 'openrouter', 'nvidia'],
 );
 
+// A provider that answers 401/404 is dropped from this.availableProviders for the session
+// (ConstitutionalAgentV4.js callProvider). topFree is recomputed from that list on every loop,
+// so a dead slot (together: model not served) leaves the top three after its first failure and
+// cannot hold the breaker open.
+{
+  const live = slots.filter((s) => s.provider !== 'together'); // after together's 404 demotion
+  assert.deepEqual(b.topFree(live), ['groq', 'nvidia']);
+  gate.resetExhaustion();
+  gate.markExhausted('groq', NOON);
+  gate.markExhausted('nvidia', NOON);
+  assert.equal(b.check(b.topFree(slots), { env: ENV, now: NOON }).paused, false, 'before demotion');
+  assert.equal(b.check(b.topFree(live), { env: ENV, now: NOON }).paused, true, 'after demotion');
+  gate.resetExhaustion();
+}
+
 // ── the bug this closes: gate.allFreeExhausted() never fires for a real agent ──
 gate.resetExhaustion();
 for (const p of ['groq', 'nvidia', 'together']) gate.markExhausted(p, NOON);
