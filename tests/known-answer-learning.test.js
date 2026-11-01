@@ -25,6 +25,8 @@ assert.equal(cp.isKnownAnswerTask(KA), true);
 assert.equal(cp.isKnownAnswerTask({ metadata: JSON.stringify(KA.metadata) }), true, 'metadata as a string');
 assert.equal(cp.isKnownAnswerTask({ metadata: { case_pool: 'hal_open_v1' } }), false, 'the parent has no case_id');
 assert.equal(cp.isKnownAnswerTask({ metadata: '{not json' }), false);
+assert.equal(cp.isKnownAnswerTask({ metadata: { case_pool: 'anything_else', case_id: 'c1' } }), false, 'only a pool this module serves (Strix)');
+assert.equal(cp.isKnownAnswerTask({ metadata: { case_pool: 'hal_open_v1', case_id: { x: 1 } } }), false, 'case_id must be a string');
 assert.equal(cp.isKnownAnswerTask(OTHER), false);
 assert.equal(cp.isKnownAnswerTask(null), false);
 
