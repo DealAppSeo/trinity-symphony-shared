@@ -107,5 +107,6 @@ assert.equal(cp.chooseReply('', null), '');
 assert.equal((src.match(/const result = await this\.callLLM\(context\);\s*result\.output = await this\._knownAnswerReply\(task, result\.output\);/g) || []).length, 2);
 const kar = src.slice(src.indexOf('async _knownAnswerReply('), src.indexOf('async evaluateResult('));
 assert.match(kar, /if \(!casePool\.isKnownAnswerTask\(task\) \|\| !casePool\.parseAnswer\(output\)\.error \|\| !this\.lastArtifactId\) return output;/, 'other tasks are untouched');
+assert.match(kar, /select\('content, task_id'\)[\s\S]*if \(!data \|\| String\(data\.task_id\) !== String\(task\.id\)\) return output;/, "only this task's own artifact (Grok on #99)");
 
 console.log('known-answer-learning.test.js: PASS');
