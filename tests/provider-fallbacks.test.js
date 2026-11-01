@@ -78,6 +78,16 @@ async function run() {
     assert.ok(urls.every((u) => u.includes('groq')), 'the dead providers are not called again');
   });
 
+  await test('the last provider demoted says so loudly (Grok on #100)', async () => {
+    const a = agent(['nvidia']);
+    const errors = [];
+    global.fetch = async () => fail(410, 'gone');
+    console.error = (m) => errors.push(String(m));
+    await assert.rejects(a.callLLM('q'));
+    assert.deepEqual(a.availableProviders, []);
+    assert.ok(errors.some((m) => m.includes('NO providers left')), errors.join(' | '));
+  });
+
   await test('control: a 429 (quota) is not demoted for the session; the free-tier gate handles it', async () => {
     const a = agent(['groq', 'nvidia']);
     global.fetch = async (u) => (u.includes('nvidia') ? fail(429, 'rate limit') : fail(400, 'bad'));
@@ -99,7 +109,7 @@ async function run() {
     assert.ok(!src.includes("'meta/llama-3.1-8b-instruct'"), 'the retired model is gone from the code');
   });
 
-  ORIG.log(`provider-fallbacks.test.js: ${passed}/6 passed`);
+  ORIG.log(`provider-fallbacks.test.js: ${passed}/7 passed`);
 }
 
 run().catch((e) => { console.log = ORIG.log; ORIG.log(e); process.exit(1); });
