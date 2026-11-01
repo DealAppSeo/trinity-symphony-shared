@@ -70,12 +70,14 @@ function agent({ output, saves }) {
     updateReputation: async () => {},
     // recorded like prod, so a failing gate ends as shadow_reject (the gate runs in shadow mode)
     _postSubstanceGateEvent: async () => ({ recorded: true, gateEventId: 'gate-1', fastResult: null }),
-    callLLM: async () => {
+    callLLM: async (prompt, opts) => {
+      llmCalls.push({ prompt, opts });
       if (saves) await a.saveArtifact(a.currentTaskId, saves, 'document', 'answer');
       return { output, provider: 'groq', model: 'openai/gpt-oss-20b' };
     },
   });
-  return { a, db };
+  const llmCalls = [];
+  return { a, db, llmCalls };
 }
 
 const KA_META = { case_pool: 'hal_open_v1', case_id: '0005a4f5-0b25-4d30-8eca-2ef60cf88015', ab_arm: 'B' };
@@ -166,7 +168,26 @@ async function run() {
     assert.match(last(db, 13).result, /CONFUSED/);
   });
 
-  ORIG.log(`known-answer-paths.test.js: ${passed}/9 passed`);
+  // ── what each path sends to the model (window 2: groq 400 tool_use_failed, a call to a tool "json") ──
+  const cp = require('../lib/case-pool');
+  for (const [pathName, runPath] of [['legacy', async (a, t) => a.processTask(t)], ['contract', async (a, t) => { a._beginTask(t); await a.processTaskContract(t); }]]) {
+    await test(`${pathName}: a known-answer task is sent with no tools and told its reply is saved`, async () => {
+      const { a, llmCalls } = agent({ output: REPLY });
+      await runPath(a, kaTask(21));
+      assert.deepEqual(llmCalls[0].opts, { tools: false });
+      assert.ok(llmCalls[0].prompt.includes(cp.REPLY_RULE));
+      assert.ok(!llmCalls[0].prompt.includes('save_artifact'), 'no instruction to call a tool it does not have');
+    });
+    await test(`${pathName}, control: an ordinary task keeps its tools and its save_artifact instruction`, async () => {
+      const { a, llmCalls } = agent({ output: 'x'.repeat(600) });
+      await runPath(a, plainTask(22));
+      assert.deepEqual(llmCalls[0].opts, {});
+      assert.ok(llmCalls[0].prompt.includes("'save_artifact'"));
+      assert.ok(!llmCalls[0].prompt.includes(cp.REPLY_RULE));
+    });
+  }
+
+  ORIG.log(`known-answer-paths.test.js: ${passed}/13 passed`);
 }
 
 run().catch((e) => { console.log = ORIG.log; ORIG.log(e); process.exit(1); });

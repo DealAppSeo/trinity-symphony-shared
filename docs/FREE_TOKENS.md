@@ -13,8 +13,10 @@ holds is not in the repo: read each agent's boot line, `[LLM] providers key_pres
 | 1 | Groq | `openai/gpt-oss-20b` | always (free tier, rate-limited) | in use |
 | 2 | Cerebras | `PARKED` | never: no model is shipped | parked, never called |
 | 3 | OpenRouter | `OPENROUTER_MODEL`, default `deepseek/deepseek-chat` | only for a model id ending `:free` | the default id is **not** free, so OpenRouter counts only if `OPENROUTER_MODEL` is set to a `:free` id |
-| 4 | NVIDIA | `meta/llama-3.1-8b-instruct` | always (developer trial credits) | in use when `NVIDIA_API_KEY` or `NVIDIA_NIM_API_KEY` is set |
-| 5 | Together | `meta-llama/Llama-3.3-70B-Instruct-Turbo` | always, per the gate | **flag for Sean, see below** |
+| 4 | NVIDIA | `NVIDIA_MODEL`, default `nvidia/nemotron-3-super-120b-a12b` | always (developer trial credits) | in use when `NVIDIA_API_KEY` or `NVIDIA_NIM_API_KEY` is set. The old default `meta/llama-3.1-8b-instruct` reached end of life 2026-08-26 (HTTP 410) |
+| 5 | Together | `meta-llama/Llama-3.3-70B-Instruct-Turbo` | always, per the gate | **flag for Sean, see below**. Live 2026-11-01: HTTP 402 credit limit exceeded |
+
+A provider that answers 401, 402, 404 or 410 is dropped for the rest of the agent's session (until its next restart): wrong key or model, out of credit, or a retired model. A 429 is quota, handled by the free-tier gate instead.
 
 So the top three that can actually serve a call are normally **Groq, OpenRouter (`:free` only), NVIDIA**.
 
