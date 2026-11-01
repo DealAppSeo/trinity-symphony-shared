@@ -74,7 +74,7 @@ assert.ok(vs.indexOf('casePool.isKnownAnswerTask(task)') < vs.indexOf('// Minimu
 assert.match(vs.slice(0, 2500), /answer_format_invalid: \$\{a\.error\}/);
 
 const contract = src.slice(src.indexOf('async processTaskContract('), src.indexOf('// STEP 6: Artifact Guard'));
-assert.match(contract, /casePool\.isKnownAnswerTask\(task\)[\s\S]*this\.saveArtifact\(task\.id, result\.output/, 'the contract path saves a known-answer reply as its artifact');
+assert.match(contract, /result\.output = await this\._knownAnswerReply\(task, result\.output\);/, 'the contract path takes the reply through _knownAnswerReply (which saves it as the artifact)');
 
 const spawner = src.slice(src.indexOf('async respawnEvergreensIfDue('), src.indexOf('casePool.nextSlot('));
 assert.match(spawner, /\.update\(\{ last_spawned_at: nowIso \}\)/, 'the cadence claim sets only last_spawned_at');
@@ -103,10 +103,12 @@ assert.equal(cp.chooseReply('', saved), saved);
 assert.equal(cp.chooseReply('{"decision":"veto","confidence":0.6,"reason":"x"}', saved), '{"decision":"veto","confidence":0.6,"reason":"x"}', 'a valid final message wins');
 assert.equal(cp.chooseReply('', '# Question for Architect'), '', 'no answer anywhere: unchanged, and the gate says so');
 assert.equal(cp.chooseReply('', null), '');
-// both paths take the reply through it right after callLLM
-assert.equal((src.match(/const result = await this\.callLLM\(context\);\s*result\.output = await this\._knownAnswerReply\(task, result\.output\);/g) || []).length, 2);
+// both paths take the reply through it right after callLLM (only comments in between)
+assert.equal((src.match(/const result = await this\.callLLM\(context\);(?:\s*\/\/[^\n]*)*\s*result\.output = await this\._knownAnswerReply\(task, result\.output\);/g) || []).length, 2);
 const kar = src.slice(src.indexOf('async _knownAnswerReply('), src.indexOf('async evaluateResult('));
-assert.match(kar, /if \(!casePool\.isKnownAnswerTask\(task\) \|\| !casePool\.parseAnswer\(output\)\.error \|\| !this\.lastArtifactId\) return output;/, 'other tasks are untouched');
-assert.match(kar, /select\('content, task_id'\)[\s\S]*if \(!data \|\| String\(data\.task_id\) !== String\(task\.id\)\) return output;/, "only this task's own artifact (Grok on #99)");
+assert.match(kar, /if \(!casePool\.isKnownAnswerTask\(task\)\) return output;/, 'other tasks are untouched');
+assert.match(kar, /select\('content, task_id'\)[\s\S]*if \(data && String\(data\.task_id\) === String\(task\.id\)\) reply = /, "only this task's own artifact (Grok on #99)");
+assert.match(kar, /if \(!this\.lastArtifactId && String\(reply \|\| ''\)\.trim\(\)\) \{\s*await this\.saveArtifact\(task\.id, reply, 'data'/, 'no artifact saved: the reply is saved as one');
+// behaviour of all of this through the real task paths: tests/known-answer-paths.test.js
 
 console.log('known-answer-learning.test.js: PASS');
