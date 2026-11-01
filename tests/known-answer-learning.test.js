@@ -86,4 +86,26 @@ const modelWrites = src.match(/provider_used: result\.provider, model_used: type
 assert.ok(providerWrites.length >= 5);
 assert.equal(modelWrites.length, providerWrites.length, 'every write of provider_used also writes model_used');
 
+// ── second live run (after #98): valid replies now passed the gate and hit the next check ──
+// evaluateResult scores length/'#'/'Virtue', so one line of JSON scores 30 < 40: the legacy path
+// escalated every reply (released the claim; task 435592 was answered by six agents), and the
+// contract path would mark it confused. Known-answer replies skip that check on both paths.
+const legacy = src.slice(src.indexOf('[PHASE 10] UNCERTAINTY AS OPPORTUNITY'), src.indexOf('[PHASE 10] UNCERTAINTY AS OPPORTUNITY') + 900);
+assert.match(legacy, /const knownAnswer = casePool\.isKnownAnswerTask\(task\);/);
+assert.match(legacy, /const lowBelief = !knownAnswer && evaluation\.score < 40;/);
+assert.match(legacy, /const explicitEscalate = !knownAnswer && \(/);
+assert.match(src, /if \(evaluation\.score < 40 && !casePool\.isKnownAnswerTask\(task\)\) \{\s*return await this\.recordConfused\(task, 'low_confidence_score'/);
+assert.equal((src.match(/evaluation\.score < 40/g) || []).length, 2, 'no other unguarded score check');
+
+// mel's model put the JSON in save_artifact and ended with an empty message: the saved reply counts
+const saved = '{"decision":"pass","confidence":0.99,"reason":"The statement is an opinion."}';
+assert.equal(cp.chooseReply('', saved), saved);
+assert.equal(cp.chooseReply('{"decision":"veto","confidence":0.6,"reason":"x"}', saved), '{"decision":"veto","confidence":0.6,"reason":"x"}', 'a valid final message wins');
+assert.equal(cp.chooseReply('', '# Question for Architect'), '', 'no answer anywhere: unchanged, and the gate says so');
+assert.equal(cp.chooseReply('', null), '');
+// both paths take the reply through it right after callLLM
+assert.equal((src.match(/const result = await this\.callLLM\(context\);\s*result\.output = await this\._knownAnswerReply\(task, result\.output\);/g) || []).length, 2);
+const kar = src.slice(src.indexOf('async _knownAnswerReply('), src.indexOf('async evaluateResult('));
+assert.match(kar, /if \(!casePool\.isKnownAnswerTask\(task\) \|\| !casePool\.parseAnswer\(output\)\.error \|\| !this\.lastArtifactId\) return output;/, 'other tasks are untouched');
+
 console.log('known-answer-learning.test.js: PASS');
