@@ -80,10 +80,38 @@ const cp = require('../lib/case-pool');
   assert.deepEqual([0, 1, 2].map((s) => cp.caseIndex({ metadata: { case_pool: 'hal_open_v1' } }, s)), [0, 1, 2]);
   assert.equal(cp.fillChild({ description: '{{case_text}}', metadata: { case_pool: 'hal_open_v1' } }, picked, 3).metadata.ab_arm, null);
 
+  // ── the slot is the parent's real child count ──
+  // Not spawned_count: the spawner and the auto_lineage trigger both add 1 per child, so in prod
+  // it read 2 after the first child (435582, 2026-11-01) and every slot was even: arm A forever.
+  const counter = (n, err) => ({
+    from: (table) => ({
+      select: (_c, opts) => ({
+        eq: (col, v) => ({
+          // the id bound keeps the count on the primary key (parent_task_id has no index)
+          gt: async (col2, v2) => {
+            assert.equal(table, 'trinity_tasks');
+            assert.deepEqual(opts, { count: 'exact', head: true });
+            assert.deepEqual([col, v, col2, v2], ['parent_task_id', 435582, 'id', 435582]);
+            return err ? { count: null, error: { message: 'down' } } : { count: n, error: null };
+          },
+        }),
+      }),
+    }),
+  });
+  assert.deepEqual(await cp.nextSlot(counter(0), 435582), { slot: 0 });
+  assert.deepEqual(await cp.nextSlot(counter(1), 435582), { slot: 1 });
+  assert.match((await cp.nextSlot(counter(0, true), 435582)).error, /child count failed/);
+  // after one child, the next spawn is the same case in arm B
+  assert.equal(cp.caseIndex(parent, (await cp.nextSlot(counter(1), 435582)).slot), 0);
+  assert.equal(cp.fillChild(parent, picked, (await cp.nextSlot(counter(1), 435582)).slot).metadata.ab_arm, 'B');
+
   // ── the spawner uses it, and spawns nothing when a case cannot be read ──
   const src = fs.readFileSync(path.resolve(__dirname, '../lib/ConstitutionalAgentV4.js'), 'utf8');
   const at = src.indexOf('casePool.pickCase(');
   assert.ok(at > 0, 'spawner calls pickCase');
+  const before = src.slice(Math.max(0, at - 600), at);
+  assert.match(before, /casePool\.nextSlot\(this\.supabase, parent\.id\)/, 'slot comes from the child count');
+  assert.doesNotMatch(before, /const slot = parent\.spawned_count/, 'slot never comes from spawned_count');
   const after = src.slice(at, at + 400);
   assert.match(after, /if \(picked\.error\) \{[\s\S]*?continue;/, 'a failed pick skips the child');
   assert.ok(src.indexOf('casePool.pickCase(') < src.indexOf('.insert(childRow)'), 'case is picked before the insert');
