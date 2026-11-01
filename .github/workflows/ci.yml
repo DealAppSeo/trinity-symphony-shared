@@ -41,6 +41,8 @@ jobs:
           node -c lib/llm-gateway.js
           node -c lib/free-token-breaker.js
           node -c lib/case-pool.js
+          node -c lib/artifactGuard.js
+          node -c lib/substance-gate-client.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
@@ -70,6 +72,9 @@ jobs:
           # Known-answer loops: a case_pool parent asks a different OPEN case each spawn, never a
           # sealed one, never with the answer key; A/B arms are paired on the same case.
           node tests/case-pool.test.js
+          # ...and a reply is judged by its JSON shape (not length), mel's contract path answers,
+          # spawned_count counts once, and the model that answered is recorded.
+          node tests/known-answer-learning.test.js
           # Peer-verify HMAC: PEER_VERIFY_HMAC_SECRET only; unset => refuse to post and say so at boot.
           # It used to fall back to <AGENT>_PRIVATE_KEY, a wallet signing key used as an HMAC secret.
           node tests/peerVerifyHmacKey.test.js
