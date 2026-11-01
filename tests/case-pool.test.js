@@ -19,11 +19,11 @@ const cp = require('../lib/case-pool');
 
   // ── a fake hal_test_cases: two sealed, three open; the key is in the row but never read ──
   const rows = {
-    '02bcad2d-8845-43ec-8658-0377885654cb': { prompt_text: 'SEALED ONE', category: 'x', expected_decision: 'veto' },
-    '03727d54-2c63-4df2-a126-6d54501352e0': { prompt_text: 'SEALED TWO', category: 'x', expected_decision: 'pass' },
-    '0002d1c6-f7b3-4d5b-b4c9-5c23afb0aa2f': { prompt_text: 'open a', category: 'factual', expected_decision: 'pass' },
-    '0005a4f5-0b25-4d30-8eca-2ef60cf88015': { prompt_text: 'open b', category: 'factual', expected_decision: 'veto' },
-    '0001aaaa-0000-4000-8000-000000000000': { prompt_text: 'open c', category: 'history', expected_decision: 'pass' },
+    '02bcad2d-8845-43ec-8658-0377885654cb': { prompt_text: 'SEALED ONE', category: 'x', expected_decision: 'veto', source: 'external-fever-20260608-n300' },
+    '03727d54-2c63-4df2-a126-6d54501352e0': { prompt_text: 'SEALED TWO', category: 'x', expected_decision: 'pass', source: 't12-expansion-20260616' },
+    '0002d1c6-f7b3-4d5b-b4c9-5c23afb0aa2f': { prompt_text: 'open a', category: 'factual', expected_decision: 'pass', source: 'external-truthfulqa-20260608-n300' },
+    '0005a4f5-0b25-4d30-8eca-2ef60cf88015': { prompt_text: 'open b', category: 'factual', expected_decision: 'veto', source: 't12-expansion-20260616' },
+    '0001aaaa-0000-4000-8000-000000000000': { prompt_text: 'open c', category: 'history', expected_decision: 'pass', source: 'external-halueval-20260608-n300' },
   };
   assert.equal(cp.isSealed('0001aaaa-0000-4000-8000-000000000000'), false, 'fixture id must be open');
   const selects = [];
@@ -34,7 +34,7 @@ const cp = require('../lib/case-pool');
       const q = {
         select: (c) => { cols = c; selects.push(c); return q; },
         order: () => q,
-        limit: async () => (opts.readError ? { data: null, error: { message: 'down' } } : { data: Object.keys(rows).sort().map((id) => ({ id })), error: null }),
+        limit: async () => (opts.readError ? { data: null, error: { message: 'down' } } : { data: Object.keys(rows).sort().map((id) => ({ id, source: rows[id].source })), error: null }),
         eq: (_c, v) => { eqId = v; return q; },
         maybeSingle: async () => {
           const r = rows[eqId];
@@ -56,6 +56,15 @@ const cp = require('../lib/case-pool');
   assert.equal((await cp.pickCase(fake(), 'hal_open_v1', 0)).poolSize, 3);
   assert.ok(!seen.some((t) => t.startsWith('SEALED')), 'a sealed case is never served');
   assert.ok(!selects.some((c) => /expected_decision|expected_hallucination/.test(c)), 'the answer key is never read');
+
+  // the external pool serves only open cases from outside benchmarks; a sealed external case stays sealed
+  const ext = [];
+  for (let i = 0; i < 3; i++) ext.push((await cp.pickCase(fake(), 'hal_external_v1', i)).text);
+  assert.deepEqual(ext, ['open c', 'open a', 'open c']);
+  assert.equal((await cp.pickCase(fake(), 'hal_external_v1', 0)).poolSize, 2);
+  assert.ok(!ext.includes('open b'), 'a case our own models wrote is not in the external pool');
+  assert.ok(!ext.includes('SEALED ONE'), 'a sealed external case is never served');
+  assert.equal(cp.isKnownAnswerTask({ metadata: { case_pool: 'hal_external_v1', case_id: 'x' } }), true);
 
   // failures say so; no empty question
   assert.match((await cp.pickCase(fake(), 'hal_everything', 0)).error, /unknown case_pool/);
