@@ -80,7 +80,10 @@ const spawner = src.slice(src.indexOf('async respawnEvergreensIfDue('), src.inde
 assert.match(spawner, /\.update\(\{ last_spawned_at: nowIso \}\)/, 'the cadence claim sets only last_spawned_at');
 assert.doesNotMatch(spawner, /spawned_count: \(parent\.spawned_count/, 'the trigger counts children; the claim does not');
 
-assert.match(src, /find\(\(m\) => typeof m === 'string' && m\);\s*return \{ output, model: named \|\| null \};/, 'callProvider returns the model that answered, a string or null');
+// callProvider returns the model that answered, a string or null (behaviour: model-rotation and
+// provider-fallbacks tests run the real callProvider and check result.model)
+assert.ok(src.includes("[data && data.model, data && data.modelVersion, provider.model].find((m) => typeof m === 'string' && m);"), 'model chosen from the response, a string');
+assert.ok(src.includes('return { output, model: named || null };'), 'callProvider returns it, or null');
 const providerWrites = src.match(/provider_used: result\.provider,/g) || [];
 const modelWrites = src.match(/provider_used: result\.provider, model_used: typeof result\.model === 'string' \? result\.model : null,/g) || [];
 assert.ok(providerWrites.length >= 5);
