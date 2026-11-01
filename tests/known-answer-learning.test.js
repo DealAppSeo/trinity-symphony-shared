@@ -103,8 +103,11 @@ assert.equal(cp.chooseReply('', saved), saved);
 assert.equal(cp.chooseReply('{"decision":"veto","confidence":0.6,"reason":"x"}', saved), '{"decision":"veto","confidence":0.6,"reason":"x"}', 'a valid final message wins');
 assert.equal(cp.chooseReply('', '# Question for Architect'), '', 'no answer anywhere: unchanged, and the gate says so');
 assert.equal(cp.chooseReply('', null), '');
-// both paths take the reply through it right after callLLM (only comments in between)
-assert.equal((src.match(/const result = await this\.callLLM\(context\);(?:\s*\/\/[^\n]*)*\s*result\.output = await this\._knownAnswerReply\(task, result\.output\);/g) || []).length, 2);
+// both paths take the reply through it right after callLLM: the first non-comment line after each
+// call site (plain string handling; a regex with nested repetition here was a CodeQL ReDoS alert)
+const nextLines = src.split('const result = await this.callLLM(context);').slice(1)
+  .map((after) => after.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('//')));
+assert.deepEqual(nextLines, Array(2).fill('result.output = await this._knownAnswerReply(task, result.output);'));
 const kar = src.slice(src.indexOf('async _knownAnswerReply('), src.indexOf('async evaluateResult('));
 assert.match(kar, /if \(!casePool\.isKnownAnswerTask\(task\)\) return output;/, 'other tasks are untouched');
 assert.match(kar, /select\('content, task_id'\)[\s\S]*if \(data && String\(data\.task_id\) === String\(task\.id\)\) reply = /, "only this task's own artifact (Grok on #99)");
