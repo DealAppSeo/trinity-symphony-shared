@@ -61,6 +61,8 @@ assert.equal(badEvt.signals.chars.passed, false);
 assert.deepEqual(badEvt.failures, ['answer_format_invalid: no_json']);
 const plainShort = buildFastPathResult('short', { ok: false, reason: 'output_too_short: 5/200' });
 assert.equal(plainShort.signals.chars.passed, false, 'other tasks keep the length rule');
+// only the exact known-answer format bypasses length; any other truthy `format` does not
+assert.equal(buildFastPathResult('short', { ok: true, format: 'something_else' }).signals.chars.passed, false);
 
 // ── the agent wiring (source pins; the agent needs a DB to construct) ──
 const src = fs.readFileSync(path.resolve(__dirname, '../lib/ConstitutionalAgentV4.js'), 'utf8');
@@ -76,9 +78,9 @@ const spawner = src.slice(src.indexOf('async respawnEvergreensIfDue('), src.inde
 assert.match(spawner, /\.update\(\{ last_spawned_at: nowIso \}\)/, 'the cadence claim sets only last_spawned_at');
 assert.doesNotMatch(spawner, /spawned_count: \(parent\.spawned_count/, 'the trigger counts children; the claim does not');
 
-assert.match(src, /return \{ output, model: /, 'callProvider returns the model that answered');
+assert.match(src, /find\(\(m\) => typeof m === 'string' && m\);\s*return \{ output, model: named \|\| null \};/, 'callProvider returns the model that answered, a string or null');
 const providerWrites = src.match(/provider_used: result\.provider,/g) || [];
-const modelWrites = src.match(/provider_used: result\.provider, model_used: result\.model \|\| null,/g) || [];
+const modelWrites = src.match(/provider_used: result\.provider, model_used: typeof result\.model === 'string' \? result\.model : null,/g) || [];
 assert.ok(providerWrites.length >= 5);
 assert.equal(modelWrites.length, providerWrites.length, 'every write of provider_used also writes model_used');
 
