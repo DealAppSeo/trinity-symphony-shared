@@ -20,6 +20,8 @@ A provider that answers 401, 402, 404 or 410 is dropped for the rest of the agen
 
 So the top three that can actually serve a call are normally **Groq, OpenRouter (`:free` only), NVIDIA**.
 
+**Spreading the fleet across models: `FREE_ROTATE_BY_AGENT=on`** (off by default). Off, every agent tries the free providers in the order above, so nearly all work lands on Groq's one model (9 of 10 T12 tasks on 2026-11-01). On, each agent starts at its position in the roster (`AGENT_WISDOM` order), so the 12 agents spread their first choice evenly: with three free providers, 4 start on each. Failover still walks the same cycle, so no provider is lost. The boot line shows each agent's order (`eligible=...`). Answers through the LiteLLM gateway record the provider it routed to, e.g. `model_used = auto@integrate.api.nvidia.com`.
+
 **Together is a flag, not a fix.** together.ai's own model page says Llama 3.3 70B is not
 available on its serverless API (checked 2026-10-31), so that slot fails and the runtime
 demotes it. Today it costs nothing. But Together's free models were the `-Free` ids, which
