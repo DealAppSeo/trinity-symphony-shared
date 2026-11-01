@@ -105,7 +105,7 @@ assert.equal(cp.chooseReply('', '# Question for Architect'), '', 'no answer anyw
 assert.equal(cp.chooseReply('', null), '');
 // both paths take the reply through it right after callLLM: the first non-comment line after each
 // call site (plain string handling; a regex with nested repetition here was a CodeQL ReDoS alert)
-const nextLines = src.split('const result = await this.callLLM(context);').slice(1)
+const nextLines = src.split('const result = await this.callLLM(context, answerOnly ? { tools: false } : {});').slice(1)
   .map((after) => after.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('//')));
 assert.deepEqual(nextLines, Array(2).fill('result.output = await this._knownAnswerReply(task, result.output);'));
 const kar = src.slice(src.indexOf('async _knownAnswerReply('), src.indexOf('async evaluateResult('));

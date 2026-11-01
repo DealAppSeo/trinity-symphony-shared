@@ -69,6 +69,9 @@ jobs:
           # free providers are spent the loop stops claiming instead of failing tasks.
           node tests/free-tier-gate.test.js
           node tests/free-token-breaker.test.js
+          # Fallbacks: 402/410 demote like 401/404 (together out of credit, nvidia model retired); the
+          # nvidia default is a live model; a caller can send a request with no tools at all.
+          node tests/provider-fallbacks.test.js
           # Known-answer loops: a case_pool parent asks a different OPEN case each spawn, never a
           # sealed one, never with the answer key; A/B arms are paired on the same case.
           node tests/case-pool.test.js
