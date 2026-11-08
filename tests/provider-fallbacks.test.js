@@ -63,6 +63,8 @@ async function run() {
   });
 
   await test('410 Gone and 402 credit exhausted demote the provider; the next call does not try it', async () => {
+    // Together is only reachable when paid use is explicitly allowed.
+    process.env.SEAN_PAID_LOOP = 'test-loop';
     const a = agent(['groq', 'nvidia', 'together']);
     const urls = [];
     global.fetch = async (u) => {
