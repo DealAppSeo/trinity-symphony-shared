@@ -78,7 +78,7 @@ function taskAgent() {
     wisdom: { squad: 'ALPHA', primaryVirtue: 'truth' },
     supabase: {
       from: (table) => ({
-        update: (row) => ({ eq: async (_c, id) => { updates.push({ table, id, row }); return { error: null }; } }),
+        update: (row) => { let id; const chain = { eq: (c, v) => { if (c === 'id') { id = v; updates.push({ table, id, row }); } return chain; }, select: async () => ({ data: [{ id }], error: null }), then: (ok) => ok({ error: null }) }; return chain; },
         select: () => ({ eq: (_c, id) => ({ maybeSingle: async () => ({ data: store.get(id) || null, error: null }) }) }),
       }),
     },
