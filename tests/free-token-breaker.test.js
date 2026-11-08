@@ -15,11 +15,11 @@ const slots = [
   { provider: 'openai', model: 'gpt-4o' },                                  // paid: never counted
   { provider: 'cerebras', model: 'PARKED' },                                // parked: never called
   { provider: 'openrouter', model: 'deepseek/deepseek-chat' },              // paid id on a free host
-  { provider: 'together', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
+  { provider: 'openrouter', model: 'nvidia/nemotron-3.5-lightning:free' },
   { provider: 'groq', model: 'llama-3.3-70b-versatile' },
   { provider: 'nvidia', model: 'meta/llama-3.1-8b-instruct' },
 ];
-assert.deepEqual(b.topFree(slots), ['groq', 'nvidia', 'together']);
+assert.deepEqual(b.topFree(slots), ['groq', 'openrouter', 'nvidia']);
 assert.deepEqual(
   b.topFree([...slots, { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free' }]),
   ['groq', 'openrouter', 'nvidia'],
@@ -27,10 +27,10 @@ assert.deepEqual(
 
 // A provider that answers 401/404 is dropped from this.availableProviders for the session
 // (ConstitutionalAgentV4.js callProvider). topFree is recomputed from that list on every loop,
-// so a dead slot (together: model not served) leaves the top three after its first failure and
+// so a dead slot (a model no longer served) leaves the top three after its first failure and
 // cannot hold the breaker open.
 {
-  const live = slots.filter((s) => s.provider !== 'together'); // after together's 404 demotion
+  const live = slots.filter((s) => s.provider !== 'openrouter'); // after its 404 demotion
   assert.deepEqual(b.topFree(live), ['groq', 'nvidia']);
   gate.resetExhaustion();
   gate.markExhausted('groq', NOON);
@@ -42,26 +42,26 @@ assert.deepEqual(
 
 // ── the bug this closes: gate.allFreeExhausted() never fires for a real agent ──
 gate.resetExhaustion();
-for (const p of ['groq', 'nvidia', 'together']) gate.markExhausted(p, NOON);
+for (const p of ['groq', 'nvidia', 'openrouter']) gate.markExhausted(p, NOON);
 assert.equal(gate.allFreeExhausted(NOON), false, 'gate waits for providers this agent cannot call');
-assert.equal(b.check(['groq', 'nvidia', 'together'], { env: ENV, now: NOON }).paused, true);
+assert.equal(b.check(['groq', 'nvidia', 'openrouter'], { env: ENV, now: NOON }).paused, true);
 
 // ── mode 'all' (default): pause only when every top provider is spent ─────────
 gate.resetExhaustion();
 gate.markExhausted('groq', NOON);
-let s = b.check(['groq', 'nvidia', 'together'], { env: ENV, now: NOON });
+let s = b.check(['groq', 'nvidia', 'openrouter'], { env: ENV, now: NOON });
 assert.equal(s.paused, false);
 assert.deepEqual(s.exhausted, ['groq']);
 assert.equal(s.until, null);
 
 gate.markExhausted('nvidia', NOON);
-gate.markExhausted('together', NOON);
-s = b.check(['groq', 'nvidia', 'together'], { env: ENV, now: NOON });
+gate.markExhausted('openrouter', NOON);
+s = b.check(['groq', 'nvidia', 'openrouter'], { env: ENV, now: NOON });
 assert.equal(s.paused, true);
 assert.equal(s.until, '2026-11-01T00:00:00.000Z');
 
 // resets at UTC midnight with no action
-assert.equal(b.check(['groq', 'nvidia', 'together'], { env: ENV, now: new Date('2026-11-01T00:00:01Z') }).paused, false);
+assert.equal(b.check(['groq', 'nvidia', 'openrouter'], { env: ENV, now: new Date('2026-11-01T00:00:01Z') }).paused, false);
 
 // ── mode 'any': pause at the first spent provider ─────────────────────────────
 gate.resetExhaustion();

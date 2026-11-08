@@ -15,6 +15,7 @@ const {
   resetExhaustion,
   allFreeExhausted,
   FREE_TRY_ORDER,
+  isFreeSlot,
 } = require('../lib/free-tier-gate');
 
 resetExhaustion();
@@ -34,7 +35,7 @@ assert.equal(isQuotaExhaustedError('timeout'), false);
 const midnight = nextUtcMidnight(new Date(Date.UTC(2026, 8, 10, 15, 0, 0)));
 assert.equal(midnight.toISOString(), '2026-09-11T00:00:00.000Z');
 
-assert.deepEqual([...FREE_TRY_ORDER], ['groq', 'cerebras', 'openrouter', 'nvidia', 'together']);
+assert.deepEqual([...FREE_TRY_ORDER], ['groq', 'cerebras', 'openrouter', 'nvidia']);
 
 const roster = [
   { provider: 'openai', model: 'gpt-4o' },
@@ -48,8 +49,12 @@ const roster = [
 const freeOnly = orderProviders(roster, { allowPaid: false, now: new Date() });
 assert.deepEqual(
   freeOnly.map((p) => p.provider + ':' + (p.model.endsWith(':free') ? 'free' : p.provider)),
-  ['groq:groq', 'cerebras:cerebras', 'openrouter:free', 'together:together'],
+  ['groq:groq', 'cerebras:cerebras', 'openrouter:free'],
 );
+// Free-only must not reach any metered or unpriced endpoint, whatever keys are present.
+for (const paid of ['together', 'deepseek', 'deepinfra', 'fireworks', 'openai', 'anthropic', 'grok', 'gemini']) {
+  assert.equal(isFreeSlot({ provider: paid, model: 'any' }, false), false, paid + ' is not a free slot');
+}
 assert.ok(!freeOnly.some((p) => p.provider === 'openai'));
 assert.ok(!freeOnly.some((p) => p.model === 'deepseek/deepseek-chat'));
 
@@ -77,7 +82,6 @@ markExhausted('groq', new Date());
 markExhausted('cerebras', new Date());
 markExhausted('openrouter', new Date());
 markExhausted('nvidia', new Date());
-markExhausted('together', new Date());
 assert.equal(allFreeExhausted(new Date()), true);
 
 console.log('free-tier-gate.test.js: PASS');
