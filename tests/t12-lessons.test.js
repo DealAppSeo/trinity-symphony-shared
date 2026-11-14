@@ -139,8 +139,9 @@ async function runTask(s, { name = 'trinity-hdm', env = {}, id = 1 } = {}) {
 }
 
 const scenario = (key) => SCENARIOS.find((s) => s.key === key);
-const sha12 = () => crypto.createHash('sha256').update(fs.readFileSync(LESSONS_FILE)).digest('hex').slice(0, 12);
-const lessonsText = () => fs.readFileSync(LESSONS_FILE, 'utf8').trim();
+// the text as sent: a Windows checkout has CRLF, the deploy has LF; the hash names what the model saw
+const lessonsText = () => fs.readFileSync(LESSONS_FILE, 'utf8').replace(/\r\n/g, '\n').trim();
+const sha12 = () => crypto.createHash('sha256').update(lessonsText()).digest('hex').slice(0, 12);
 
 async function record() {
   console.log = () => {}; console.warn = () => {}; console.error = () => {};
@@ -259,10 +260,8 @@ async function run() {
     require('../lib/t12-lessons')._resetForTest();
     const env = { T12_LESSONS_MODE: 'yes', T12_LESSONS_AGENTS: 'trinity-hdm' };
     const one = await runTask(scenario('legacy/ka/groq'), { env, id: 1 });
-    const seen = [];
-    seen.push(...warns.filter((w) => w.includes('T12_LESSONS_MODE')));
     const two = await runTask(scenario('contract/ka/groq'), { env, id: 1 });
-    seen.push(...warns.filter((w) => w.includes('T12_LESSONS_MODE')));
+    const seen = warns.filter((w) => w.includes('T12_LESSONS_MODE')); // across both tasks
     assert.deepEqual(one, SNAP['legacy/ka/groq']);
     assert.deepEqual(two, SNAP['contract/ka/groq']);
     assert.equal(seen.length, 1, `one log line, got ${seen.length}`);
