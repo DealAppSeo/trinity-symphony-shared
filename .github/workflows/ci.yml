@@ -44,6 +44,7 @@ jobs:
           node -c lib/artifactGuard.js
           node -c lib/substance-gate-client.js
           node -c lib/declared-not-checked.js
+          node -c lib/t12-lessons.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
@@ -85,6 +86,10 @@ jobs:
           # ...and through the REAL legacy and contract task paths (fake DB): one answer per task,
           # never escalated, never failed for a missing artifact; ordinary tasks unchanged.
           node tests/known-answer-paths.test.js
+          # T12_LESSONS_MODE A/B: unset => every request body is byte-identical to the fixture recorded
+          # from main (all task paths, all provider shapes); ab/all => the lessons go first as a system
+          # message (anthropic: top-level system; gemini/engine: folded in front) and the arm is recorded.
+          node tests/t12-lessons.test.js
           # A declared NOT_CHECKED ("can_query": false, with a reason and no number) is not a substance
           # failure: off = unchanged, shadow = tagged, on = status not_checked with no gate event and no HITL.
           node tests/declared-not-checked.test.js
