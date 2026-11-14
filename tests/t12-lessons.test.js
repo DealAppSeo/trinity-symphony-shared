@@ -268,6 +268,21 @@ async function run() {
     assert.match(seen[0], /"yes"/);
   });
 
+  await test('empty lessons file: nothing is sent, so the row says without (never with), and it says why', async () => {
+    const lessonsMod = require('../lib/t12-lessons');
+    const orig = fs.readFileSync;
+    const errors = [];
+    lessonsMod._resetForTest();
+    fs.readFileSync = (p, ...rest) => (String(p) === LESSONS_FILE ? ' \r\n ' : orig(p, ...rest));
+    try {
+      console.error = (...args) => { errors.push(args.join(' ')); };
+      const got = await runTask(scenario('legacy/ka/groq'), { env: AB });
+      assert.deepEqual(got.requests, SNAP['legacy/ka/groq'].requests);
+      assert.equal(got.final.metadata.lessons_arm, 'without');
+      assert.ok(errors.some((e) => e.includes('[LESSONS]') && e.includes('empty')), 'a loud error');
+    } finally { fs.readFileSync = orig; lessonsMod._resetForTest(); }
+  });
+
   // ── 6. the file ──
   await test('lessons file: at most 1200 characters and carries the abstain rule verbatim', async () => {
     const text = fs.readFileSync(LESSONS_FILE, 'utf8');
