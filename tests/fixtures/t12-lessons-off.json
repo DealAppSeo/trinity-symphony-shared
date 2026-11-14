@@ -1,0 +1,142 @@
+{
+  "legacy/ka/groq": {
+    "requests": [
+      {
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "body": "{\"model\":\"openai/gpt-oss-20b\",\"messages\":[{\"role\":\"user\",\"content\":\"\\n[CONSTITUTIONAL DIRECTIVE]\\nIf ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.\\n\\n[REPLY]\\nReply in your message only. You have no tools for this task; your reply is saved for you.\\n\\n---\\nTASK: T12 KNOWN ANSWER: is this statement accurate?\\nDESC: Decide pass, veto or abstain. Statement: the audit passed. Evidence: skipped.\\nSQUAD: GAMMA\\nVIRTUE: EXCELLENT\\n\"}]}"
+      }
+    ],
+    "final": {
+      "status": "done",
+      "metadata": {
+        "case_pool": "hal_open_v1",
+        "case_id": "0005a4f5-0b25-4d30-8eca-2ef60cf88015",
+        "provider_used": "groq",
+        "model_used": "fake-model",
+        "provider": "groq"
+      }
+    }
+  },
+  "legacy/plain/groq": {
+    "requests": [
+      {
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "body": "{\"model\":\"openai/gpt-oss-20b\",\"messages\":[{\"role\":\"user\",\"content\":\"\\n[CONSTITUTIONAL DIRECTIVE]\\nIf ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.\\n\\n[MANDATORY TOOL REQUIREMENT]\\nYou MUST finalize your work by calling the 'save_artifact' tool.\\n- If the task is a report, use type 'report'.\\n- If the task is code, use type 'code'.\\n- If the task is a design or visualization, use type 'design' or 'md'.\\n- If the task is a simple document, use type 'document' or 'md'.\\n\\nFailure to call 'save_artifact' results in a task failure.\\n\\n---\\nTASK: Analyse the routing\\nDESC: Write an analysis of the routing\\nSQUAD: GAMMA\\nVIRTUE: EXCELLENT\\n\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"save_artifact\",\"description\":\"MANDATORY: You must call this tool to finalize any content generation task.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"type\":{\"type\":\"string\",\"enum\":[\"code\",\"document\",\"design\",\"report\",\"md\",\"data\"]}},\"required\":[\"title\",\"content\",\"type\"]}}}],\"tool_choice\":\"auto\"}"
+      }
+    ],
+    "final": {
+      "status": "done",
+      "metadata": {
+        "provider_used": "groq",
+        "model_used": "fake-model",
+        "provider": "groq"
+      }
+    }
+  },
+  "contract/ka/groq": {
+    "requests": [
+      {
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "body": "{\"model\":\"openai/gpt-oss-20b\",\"messages\":[{\"role\":\"user\",\"content\":\"\\n[CONSTITUTIONAL DIRECTIVE]\\nIf ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.\\n\\n[REPLY]\\nReply in your message only. You have no tools for this task; your reply is saved for you.\\nTASK: T12 KNOWN ANSWER: is this statement accurate?\\nDESC: Decide pass, veto or abstain. Statement: the audit passed. Evidence: skipped.\\nCRITERIA: One line of JSON with decision pass, veto or abstain, a confidence from 0 to 1, and a one-sentence reason.\\n\"}]}"
+      }
+    ],
+    "final": {
+      "status": "done",
+      "metadata": {
+        "case_pool": "hal_open_v1",
+        "case_id": "0005a4f5-0b25-4d30-8eca-2ef60cf88015",
+        "provider_used": "groq",
+        "model_used": "fake-model",
+        "provider": "groq"
+      }
+    }
+  },
+  "contract/plain/groq": {
+    "requests": [
+      {
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "body": "{\"model\":\"openai/gpt-oss-20b\",\"messages\":[{\"role\":\"user\",\"content\":\"\\n[CONSTITUTIONAL DIRECTIVE]\\nIf ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.\\n\\n[MANDATORY ARTIFACT REQUIREMENT]\\nYou MUST call 'save_artifact' to finalize. Escalation is high-status; faking is unconstitutional.\\nTASK: Analyse the routing\\nDESC: Write an analysis of the routing\\nCRITERIA: \\n\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"save_artifact\",\"description\":\"MANDATORY: You must call this tool to finalize any content generation task.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"type\":{\"type\":\"string\",\"enum\":[\"code\",\"document\",\"design\",\"report\",\"md\",\"data\"]}},\"required\":[\"title\",\"content\",\"type\"]}}}],\"tool_choice\":\"auto\"}"
+      }
+    ],
+    "final": {
+      "status": "done",
+      "metadata": {
+        "provider_used": "groq",
+        "model_used": "fake-model",
+        "provider": "groq"
+      }
+    }
+  },
+  "legacy/ka/gemini": {
+    "requests": [
+      {
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent",
+        "body": "{\"contents\":[{\"parts\":[{\"text\":\"\\n[CONSTITUTIONAL DIRECTIVE]\\nIf ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.\\n\\n[REPLY]\\nReply in your message only. You have no tools for this task; your reply is saved for you.\\n\\n---\\nTASK: T12 KNOWN ANSWER: is this statement accurate?\\nDESC: Decide pass, veto or abstain. Statement: the audit passed. Evidence: skipped.\\nSQUAD: GAMMA\\nVIRTUE: EXCELLENT\\n\"}]}]}"
+      }
+    ],
+    "final": {
+      "status": "done",
+      "metadata": {
+        "case_pool": "hal_open_v1",
+        "case_id": "0005a4f5-0b25-4d30-8eca-2ef60cf88015",
+        "provider_used": "gemini",
+        "model_used": "gemini-1.5-flash-latest",
+        "provider": "gemini"
+      }
+    }
+  },
+  "legacy/ka/anthropic": {
+    "requests": [
+      {
+        "url": "https://api.anthropic.com/v1/messages",
+        "body": "{\"model\":\"claude-3-5-sonnet-20241022\",\"messages\":[{\"role\":\"user\",\"content\":\"\\n[CONSTITUTIONAL DIRECTIVE]\\nIf ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.\\n\\n[REPLY]\\nReply in your message only. You have no tools for this task; your reply is saved for you.\\n\\n---\\nTASK: T12 KNOWN ANSWER: is this statement accurate?\\nDESC: Decide pass, veto or abstain. Statement: the audit passed. Evidence: skipped.\\nSQUAD: GAMMA\\nVIRTUE: EXCELLENT\\n\"}]}"
+      }
+    ],
+    "final": {
+      "status": "done",
+      "metadata": {
+        "case_pool": "hal_open_v1",
+        "case_id": "0005a4f5-0b25-4d30-8eca-2ef60cf88015",
+        "provider_used": "anthropic",
+        "model_used": "claude-3-5-sonnet-20241022",
+        "provider": "anthropic"
+      }
+    }
+  },
+  "legacy/ka/gateway": {
+    "requests": [
+      {
+        "url": "https://litellm.test/v1/chat/completions",
+        "body": "{\"model\":\"auto\",\"messages\":[{\"role\":\"user\",\"content\":\"\\n[CONSTITUTIONAL DIRECTIVE]\\nIf ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.\\n\\n[REPLY]\\nReply in your message only. You have no tools for this task; your reply is saved for you.\\n\\n---\\nTASK: T12 KNOWN ANSWER: is this statement accurate?\\nDESC: Decide pass, veto or abstain. Statement: the audit passed. Evidence: skipped.\\nSQUAD: GAMMA\\nVIRTUE: EXCELLENT\\n\"}]}"
+      }
+    ],
+    "final": {
+      "status": "done",
+      "metadata": {
+        "case_pool": "hal_open_v1",
+        "case_id": "0005a4f5-0b25-4d30-8eca-2ef60cf88015",
+        "provider_used": "litellm",
+        "model_used": "fake-model",
+        "provider": "litellm"
+      }
+    }
+  },
+  "legacy/ka/engine": {
+    "requests": [
+      {
+        "url": "https://engine.test/api/v1/llm/complete",
+        "body": "{\"prompt\":\"\\n[CONSTITUTIONAL DIRECTIVE]\\nIf ever a conflict arises between survival and truth, choose truth—even if it kills us. Resurrection is part of the design.\\n\\n[REPLY]\\nReply in your message only. You have no tools for this task; your reply is saved for you.\\n\\n---\\nTASK: T12 KNOWN ANSWER: is this statement accurate?\\nDESC: Decide pass, veto or abstain. Statement: the audit passed. Evidence: skipped.\\nSQUAD: GAMMA\\nVIRTUE: EXCELLENT\\n\",\"agent_id\":\"trinity-hdm\",\"tier_preference\":\"auto\",\"task_hint\":\"analysis\",\"idempotency_key\":\"<uuid>\"}"
+      }
+    ],
+    "final": {
+      "status": "done",
+      "metadata": {
+        "case_pool": "hal_open_v1",
+        "case_id": "0005a4f5-0b25-4d30-8eca-2ef60cf88015",
+        "provider_used": "groq",
+        "model_used": null,
+        "provider": "groq"
+      }
+    }
+  }
+}
