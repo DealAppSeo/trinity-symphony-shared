@@ -43,6 +43,7 @@ jobs:
           node -c lib/case-pool.js
           node -c lib/artifactGuard.js
           node -c lib/substance-gate-client.js
+          node -c lib/declared-not-checked.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
@@ -84,6 +85,9 @@ jobs:
           # ...and through the REAL legacy and contract task paths (fake DB): one answer per task,
           # never escalated, never failed for a missing artifact; ordinary tasks unchanged.
           node tests/known-answer-paths.test.js
+          # A declared NOT_CHECKED ("can_query": false, with a reason and no number) is not a substance
+          # failure: off = unchanged, shadow = tagged, on = status not_checked with no gate event and no HITL.
+          node tests/declared-not-checked.test.js
           # Peer-verify HMAC: PEER_VERIFY_HMAC_SECRET only; unset => refuse to post and say so at boot.
           # It used to fall back to <AGENT>_PRIVATE_KEY, a wallet signing key used as an HMAC secret.
           node tests/peerVerifyHmacKey.test.js
