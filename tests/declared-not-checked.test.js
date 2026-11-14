@@ -92,6 +92,10 @@ async function run() {
   await test('controls: a count beside the refusal, no reason, a short reason, prose, an array, can_* true, bad JSON, non-string', async () => {
     assert.equal(declaredNotChecked('{"can_query": false, "delivery_check_rows": 5, "reason": "No database access available."}'), null);
     assert.equal(declaredNotChecked('{"can_query": false, "nested": {"n": 0}, "reason": "No database access available."}'), null);
+    assert.equal(declaredNotChecked('{"can_query": false, "delivery_check_rows": "5", "reason": "No database access available."}'), null);
+    assert.equal(declaredNotChecked('{"can_query": false, "service_fulfilled_total": "1,487", "reason": "No database access available."}'), null);
+    // ...while an ISO time, which is text, does not count as a number (438321's own queried_at).
+    assert.ok(declaredNotChecked('{"can_query": false, "queried_at": "2026-11-14T02:29:00Z", "reason": "No database access available."}'));
     assert.equal(declaredNotChecked('{"can_query": false}'), null);
     assert.equal(declaredNotChecked('{"can_query": false, "reason": "no db"}'), null);
     assert.equal(declaredNotChecked('I could not check this because I have no database access.'), null);
