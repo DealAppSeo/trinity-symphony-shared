@@ -48,6 +48,14 @@ const test = async (name, fn) => { n++; try { await fn(); console.log('  ok ' + 
     const broken = agent(null); broken.supabase = { from: () => { throw new Error('db down'); } };
     assert.equal(await broken._replyFromArtifact(task, 'Artifact saved.'), 'Artifact saved.');
   });
+  await test('on: NEVER on a peer-review task, where the reply is the verdict (a short rejection must not become a long approval)', async () => {
+    process.env.REPLY_FROM_ARTIFACT = 'on';
+    const review = 'x'.repeat(1200);
+    for (const t of [{ id: 438914, task_type: 'review' }, { id: 438914, task_type: 'meta' }, { id: 438914, title: '[VERIFY] Peer review for task 7' }, { id: 438914, title: '[REVIEW] check this' }])
+      assert.equal(await agent({ content: review, task_id: 438914 })._replyFromArtifact(t, 'Rejected. Details saved.'), 'Rejected. Details saved.', JSON.stringify(t));
+    // control: the same reply on an ordinary task is replaced
+    assert.equal(await agent({ content: review, task_id: 438914 })._replyFromArtifact({ id: 438914, task_type: 'analysis', title: 'A question' }, 'Rejected. Details saved.'), review);
+  });
   await test('both task paths call it, right after the known-answer step', async () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'ConstitutionalAgentV4.js'), 'utf8').replace(/\r\n/g, '\n');
     const calls = src.match(/result\.output = await this\._knownAnswerReply\(task, result\.output\);\n\s+result\.output = await this\._replyFromArtifact\(task, result\.output\);/g) || [];
