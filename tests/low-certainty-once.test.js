@@ -87,6 +87,10 @@ async function run() {
     assert.equal(w.metadata.keep, 'me', 'existing metadata survives');
     assert.equal(w.metadata.model_used, 'gpt-oss-120b');
     assert.ok(!db.updates.some((u) => u.id === 2 && u.row.status === 'pending_clarification'));
+    // ...and only for low certainty: the same second claim with a normal score is not touched by this branch.
+    const normal = agent({ score: 90 });
+    await normal.a.processTask(task(4, 2)).catch(() => {}); // later steps need more of the runtime than this stand-in has
+    assert.ok(!normal.db.updates.some((u) => u.id === 4 && (u.row.status === 'not_checked' || u.row.status === 'pending_clarification')));
   });
 
   await test('second claim, an answer that says "escalate": also finishes not_checked', async () => {
@@ -113,13 +117,6 @@ async function run() {
     assert.ok(errors.some((m) => /outcome not written: connection reset/.test(m)), 'the failure is logged, not swallowed');
   });
 
-  // A control, so it passes with or without the change. It fails if the new branch fires on claim count alone.
-  await test('control: second claim with normal certainty is NOT marked not_checked', async () => {
-    const { a, db } = agent({ score: 90 });
-    await a.processTask(task(4, 2)).catch(() => {}); // later steps need more of the runtime than this stand-in has
-    assert.ok(!db.updates.some((u) => u.id === 4 && (u.row.status === 'not_checked' || u.row.status === 'pending_clarification')));
-  });
-
   await test('the 438797 loop: the same row offered again and again costs two model calls, not twelve', async () => {
     const { a, db, calls } = agent({ score: 31 });
     for (let claim = 1; claim <= 12; claim++) {
@@ -131,7 +128,7 @@ async function run() {
     assert.equal(lastStatus(db, 5).status, 'not_checked');
   });
 
-  ORIG.log(`low-certainty-once.test.js: ${passed}/7 passed`);
+  ORIG.log(`low-certainty-once.test.js: ${passed}/6 passed`);
 }
 
 run().catch((e) => { console.log = ORIG.log; ORIG.log(e); process.exit(1); });

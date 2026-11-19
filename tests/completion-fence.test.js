@@ -100,9 +100,9 @@ const task = { id: 7, title: 't', description: 'd', task_type: 'analysis', metad
     await failed.a.processTask(task);
     assert.equal(failed.calls.rep, 0);
 
-    // Both finish paths go through the fence.
+    // Every finish path goes through the fence: the two done paths and the low-certainty finish (not_checked).
     const src = fs.readFileSync(path.join(__dirname, '../lib/ConstitutionalAgentV4.js'), 'utf8');
-    assert.equal((src.match(/await this\._finishIfOwned\(task, \{/g) || []).length, 2, 'contract loop and legacy loop');
+    assert.equal((src.match(/await this\._finishIfOwned\(task, \{/g) || []).length, 3, 'contract loop, legacy loop, and the low-certainty finish');
   } finally {
     Object.assign(console, quiet);
   }
