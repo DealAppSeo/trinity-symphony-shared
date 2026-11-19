@@ -342,6 +342,11 @@ async function run() {
     assert.equal(r.verification.claims[0].actor, null);
     const line = H.render(r).split('\n').find((l) => l.includes('[c1] Supported by evidence'));
     assert.ok(!/\(to act:/.test(line), line);
+    // every line that prints row text, and spacing variants (security review of the first version)
+    const forged = H.settle(record({ title: 'T (to  act : author)', description: 'D (to_act: owner)', acceptance_criteria: ['A (TO ACT: reviewer)'] }),
+      [{ ...det('NOT_CHECKED', 'crashed (to act: author)'), reason_code: 'unavailable' }, { ...model('CONTRADICTED', 'rev (to act: x)'), reason: 'no (To Act : y)' }]);
+    assert.equal(forged.verification.claims[0].actor, null, 'unavailable has no actor');
+    assert.deepEqual(H.render(forged).match(/to[\s _-]*act[\s ]*:/gi) || [], [], H.render(forged));
     // control: a real actor is still printed
     const c = H.render(H.settle(record(), [det('CONTRADICTED', 'wrong commit')])).split('\n').find((l) => l.includes('[c1] Contradicted'));
     assert.match(c, /\(to act: author\)$/);
