@@ -21,7 +21,7 @@ Object.assign(require.cache[PG_PATH], {
 });
 
 const ORIG = { log: console.log, warn: console.warn, error: console.error, env: { ...process.env }, fetch: global.fetch };
-delete process.env.NVIDIA_MODEL; // the default is what this file checks
+delete process.env.NVIDIA_MODEL; delete process.env.CEREBRAS_MODEL; // the defaults are what this file checks
 const A = require('../lib/ConstitutionalAgentV4');
 const freeTier = require('../lib/free-tier-gate');
 
@@ -111,7 +111,33 @@ async function run() {
     assert.ok(!src.includes("'meta/llama-3.1-8b-instruct'"), 'the retired model is gone from the code');
   });
 
-  ORIG.log(`provider-fallbacks.test.js: ${passed}/7 passed`);
+  await test('cerebras is detected when it has a key, and not without one', async () => {
+    process.env.CEREBRAS_API_KEY = 'test-not-a-key';
+    assert.ok(A.prototype.detectProviders.call({}).includes('cerebras'), 'with a key');
+    delete process.env.CEREBRAS_API_KEY;
+    assert.ok(!A.prototype.detectProviders.call({}).includes('cerebras'), 'without a key');
+    const src = require('fs').readFileSync(path.resolve(__dirname, '../lib/ConstitutionalAgentV4.js'), 'utf8');
+    assert.match(src, /k === 'cerebras' && PROVIDERS\.cerebras\.model === 'PARKED'/, 'CEREBRAS_MODEL=PARKED still parks it');
+  });
+
+  await test('a per-minute 429 from groq fails over to cerebras and stands groq off for 90 s, not a day', async () => {
+    process.env.CEREBRAS_API_KEY = 'test-not-a-key';
+    const asked = [];
+    global.fetch = async (u, init) => {
+      const model = JSON.parse(init.body).model; asked.push(`${new URL(u).host}:${model}`);
+      if (String(u).includes('groq')) return fail(429, '{"error":{"message":"Rate limit reached on tokens per minute (TPM): Limit 8000. Please try again in 7.5s."}}');
+      return ok('done', model);
+    };
+    const t0 = Date.now();
+    const r = await agent(['groq', 'cerebras']).callLLM('q');
+    assert.equal(r.provider, 'cerebras');
+    assert.deepEqual(asked.slice(-1), ['api.cerebras.ai:gpt-oss-120b']);
+    const until = freeTier.exhaustedUntilOf('groq');
+    assert.ok(until, 'groq is marked');
+    assert.ok(until.getTime() - t0 <= freeTier.MINUTE_COOLDOWN_MS + 5000, `stand-off is the cooldown, got ${until.toISOString()}`);
+  });
+
+  ORIG.log(`provider-fallbacks.test.js: ${passed}/9 passed`);
 }
 
 run().catch((e) => { console.log = ORIG.log; ORIG.log(e); process.exit(1); });
