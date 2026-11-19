@@ -91,6 +91,34 @@ async function run() {
     assert.match(r.open_claims[0].reason, /disputed by trinity-mel/);
   });
 
+  await test('a check the record requires that never ran, or gave no answer, keeps it NOT_CHECKED (found live: the reviewer failed)', async () => {
+    const need = record({ required_checks: ['evidence review', 'trustshell check'] });
+    const noReview = H.settle(need, [det('SUPPORTED')]);
+    assert.equal(noReview.verification.outcome, 'NOT_CHECKED');
+    assert.match(noReview.open_claims[0].reason, /required check did not run: evidence review/);
+    const silent = H.settle(need, [det('SUPPORTED'), { ...model('NOT_CHECKED', 'trinity-mel'), reason: 'no reply' }]);
+    assert.equal(silent.verification.outcome, 'NOT_CHECKED');
+    assert.match(silent.open_claims[0].reason, /evidence review gave no answer: no reply/);
+    assert.equal(H.settle(need, [det('SUPPORTED'), model('SUPPORTED', 'trinity-hdm')]).verification.outcome, 'VERIFIED');
+    assert.ok(H.render(need).includes('REQUIRED CHECKS (each must run on every claim): evidence review, trustshell check'));
+  });
+  await test('an outcome that is not exactly SUPPORTED or CONTRADICTED counts as NOT_CHECKED', async () => {
+    const r = H.settle(record(), [det('SUPPORTED'), { ...det('DID_NOT_RUN'), name: 'second check' }]);
+    assert.equal(r.verification.outcome, 'NOT_CHECKED');
+    assert.equal(H.settle(record(), [det('supported')]).verification.outcome, 'NOT_CHECKED');
+  });
+  await test('an Inspect card for some other sentence supports nothing', async () => {
+    const mine = 'The check workflow succeeded on commit d9911681e9a2, run 44544121933.';
+    const c = { record: { claims: [{ status: 'SUPPORTED', sentence: mine }, { status: 'SUPPORTED', sentence: mine }] } };
+    assert.equal(H.inspectOutcome(c, 0, mine), 'SUPPORTED');
+    assert.equal(H.inspectOutcome(c, 0, mine.replace('d9911681e9a2', 'bc549681bf05')), 'NOT_CHECKED');
+  });
+  await test('blank acceptance criteria or a claim with no text are gaps', async () => {
+    assert.ok(H.gaps(record({ acceptance_criteria: [''] })).some((g) => /acceptance_criteria: none stated/.test(g)));
+    assert.ok(H.gaps(record({ acceptance_criteria: ['x', ' '] })).some((g) => /one is blank/.test(g)));
+    assert.ok(H.gaps(record({ claims: [{ id: 'c1', text: '' }] })).some((g) => /c1 has no text/.test(g)));
+  });
+
   // 2
   await test('planted wrong SHA: a green run for another revision -> REFUTED, whatever the models say', async () => {
     assert.equal(H.inspectOutcome(card('NOT_CHECKED', 'CONTRADICTED', 'SUPPORTED'), 1), 'CONTRADICTED');
@@ -144,13 +172,23 @@ async function run() {
     process.env.LLM_GATEWAY_FIRST = 'true'; process.env.LITELLM_URL = 'https://gateway.invalid'; process.env.LITELLM_MASTER_KEY = 'test-not-a-key';
     assert.deepEqual(gate.paidDecision(), { allow: false, reason: 'free_only' });
     assert.equal(gatewayHop('analysis').provider, null);
-    assert.match(gatewayHop('analysis').skip, /free-only/);
+    assert.match(gatewayHop('analysis').skip, /free_only/);
     const urls = [];
     global.fetch = async (u) => { urls.push(u); return fail(503, 'down'); };
     await assert.rejects(agent(['groq', 'openai']).callLLM('q', { tools: false }));
     assert.ok(urls.length > 0 && urls.every((u) => u.includes('groq')), urls.join());
     process.env.COST_MODE = 'FREE_ONLYY'; // a typo is still free-only
     assert.equal(gate.allowPaid(), false);
+  });
+  await test('PAID_CAPPED: the gateway hop needs the same live approval and counts against the same cap', async () => {
+    process.env.COST_MODE = 'PAID_CAPPED'; process.env.SEAN_PAID_LOOP = 'loop3'; process.env.PAID_MAX_CALLS = '1';
+    process.env.LLM_GATEWAY_FIRST = 'true'; process.env.LITELLM_URL = 'https://gateway.invalid'; process.env.LITELLM_MASTER_KEY = 'test-not-a-key';
+    process.env.PAID_APPROVAL_EXPIRES = '2020-01-01T00:00:00Z';
+    assert.match(gatewayHop('analysis').skip, /approval_expired/);
+    process.env.PAID_APPROVAL_EXPIRES = '2999-01-01T00:00:00Z';
+    assert.equal(gatewayHop('analysis').provider.model, 'auto');
+    assert.equal(gate.paidCallsUsed(), 1);
+    assert.match(gatewayHop('analysis').skip, /cap_reached/);
   });
   await test('control: with COST_MODE unset the gateway hop and the paid approval behave as before', async () => {
     process.env.SEAN_PAID_LOOP = 'loop3';
@@ -246,7 +284,8 @@ async function run() {
     await a.spawnNextStep({ id: 8, title: 'Write something', description: 'd', task_type: 'docs', metadata: {} }, 'some text', { score: 80 }, {});
     const got = a.inserted[0].metadata.handoff;
     const g = H.gaps(got).join('; ');
-    for (const part of ['acceptance_criteria', 'input_revision', 'artifacts', 'evidence', 'producer: model']) assert.ok(g.includes(part), `${part} missing from: ${g}`);
+    assert.deepEqual(got.claims, [], 'no claim is invented from the output');
+    for (const part of ['acceptance_criteria', 'input_revision', 'claims: none stated', 'artifacts', 'evidence', 'producer: model']) assert.ok(g.includes(part), `${part} missing from: ${g}`);
     assert.equal(H.settle(got, [det('SUPPORTED')]).verification.outcome, 'NOT_CHECKED');
   });
 
