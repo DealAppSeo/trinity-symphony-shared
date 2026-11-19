@@ -123,6 +123,13 @@ async function run() {
     assert.ok(H.gaps(record({ claims: [{ id: 'c1', text: '' }] })).some((g) => /c1 has no text/.test(g)));
     assert.ok(H.gaps(record({ claims: [{ id: 'c1', text: 'a' }, { id: 'c1', text: 'b' }] })).some((g) => /share an id/.test(g)));
     assert.ok(H.gaps(record({ input_revision: ' ' })).some((g) => /input_revision/.test(g)));
+    assert.ok(H.gaps(record({ artifacts: [{ ref: ' ' }] })).some((g) => /artifacts: an entry has no ref/.test(g)));
+    assert.ok(H.gaps(record({ evidence: [{ ref: ' ', available: true }] })).some((g) => /is not available/.test(g)));
+    assert.ok(H.gaps({ ...record(), claims: [{ text: 'no id' }] }).some((g) => /has no id/.test(g)));
+    // a required check that names no kind is a gap, and nothing satisfies it
+    const loose = record({ required_checks: ['evidence review'] });
+    assert.ok(H.gaps(loose).some((g) => /evidence review names no kind/.test(g)));
+    assert.equal(H.settle(loose, [det('SUPPORTED'), { ...det('SUPPORTED'), name: 'evidence review' }]).verification.outcome, 'NOT_CHECKED');
     assert.ok(H.gaps(record({ task: { id: 1, title: ' ' } })).some((g) => /no title/.test(g)));
   });
 
@@ -197,6 +204,9 @@ async function run() {
     assert.equal(gatewayHop('analysis').provider.model, 'auto');
     assert.equal(gate.paidCallsUsed(), 1);
     assert.match(gatewayHop('analysis').skip, /cap_reached/);
+    gate.resetPaidCalls(); delete process.env.LITELLM_URL;
+    assert.match(gatewayHop('analysis').skip, /LITELLM_URL unset/);
+    assert.equal(gate.paidCallsUsed(), 0, 'a hop skipped for a missing setting is not counted');
   });
   await test('control: with COST_MODE unset the gateway hop and the paid approval behave as before', async () => {
     process.env.SEAN_PAID_LOOP = 'loop3';
