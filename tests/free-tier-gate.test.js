@@ -85,3 +85,26 @@ markExhausted('nvidia', new Date());
 assert.equal(allFreeExhausted(new Date()), true);
 
 console.log('free-tier-gate.test.js: PASS');
+
+// ── a per-minute limit is 90 seconds, not the rest of the day (2026-11-18) ────
+{
+  const g = require('../lib/free-tier-gate');
+  const T = new Date(Date.UTC(2026, 10, 19, 3, 0, 0));
+  const MID = '2026-11-20T00:00:00.000Z';
+  const minute = '429 Rate limit reached for model `openai/gpt-oss-20b` in organization `org_x` on tokens per minute (TPM): Limit 8000, Used 7900. Please try again in 7.5s.';
+  const day = '429 Rate limit reached for model `openai/gpt-oss-20b` on tokens per day (TPD): Limit 200000. Please try again in 7m12.5s.';
+  assert.equal(g.exhaustionUntil(minute, T).getTime(), T.getTime() + g.MINUTE_COOLDOWN_MS);
+  assert.equal(g.exhaustionUntil(day, T).toISOString(), MID, 'a daily limit still waits for midnight');
+  assert.equal(g.exhaustionUntil('insufficient_quota', T).toISOString(), MID);
+  assert.equal(g.exhaustionUntil('429 Too Many Requests', T).toISOString(), MID, 'an unnamed 429 keeps the old behaviour');
+  assert.equal(g.exhaustionUntil(undefined, T).toISOString(), MID, 'no message keeps the old behaviour');
+  g.resetExhaustion();
+  g.markExhausted('groq', T, minute);
+  assert.equal(g.isExhausted('groq', T), true);
+  assert.equal(g.isExhausted('groq', new Date(T.getTime() + g.MINUTE_COOLDOWN_MS + 1)), false, 'back after the cooldown');
+  g.markExhausted('groq', T, day);
+  g.markExhausted('groq', T, minute);
+  assert.equal(g.exhaustedUntilOf('groq').toISOString(), MID, 'a minute limit never shortens a daily one');
+  g.resetExhaustion();
+  console.log('free-tier-gate.test.js: minute-vs-day PASS');
+}

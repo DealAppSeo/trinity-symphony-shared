@@ -99,15 +99,15 @@ async function run() {
 
   await test('nvidia asks a live model by default (not the retired llama-3.1-8b)', async () => {
     const bodies = [];
-    global.fetch = async (_u, init) => { bodies.push(JSON.parse(init.body)); return ok('done', 'nvidia/nemotron-3-super-120b-a12b'); };
+    global.fetch = async (_u, init) => { bodies.push(JSON.parse(init.body)); return ok('done', 'nvidia/nemotron-3-ultra-550b-a55b'); };
     const r = await agent(['nvidia']).callLLM('q');
-    assert.equal(bodies[0].model, 'nvidia/nemotron-3-super-120b-a12b');
-    assert.equal(r.model, 'nvidia/nemotron-3-super-120b-a12b');
+    assert.equal(bodies[0].model, 'nvidia/nemotron-3-ultra-550b-a55b');
+    assert.equal(r.model, 'nvidia/nemotron-3-ultra-550b-a55b');
   });
 
   await test('NVIDIA_MODEL overrides the default (read when the module loads)', async () => {
     const src = require('fs').readFileSync(path.resolve(__dirname, '../lib/ConstitutionalAgentV4.js'), 'utf8');
-    assert.match(src, /model: process\.env\.NVIDIA_MODEL \|\| 'nvidia\/nemotron-3-super-120b-a12b'/);
+    assert.match(src, /model: process\.env\.NVIDIA_MODEL \|\| 'nvidia\/nemotron-3-ultra-550b-a55b'/);
     assert.ok(!src.includes("'meta/llama-3.1-8b-instruct'"), 'the retired model is gone from the code');
   });
 
