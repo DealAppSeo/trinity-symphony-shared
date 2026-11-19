@@ -206,7 +206,7 @@ async function run() {
   });
 
   // 5
-  const paidOnly = () => { const urls = []; global.fetch = async (u) => { urls.push(u); return u.includes('api.openai.com') ? ok('paid answer') : fail(503, 'down'); }; return urls; };
+  const paidOnly = () => { const urls = []; global.fetch = async (u) => { urls.push(u); return new URL(u).hostname === 'api.openai.com' ? ok('paid answer') : fail(503, 'down'); }; return urls; };
   await test('paid fallback DENIED (no approval): the paid provider is never dispatched', async () => {
     process.env.COST_MODE = 'PAID_CAPPED'; process.env.PAID_APPROVAL_EXPIRES = '2999-01-01T00:00:00Z'; process.env.PAID_MAX_CALLS = '5';
     const urls = paidOnly();
