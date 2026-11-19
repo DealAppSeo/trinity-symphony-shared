@@ -42,7 +42,8 @@ const record = (over = {}) => H.build({
 });
 const det = (outcome, reason) => ({ claim: 'c1', name: 'trustshell check', kind: 'deterministic', outcome, reason });
 const model = (outcome, by) => ({ claim: 'c1', name: 'evidence review', kind: 'model', outcome, by });
-const card = (...statuses) => ({ record: { claims: statuses.map((status) => ({ status })) } });
+const SENT = 'The check workflow succeeded on commit d9911681e9a2, run 44544121933.';
+const card = (...statuses) => ({ record: { claims: statuses.map((status) => ({ status, sentence: SENT })) } });
 
 function agent(providers) {
   const inserted = [];
@@ -75,7 +76,7 @@ async function run() {
   // 1
   await test('valid claim: complete record + the deterministic check supports it -> VERIFIED', async () => {
     assert.deepEqual(H.gaps(record()), []);
-    assert.equal(H.inspectOutcome(card('SUPPORTED', 'SUPPORTED', 'SUPPORTED'), 0), 'SUPPORTED');
+    assert.equal(H.inspectOutcome(card('SUPPORTED', 'SUPPORTED', 'SUPPORTED'), 0, SENT), 'SUPPORTED');
     const r = H.settle(record(), [det('SUPPORTED'), model('SUPPORTED', 'trinity-mel')]);
     assert.equal(r.verification.outcome, 'VERIFIED');
     assert.deepEqual(r.open_claims, []);
@@ -92,7 +93,7 @@ async function run() {
   });
 
   await test('a check the record requires that never ran, or gave no answer, keeps it NOT_CHECKED (found live: the reviewer failed)', async () => {
-    const need = record({ required_checks: ['evidence review', 'trustshell check'] });
+    const need = record({ required_checks: [{ name: 'evidence review', kind: 'model' }, { name: 'trustshell check', kind: 'deterministic' }] });
     const noReview = H.settle(need, [det('SUPPORTED')]);
     assert.equal(noReview.verification.outcome, 'NOT_CHECKED');
     assert.match(noReview.open_claims[0].reason, /required check did not run: evidence review/);
@@ -100,7 +101,10 @@ async function run() {
     assert.equal(silent.verification.outcome, 'NOT_CHECKED');
     assert.match(silent.open_claims[0].reason, /evidence review gave no answer: no reply/);
     assert.equal(H.settle(need, [det('SUPPORTED'), model('SUPPORTED', 'trinity-hdm')]).verification.outcome, 'VERIFIED');
-    assert.ok(H.render(need).includes('REQUIRED CHECKS (each must run on every claim): evidence review, trustshell check'));
+    assert.ok(H.render(need).includes('REQUIRED CHECKS (each must run on every claim): evidence review [model], trustshell check [deterministic]'));
+    // a deterministic check that borrows the review's name is not the review
+    const borrowed = H.settle(need, [det('SUPPORTED'), { ...det('SUPPORTED'), name: 'evidence review' }]);
+    assert.equal(borrowed.verification.outcome, 'NOT_CHECKED');
   });
   await test('an outcome that is not exactly SUPPORTED or CONTRADICTED counts as NOT_CHECKED', async () => {
     const r = H.settle(record(), [det('SUPPORTED'), { ...det('DID_NOT_RUN'), name: 'second check' }]);
@@ -117,11 +121,14 @@ async function run() {
     assert.ok(H.gaps(record({ acceptance_criteria: [''] })).some((g) => /acceptance_criteria: none stated/.test(g)));
     assert.ok(H.gaps(record({ acceptance_criteria: ['x', ' '] })).some((g) => /one is blank/.test(g)));
     assert.ok(H.gaps(record({ claims: [{ id: 'c1', text: '' }] })).some((g) => /c1 has no text/.test(g)));
+    assert.ok(H.gaps(record({ claims: [{ id: 'c1', text: 'a' }, { id: 'c1', text: 'b' }] })).some((g) => /share an id/.test(g)));
+    assert.ok(H.gaps(record({ input_revision: ' ' })).some((g) => /input_revision/.test(g)));
+    assert.ok(H.gaps(record({ task: { id: 1, title: ' ' } })).some((g) => /no title/.test(g)));
   });
 
   // 2
   await test('planted wrong SHA: a green run for another revision -> REFUTED, whatever the models say', async () => {
-    assert.equal(H.inspectOutcome(card('NOT_CHECKED', 'CONTRADICTED', 'SUPPORTED'), 1), 'CONTRADICTED');
+    assert.equal(H.inspectOutcome(card('NOT_CHECKED', 'CONTRADICTED', 'SUPPORTED'), 1, SENT), 'CONTRADICTED');
     const r = H.settle(record(), [det('CONTRADICTED'), model('SUPPORTED', 'a'), model('SUPPORTED', 'b')]);
     assert.equal(r.verification.outcome, 'REFUTED');
     assert.match(r.open_claims[0].reason, /contradicted by trustshell check/);
@@ -135,7 +142,8 @@ async function run() {
     assert.match(H.render(r), /GAPS \(each one keeps this NOT_CHECKED\): artifacts/);
   });
   await test('unavailable evidence: a 404 / crashed / absent check is NOT_CHECKED, never a pass', async () => {
-    for (const [c, exit] of [[null, 3], [null, 0], [card(), 0], [card('SUPPORTED', 'NOT_CHECKED'), 3], [card('SUPPORTED'), 3]]) assert.equal(H.inspectOutcome(c, exit), 'NOT_CHECKED');
+    for (const [c, exit] of [[null, 3], [null, 0], [card(), 0], [card('SUPPORTED', 'NOT_CHECKED'), 3], [card('SUPPORTED'), 3]]) assert.equal(H.inspectOutcome(c, exit, SENT), 'NOT_CHECKED');
+    assert.equal(H.inspectOutcome(card('SUPPORTED'), 0), 'NOT_CHECKED', 'no sentence named: nothing is supported');
     const r = H.settle(record({ evidence: [{ ref: RUN, kind: 'github-actions-run', available: false }] }), [det('NOT_CHECKED', 'GitHub 404')]);
     assert.equal(r.verification.outcome, 'NOT_CHECKED');
     assert.ok(r.verification.gaps.some((g) => /is not available/.test(g)));
