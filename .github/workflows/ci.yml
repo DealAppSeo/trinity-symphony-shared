@@ -94,6 +94,8 @@ jobs:
           # A declared NOT_CHECKED ("can_query": false, with a reason and no number) is not a substance
           # failure: off = unchanged, shadow = tagged, on = status not_checked with no gate event and no HITL.
           node tests/declared-not-checked.test.js
+          # One escalation per task: a second low-certainty answer finishes not_checked (task 438797: 12 claims, 12 answers).
+          node tests/low-certainty-once.test.js
           # Peer-verify HMAC: PEER_VERIFY_HMAC_SECRET only; unset => refuse to post and say so at boot.
           # It used to fall back to <AGENT>_PRIVATE_KEY, a wallet signing key used as an HMAC secret.
           node tests/peerVerifyHmacKey.test.js
