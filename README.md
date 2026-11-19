@@ -134,7 +134,7 @@ The agents run `server.js`, which creates one `ConstitutionalAgentV4`. This sect
 **Cost mode and handoffs** (each is off unless set):
 
 - `COST_MODE` is read where each model request is dispatched (`lib/free-tier-gate.js`). Unset: as before. Set to PAID_CAPPED: a paid request needs the paid approval **and** an unexpired `PAID_APPROVAL_EXPIRES` **and** a `PAID_MAX_CALLS` not yet used up; the trinity-litellm hop counts as paid, because its billing is not visible from here. Any other value is free-only: nothing paid, and that hop is skipped. The call cap is counted per agent process, not across the fleet.
-- `DATA_SHARE_PROVIDERS` (comma list) limits which providers may be sent a prompt. It is separate from spend: a paid approval does not widen it.
+- `DATA_SHARE_PROVIDERS` (comma list) limits which providers may be sent a prompt. It is separate from spend: a paid approval does not widen it. While it is set, the gateway pool and the engine proxy are skipped, because each picks its own vendor.
 - `HANDOFF_RECORD=on`: the review task an agent spawns carries the task, acceptance criteria, input revision, artifact, evidence, producer and open claims (`lib/handoff-record.js`), in the row's `description` and `metadata.handoff`. Unset: the row says only "Peer review for task N", as before. A check that is missing or did not run leaves the record NOT_CHECKED, and models agreeing never makes it VERIFIED.
 
 **Called by:**
