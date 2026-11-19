@@ -117,5 +117,13 @@ assert.equal(b.healthField(running), 'available');
   assert.equal(calls.length, 2, 'one breaker check per loop');
 }
 
+// ── a per-minute limit pauses for the cooldown, and /health says when it ends ──
+gate.resetExhaustion();
+gate.markExhausted('groq', NOON, '429 rate limit on tokens per minute (TPM). Please try again in 7.5s.');
+s = b.check(['groq'], { env: ENV, now: NOON });
+assert.equal(s.paused, true);
+assert.equal(s.until, new Date(NOON.getTime() + gate.MINUTE_COOLDOWN_MS).toISOString(), 'until is the cooldown, not midnight');
+assert.equal(b.check(['groq'], { env: ENV, now: new Date(NOON.getTime() + gate.MINUTE_COOLDOWN_MS + 1) }).paused, false);
+
 gate.resetExhaustion();
 console.log('free-token-breaker.test.js: PASS');
