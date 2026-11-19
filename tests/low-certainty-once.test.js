@@ -14,12 +14,13 @@ const ORIG = { log: console.log, warn: console.warn, error: console.error, env: 
 
 const ANSWER = 'A plain answer that is long enough to be saved as an artifact and says nothing about asking anyone for anything.';
 
-function fakeDb() {
+function fakeDb({ holder = 'trinity-canary', writeError = null } = {}) {
   const updates = [];
   let next = 900;
   const supabase = {
     from: (table) => ({
-      update: (row) => { let id; const chain = { eq: (c, v) => { if (c === 'id') { id = v; updates.push({ table, id, row }); } return chain; }, select: async () => ({ data: [{ id }], error: null }), then: (r) => r({ data: null, error: null }) }; return chain; },
+      // A write filtered on claimed_by only lands when that agent holds the claim, as in Postgres.
+      update: (row) => { let id, by; const land = () => { if (by === undefined || by === holder) updates.push({ table, id, row }); }; const chain = { eq: (c, v) => { if (c === 'id') id = v; if (c === 'claimed_by') by = v; return chain; }, select: async () => { if (writeError) return { data: null, error: { message: writeError } }; const ok = by === undefined || by === holder; if (ok) land(); return { data: ok ? [{ id }] : [], error: null }; }, then: (r) => { land(); return r({ data: null, error: null }); } }; return chain; },
       select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
       insert: () => ({ select: () => ({ single: async () => ({ data: { id: next++ }, error: null }) }) }),
     }),
@@ -27,8 +28,8 @@ function fakeDb() {
   return { supabase, updates };
 }
 
-function agent({ score, output = ANSWER }) {
-  const db = fakeDb();
+function agent({ score, output = ANSWER, holder, writeError }) {
+  const db = fakeDb({ holder, writeError });
   let llmCalls = 0;
   const a = Object.assign(Object.create(A.prototype), {
     name: 'trinity-canary',
@@ -96,6 +97,23 @@ async function run() {
     assert.equal(w.metadata.low_certainty.reason, 'explicit');
   });
 
+  await test('second claim, but the claim was reaped and another agent holds the task: the stale answer is NOT written', async () => {
+    const { a, db } = agent({ score: 31, holder: 'trinity-other' });
+    await a.processTask(task(6, 2));
+    assert.equal(lastStatus(db, 6), undefined, 'nothing written over the new owner');
+    assert.equal(a.currentTaskId, null);
+  });
+
+  await test('second claim, the database refuses the write: reported as not written, and the agent moves on', async () => {
+    const { a, db } = agent({ score: 31, writeError: 'connection reset' });
+    const errors = []; const keep = console.error; console.error = (m) => errors.push(String(m));
+    await a.processTask(task(7, 2));
+    console.error = keep;
+    assert.equal(lastStatus(db, 7), undefined);
+    assert.ok(errors.some((m) => /outcome not written: connection reset/.test(m)), 'the failure is logged, not swallowed');
+  });
+
+  // A control, so it passes with or without the change. It fails if the new branch fires on claim count alone.
   await test('control: second claim with normal certainty is NOT marked not_checked', async () => {
     const { a, db } = agent({ score: 90 });
     await a.processTask(task(4, 2)).catch(() => {}); // later steps need more of the runtime than this stand-in has
@@ -113,7 +131,7 @@ async function run() {
     assert.equal(lastStatus(db, 5).status, 'not_checked');
   });
 
-  ORIG.log(`low-certainty-once.test.js: ${passed}/5 passed`);
+  ORIG.log(`low-certainty-once.test.js: ${passed}/7 passed`);
 }
 
 run().catch((e) => { console.log = ORIG.log; ORIG.log(e); process.exit(1); });
