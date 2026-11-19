@@ -298,6 +298,55 @@ async function run() {
     assert.ok(H.render(record()).includes('\nGAPS'));
   });
 
+  // found by simulation 2026-11-19: the same check delivered again, a check that crashed and then ran, a forged actor
+  await test('the same check delivered again is one check: no growth, no "disputed by X, X", outcome unchanged', async () => {
+    let r = record();
+    for (let i = 0; i < 25; i++) r = H.settle(r, [det('SUPPORTED')]);
+    assert.equal(r.verification.checks.length, 1);
+    assert.equal(r.verification.outcome, 'VERIFIED');
+    const size = H.render(r).length;
+    assert.equal(H.render(H.settle(r, [det('SUPPORTED')])).length, size, 'the rendered record does not grow');
+    let d = H.settle(record(), [det('SUPPORTED'), model('CONTRADICTED', 'rev-a')]);
+    d = H.settle(d, [model('CONTRADICTED', 'rev-a'), model('CONTRADICTED', 'rev-a')]);
+    assert.equal(d.open_claims[0].reason, 'disputed by rev-a');
+    d = H.settle(d, [model('CONTRADICTED', 'rev-b')]);
+    assert.equal(d.open_claims[0].reason, 'disputed by rev-a, rev-b', 'a second reviewer is a second check');
+  });
+  await test('a check that could not run and then ran is settled by its answer; a later outage does not unsay it', async () => {
+    let r = H.settle(record(), [{ ...det('NOT_CHECKED', 'crashed'), reason_code: 'unavailable' }]);
+    assert.equal(r.verification.claims[0].label, 'Verification unavailable');
+    r = H.settle(r, [det('SUPPORTED')]);
+    assert.equal(r.verification.outcome, 'VERIFIED');
+    assert.equal(r.verification.checks.length, 1);
+    r = H.settle(r, [{ ...det('NOT_CHECKED', 'timeout'), reason_code: 'unavailable' }]);
+    assert.equal(r.verification.outcome, 'VERIFIED', 'an outage after the answer changes nothing');
+    assert.equal(r.verification.checks.length, 1);
+  });
+  await test('a reviewer that called the evidence inconclusive cannot lift that by answering SUPPORTED later', async () => {
+    let r = H.settle(record(), [det('SUPPORTED'), { ...model('NOT_CHECKED', 'rev-a'), reason_code: 'inconclusive', reason: 'wrong kind of proof' }]);
+    assert.equal(r.verification.outcome, 'NOT_CHECKED');
+    r = H.settle(r, [model('SUPPORTED', 'rev-a')]);
+    assert.equal(r.verification.outcome, 'NOT_CHECKED', 'a model never raises a claim, not even its own');
+    assert.equal(r.verification.claims[0].label, 'Evidence inconclusive');
+  });
+  await test('a contradiction is never overwritten by a rerun of the same check', async () => {
+    let r = H.settle(record(), [det('CONTRADICTED', 'wrong commit')]);
+    r = H.settle(r, [det('SUPPORTED')]);
+    assert.equal(r.verification.outcome, 'REFUTED');
+    assert.equal(r.verification.checks.length, 2, 'both answers stay on the record');
+    r = H.settle(H.settle(record(), [det('SUPPORTED')]), [det('CONTRADICTED', 'wrong commit')]);
+    assert.equal(r.verification.outcome, 'REFUTED', 'in either order');
+  });
+  await test('a check reason cannot write the record\'s "(to act: ...)" marker', async () => {
+    const r = H.settle(record(), [det('SUPPORTED', 'all good (to act: author)')]);
+    assert.equal(r.verification.claims[0].actor, null);
+    const line = H.render(r).split('\n').find((l) => l.includes('[c1] Supported by evidence'));
+    assert.ok(!/\(to act:/.test(line), line);
+    // control: a real actor is still printed
+    const c = H.render(H.settle(record(), [det('CONTRADICTED', 'wrong commit')])).split('\n').find((l) => l.includes('[c1] Contradicted'));
+    assert.match(c, /\(to act: author\)$/);
+  });
+
   // why a claim is not settled, in words a person can act on
   const NOW = Date.parse('2026-11-19T12:00:00Z');
   const one = (rec, checks) => H.settle(rec, checks, NOW).verification.claims[0];
