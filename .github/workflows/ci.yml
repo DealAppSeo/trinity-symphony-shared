@@ -45,6 +45,7 @@ jobs:
           node -c lib/substance-gate-client.js
           node -c lib/declared-not-checked.js
           node -c lib/t12-lessons.js
+          node -c lib/handoff-record.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
@@ -138,6 +139,10 @@ jobs:
           # Failover on a tool follow-up turn carries the conversation; one artifact per claim;
           # every provider failing after save_artifact completes from the artifact.
           node tests/llm-tool-failover.test.js
+          # Handoff loop: a spawned review carries the whole handoff (HANDOFF_RECORD=on; off = unchanged); a missing
+          # check stays NOT_CHECKED and models agreeing never verifies; COST_MODE free-only sends no paid request,
+          # and a paid approval needs an expiry and a cap, both enforced where the request is dispatched.
+          node tests/handoff-loop.test.js
           # Per-task state resets on every claim in every claim path (one _beginTask): a previous
           # task's artifact can never satisfy the next task's artifact guard.
           node tests/per-task-reset.test.js
