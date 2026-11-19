@@ -298,6 +298,73 @@ async function run() {
     assert.ok(H.render(record()).includes('\nGAPS'));
   });
 
+  // why a claim is not settled, in words a person can act on
+  const NOW = Date.parse('2026-11-19T12:00:00Z');
+  const one = (rec, checks) => H.settle(rec, checks, NOW).verification.claims[0];
+  await test('reason code: each kind of "not settled" gets its own label, and the outcome stays NOT_CHECKED', async () => {
+    const why = (reason_code, extra = {}) => one(record(), [{ ...det('NOT_CHECKED', 'because'), reason_code, ...extra }]);
+    assert.equal(why('evidence_missing').label, 'Evidence missing');
+    assert.equal(why('evidence_missing').actor, 'author');
+    assert.equal(why('inconclusive').label, 'Evidence inconclusive');
+    assert.equal(why('unavailable').label, 'Verification unavailable');
+    assert.equal(why('unavailable').actor, null, 'a retry is nobody\'s move');
+    assert.equal(why('skipped').label, 'Not checked');
+    assert.equal(why('skipped').actor, 'reviewer');
+    assert.equal(why('made up').status, 'not_run', 'an unknown code is not trusted');
+    assert.equal(why(undefined).label, 'Not checked');
+    for (const code of H.REASONS) assert.equal(H.settle(record(), [{ ...det('NOT_CHECKED'), reason_code: code, pending_until: '2999-01-01T00:00:00Z' }], NOW).verification.outcome, 'NOT_CHECKED');
+  });
+  await test('pending is only pending while something is really due: no deadline, or one that has passed, reads unavailable', async () => {
+    const p = (pending_until) => one(record(), [{ ...det('NOT_CHECKED', 'run queued'), reason_code: 'pending', pending_until }]);
+    assert.equal(p('2026-11-19T12:05:00Z').label, 'Verification pending');
+    assert.equal(p('2026-11-19T11:59:00Z').label, 'Verification unavailable');
+    assert.equal(p(undefined).label, 'Verification unavailable');
+    assert.equal(p('soon').label, 'Verification unavailable');
+  });
+  await test('supported and contradicted come only from a deterministic check; every status carries an explanation', async () => {
+    assert.equal(one(record(), [det('SUPPORTED')]).label, 'Supported by evidence');
+    assert.equal(one(record(), [det('CONTRADICTED', 'GitHub records another commit')]).label, 'Contradicted by evidence');
+    assert.equal(one(record(), [det('CONTRADICTED', 'GitHub records another commit')]).explanation, 'GitHub records another commit');
+    assert.notEqual(one(record(), [model('SUPPORTED', 'hdm'), model('SUPPORTED', 'torch')]).status, 'supported', 'two models agreeing support nothing');
+    for (const checks of [[], [det('SUPPORTED')], [det('CONTRADICTED')], [det('NOT_CHECKED')], [model('CONTRADICTED', 'hdm')]]) assert.ok(one(record(), checks).explanation.trim().length > 0);
+  });
+  await test('a model can lower a claim and never raise it: "inconclusive" from a reviewer holds a supported claim open', async () => {
+    const low = H.settle(record(), [det('SUPPORTED'), { ...model('NOT_CHECKED', 'hdm'), reason_code: 'inconclusive', reason: 'the run passed but does not show the bug is fixed' }], NOW);
+    assert.equal(low.verification.outcome, 'NOT_CHECKED');
+    assert.equal(low.verification.claims[0].label, 'Evidence inconclusive');
+    assert.equal(low.verification.claims[0].explanation, 'the run passed but does not show the bug is fixed');
+    // control: the same reviewer giving no answer for another reason, on a record that does not require it, changes nothing
+    assert.equal(H.settle(record(), [det('SUPPORTED'), { ...model('NOT_CHECKED', 'hdm'), reason_code: 'unavailable' }], NOW).verification.outcome, 'VERIFIED');
+    assert.equal(one(record(), [det('SUPPORTED'), model('CONTRADICTED', 'hdm')]).label, 'Evidence inconclusive');
+  });
+  await test('an incomplete handoff is said about the handoff; a claim in it still shows its own result', async () => {
+    const r = H.settle(record({ input_revision: ' ' }), [det('SUPPORTED')], NOW);
+    assert.equal(r.verification.outcome, 'NOT_CHECKED');
+    assert.equal(r.verification.handoff.label, 'Incomplete handoff');
+    assert.equal(r.verification.handoff.actor, 'author');
+    assert.match(r.verification.handoff.explanation, /input_revision/);
+    assert.equal(r.verification.claims[0].label, 'Supported by evidence');
+    assert.equal(H.settle(record(), [det('SUPPORTED')], NOW).verification.handoff, null);
+    // nothing to read and no check ran: the evidence is what is missing
+    const none = one(record({ evidence: [{ ref: 'https://example.invalid/run/1', kind: 'run', available: false }] }), []);
+    assert.equal(none.label, 'Evidence missing');
+    assert.match(H.render(r), /CLAIM STATUS:\n  \[c1\] Supported by evidence \u00b7 /);
+  });
+  await test('the two sources of a reason code: a reviewer reply and a trustshell card', async () => {
+    const rec = record();
+    assert.equal(H.parseReview('{"claims":[{"id":"c1","verdict":"INCONCLUSIVE","reason":"wrong kind of proof"}]}', rec, 'hdm')[0].reason_code, 'inconclusive');
+    assert.equal(H.parseReview('{"claims":[{"id":"c1","verdict":"NOT_CHECKED","reason_code":"evidence_missing"}]}', rec, 'hdm')[0].reason_code, 'evidence_missing');
+    assert.equal(H.parseReview('{"claims":[{"id":"c1","verdict":"NOT_CHECKED","reason_code":"pending"}]}', rec, 'hdm')[0].reason_code, 'not_run', 'a reviewer cannot declare a check pending');
+    assert.equal(H.parseReview('sorry, I cannot help', rec, 'hdm')[0].reason_code, 'unavailable');
+    assert.equal(H.parseReview('{"claims":[]}', rec, 'hdm')[0].reason_code, 'not_run');
+    assert.equal(H.parseReview('{"claims":[{"id":"c1","verdict":"SUPPORTED"}]}', rec, 'hdm')[0].reason_code, undefined);
+    assert.equal(H.inspectReason(null, 3, SENT), 'unavailable');
+    assert.equal(H.inspectReason(card('NOT_CHECKED'), 3, SENT), 'inconclusive');
+    assert.equal(H.inspectReason(card('SUPPORTED'), 0, 'some other sentence'), 'not_run');
+    assert.equal(H.inspectReason(card('SUPPORTED'), 0, SENT), null);
+    assert.equal(H.inspectReason(card('CONTRADICTED'), 1, SENT), null);
+  });
+
   // 6
   const task = {
     id: 7, title: 'Document the pinned check run', description: 'One sentence for the docs about one public run.', task_type: 'docs',
