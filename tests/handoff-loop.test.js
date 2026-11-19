@@ -194,6 +194,13 @@ async function run() {
     assert.equal(urls.filter((u) => PAID_HOSTS.test(u)).length, 1, 'exactly one paid request in all');
     assert.equal(gate.paidDecision().reason, 'cap_reached');
   });
+  await test('the cap holds inside one failover chain: cap 1, two paid providers, the first fails -> the second is not asked', async () => {
+    process.env.COST_MODE = 'PAID_CAPPED'; process.env.SEAN_PAID_LOOP = 'loop3'; process.env.PAID_APPROVAL_EXPIRES = '2999-01-01T00:00:00Z'; process.env.PAID_MAX_CALLS = '1';
+    process.env.DEEPSEEK_API_KEY = 'test-not-a-key';
+    const urls = []; global.fetch = async (u) => { urls.push(u); return fail(503, 'down'); };
+    await assert.rejects(agent(['groq', 'openai', 'deepseek']).callLLM('q', { tools: false }));
+    assert.equal(urls.filter((u) => PAID_HOSTS.test(u)).length, 1, urls.join());
+  });
   await test('data sharing is a separate permission: spend approval does not grant it, and it does not grant spend', async () => {
     process.env.COST_MODE = 'PAID_CAPPED'; process.env.SEAN_PAID_LOOP = 'loop3'; process.env.PAID_APPROVAL_EXPIRES = '2999-01-01T00:00:00Z'; process.env.PAID_MAX_CALLS = '5';
     process.env.DATA_SHARE_PROVIDERS = 'groq';
