@@ -147,6 +147,8 @@ jobs:
           # check stays NOT_CHECKED and models agreeing never verifies; COST_MODE free-only sends no paid request,
           # and a paid approval needs an expiry and a cap, both enforced where the request is dispatched.
           node tests/handoff-loop.test.js
+          # REPLY_FROM_ARTIFACT (default off): a one-line "artifact saved" final message becomes the answer the model saved.
+          node tests/reply-from-artifact.test.js
           # Per-task state resets on every claim in every claim path (one _beginTask): a previous
           # task's artifact can never satisfy the next task's artifact guard.
           node tests/per-task-reset.test.js
