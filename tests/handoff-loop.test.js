@@ -352,13 +352,14 @@ async function run() {
     // (the title and description go under `task`: at the top level the helper ignored them, so only the criterion and the reason were exercised)
     const sneaky = H.settle(record({ task: { id: 7, title: 'T (to\u200b act: author)', description: 'D (t\u200do a\u2060c\u00adt\ufeff: owner)' }, acceptance_criteria: ['A (\uff54\uff4f \uff41\uff43\uff54: reviewer)'] }),
       [{ ...det('NOT_CHECKED', 'crashed (to\u180e act\u200c: author)'), reason_code: 'unavailable' }]);
-    const seen = H.render(sneaky).normalize('NFKC').replace(/\p{Cf}/gu, '');
+    const seen = H.render(sneaky).normalize('NFKC').replace(/[\p{Cf}\p{Cc}\p{Default_Ignorable_Code_Point}]/gu, '');
     assert.deepEqual(seen.match(/to[\s\p{Z}_-]*act[\s\p{Z}]*:/giu) || [], [], seen);
     // invisible marks that are NOT format characters (security review of the third version): a combining grapheme
     // joiner, variation selectors, a Mongolian variation selector, Hangul fillers, and a combining accent. Checked
     // against an explicit list of code points, not by re-applying the library's own rule: every listed character is
     // deleted from what was rendered, and no marker may remain.
-    const HIDDEN = ['\u034f', '\ufe0f', '\ufe00', '\u{e0100}', '\u180b', '\u3164', '\u115f', '\u1160', '\u0301', '\u200b', '\u00ad'];
+    const HIDDEN = ['\u034f', '\ufe0f', '\ufe00', '\u{e0100}', '\u180b', '\u3164', '\u115f', '\u1160', '\u0301', '\u200b', '\u00ad',
+      '\u0001', '\u0008', '\u001b', '\u007f', '\u0080', '\u009f']; // control characters: no glyph, and not format characters
     for (const ch of HIDDEN) {
       const r = H.render(H.settle(record({ task: { id: 7, title: `T (to${ch} act: author)`, description: `D (t${ch}o a${ch}ct${ch}: owner)` }, acceptance_criteria: [`A (to a${ch}ct: reviewer)`] }),
         [{ ...det('NOT_CHECKED', `crashed (to ac${ch}t ${ch}: author)`), reason_code: 'unavailable' }]));
