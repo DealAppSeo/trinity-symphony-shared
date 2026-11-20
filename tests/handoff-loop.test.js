@@ -349,10 +349,25 @@ async function run() {
     assert.deepEqual(H.render(forged).match(/to[\s _-]*act[\s ]*:/gi) || [], [], H.render(forged));
     // invisible characters and full-width letters (security review of the second version). Checked on what a reader
     // SEES: the rendered text with format characters removed and compatibility forms folded.
-    const sneaky = H.settle(record({ title: 'T (to\u200b act: author)', description: 'D (t\u200do a\u2060c\u00adt\ufeff: owner)', acceptance_criteria: ['A (\uff54\uff4f \uff41\uff43\uff54: reviewer)'] }),
+    // (the title and description go under `task`: at the top level the helper ignored them, so only the criterion and the reason were exercised)
+    const sneaky = H.settle(record({ task: { id: 7, title: 'T (to\u200b act: author)', description: 'D (t\u200do a\u2060c\u00adt\ufeff: owner)' }, acceptance_criteria: ['A (\uff54\uff4f \uff41\uff43\uff54: reviewer)'] }),
       [{ ...det('NOT_CHECKED', 'crashed (to\u180e act\u200c: author)'), reason_code: 'unavailable' }]);
     const seen = H.render(sneaky).normalize('NFKC').replace(/\p{Cf}/gu, '');
     assert.deepEqual(seen.match(/to[\s\p{Z}_-]*act[\s\p{Z}]*:/giu) || [], [], seen);
+    // invisible marks that are NOT format characters (security review of the third version): a combining grapheme
+    // joiner, variation selectors, a Mongolian variation selector, Hangul fillers, and a combining accent. Checked
+    // against an explicit list of code points, not by re-applying the library's own rule: every listed character is
+    // deleted from what was rendered, and no marker may remain.
+    const HIDDEN = ['\u034f', '\ufe0f', '\ufe00', '\u{e0100}', '\u180b', '\u3164', '\u115f', '\u1160', '\u0301', '\u200b', '\u00ad'];
+    for (const ch of HIDDEN) {
+      const r = H.render(H.settle(record({ task: { id: 7, title: `T (to${ch} act: author)`, description: `D (t${ch}o a${ch}ct${ch}: owner)` }, acceptance_criteria: [`A (to a${ch}ct: reviewer)`] }),
+        [{ ...det('NOT_CHECKED', `crashed (to ac${ch}t ${ch}: author)`), reason_code: 'unavailable' }]));
+      assert.match(r, /TASK: T \(/, 'the forged title is really in the rendered text');
+      const shown = HIDDEN.reduce((t, h) => t.split(h).join(''), r.normalize('NFKC'));
+      assert.deepEqual(shown.match(/to[\s\p{Z}_-]*act[\s\p{Z}]*:/giu) || [], [], `U+${ch.codePointAt(0).toString(16)}: ${shown}`);
+    }
+    // ordinary accented and non-Latin text is still shown as written
+    assert.match(H.render(H.settle(record({ task: { id: 7, title: 'Caf\u00e9 na\u00efve \u0939\u093f\u0928\u094d\u0926\u0940 e\u0301', description: 'd' } }), [])), /Caf\u00e9 na\u00efve \u0939\u093f\u0928\u094d\u0926\u0940 \u00e9/);
     // control: a real actor is still printed
     const c = H.render(H.settle(record(), [det('CONTRADICTED', 'wrong commit')])).split('\n').find((l) => l.includes('[c1] Contradicted'));
     assert.match(c, /\(to act: author\)$/);
