@@ -367,6 +367,20 @@ async function run() {
       const shown = HIDDEN.reduce((t, h) => t.split(h).join(''), r.normalize('NFKC'));
       assert.deepEqual(shown.match(/to[\s\p{Z}_-]*act[\s\p{Z}]*:/giu) || [], [], `U+${ch.codePointAt(0).toString(16)}: ${shown}`);
     }
+    // a colon look-alike ends the marker just as the colon does (four independent reviews of the fourth version)
+    for (const colon of ['∶', '˸', '꞉', '։', '⁚', '：', '﹕']) {
+      const r = H.render(H.settle(record({ task: { id: 7, title: `T (to act${colon} author)`, description: 'd' } }), []));
+      assert.match(r, /TASK: T \(to act - author\)/, `U+${colon.codePointAt(0).toString(16)}: ${r.split('\n')[1]}`);
+    }
+    // each field the renderer reads is covered on its own: the description and the criterion, not only the title
+    for (const field of ['description', 'criterion']) {
+      const r = H.render(H.settle(record(field === 'description' ? { task: { id: 7, title: 'plain', description: 'D (to͏ act: owner)' } } : { acceptance_criteria: ['A (to͏ act: reviewer)'] }), []));
+      assert.match(r, field === 'description' ? /D \(to act - owner\)/ : /A \(to act - reviewer\)/, `${field}: ${r}`);
+    }
+    // writing that NEEDS invisible characters is shown as written: a Persian word with a zero-width non-joiner, a Hindi
+    // conjunct with a zero-width joiner, an emoji with a variation selector. An earlier version deleted these.
+    const NEEDS = 'می‌خواهم क्‍ष ❤️';
+    assert.ok(H.render(H.settle(record({ task: { id: 7, title: NEEDS, description: 'd' } }), [])).includes(NEEDS.normalize('NFKC')), 'joiners and variation selectors survive');
     // ordinary accented and non-Latin text is still shown as written
     assert.match(H.render(H.settle(record({ task: { id: 7, title: 'Caf\u00e9 na\u00efve \u0939\u093f\u0928\u094d\u0926\u0940 e\u0301', description: 'd' } }), [])), /Caf\u00e9 na\u00efve \u0939\u093f\u0928\u094d\u0926\u0940 \u00e9/);
     // control: a real actor is still printed
