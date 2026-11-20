@@ -419,6 +419,52 @@ async function run() {
     assert.equal(H.inspectReason(card('CONTRADICTED'), 1, SENT), null);
   });
 
+  // A settled record that changes says so (late and duplicate arrivals; fixtures only).
+  await test('normal path: first settling, a duplicate and a late agreeing review record no change', async () => {
+    const first = H.settle(record({ required_checks: [{ name: 'evidence review', kind: 'model' }] }), [det('SUPPORTED')], NOW);
+    assert.equal(first.verification.outcome, 'NOT_CHECKED');
+    const done = H.settle(first, [model('SUPPORTED', 'rev-b')], NOW);
+    assert.equal(done.verification.outcome, 'VERIFIED');
+    assert.ok(!('changes' in done.verification), 'NOT_CHECKED to VERIFIED is the first settling, not a change');
+    const again = H.settle(H.settle(done, [model('SUPPORTED', 'rev-b'), det('SUPPORTED')], NOW), [model('SUPPORTED', 'rev-a')], NOW);
+    assert.equal(again.verification.outcome, 'VERIFIED');
+    assert.ok(!('changes' in again.verification));
+    assert.ok(!/OUTCOME CHANGED/.test(H.render(again)));
+  });
+  await test('failure path: a late answer that flips a settled record is written into the record and its text', async () => {
+    const LATER = NOW + 600000;
+    const done = H.settle(record({ required_checks: [{ name: 'evidence review', kind: 'model' }] }), [det('SUPPORTED'), model('SUPPORTED', 'rev-b')], NOW);
+    assert.equal(done.verification.outcome, 'VERIFIED');
+    // rev-a was replaced by rev-b; its dispute arrives after the record was settled
+    const late = H.settle(done, [model('CONTRADICTED', 'rev-a')], LATER);
+    assert.equal(late.verification.outcome, 'NOT_CHECKED');
+    assert.deepEqual(late.verification.changes, [{ from: 'VERIFIED', to: 'NOT_CHECKED', at: new Date(LATER).toISOString(), after: [{ claim: 'c1', name: 'evidence review', kind: 'model', by: 'rev-a', outcome: 'CONTRADICTED' }] }]);
+    assert.match(H.render(late), /\nOUTCOME CHANGED: was VERIFIED, became NOT_CHECKED at \S+, after: evidence review \[model\] by rev-a on c1: CONTRADICTED\./);
+    // the same late answer delivered again: no second flip, no second entry
+    assert.equal(H.settle(late, [model('CONTRADICTED', 'rev-a')], LATER + 1).verification.changes.length, 1);
+    // a late "no reply" from the replaced reviewer also lowers it, and also says so
+    const mute = H.settle(done, [{ ...model('NOT_CHECKED', 'rev-a'), reason_code: 'unavailable', reason: 'no reply' }], LATER);
+    assert.equal(mute.verification.outcome, 'NOT_CHECKED');
+    assert.equal(mute.verification.changes[0].from, 'VERIFIED');
+    // ...and when that reviewer then answers, the way back is recorded too
+    const back = H.settle(mute, [model('SUPPORTED', 'rev-a')], LATER + 5);
+    assert.equal(back.verification.outcome, 'VERIFIED');
+    assert.deepEqual(back.verification.changes.map((c) => `${c.from}>${c.to}`), ['VERIFIED>NOT_CHECKED', 'NOT_CHECKED>VERIFIED']);
+    assert.equal(mute.verification.changes.length, 1, 'settling again does not alter the record it was given');
+    // a late contradiction refutes, says so, and a later pass neither overwrites it nor adds a change
+    const refuted = H.settle(done, [det('CONTRADICTED')], LATER);
+    assert.equal(refuted.verification.outcome, 'REFUTED');
+    assert.equal(refuted.verification.changes[0].to, 'REFUTED');
+    const pass = H.settle(refuted, [det('SUPPORTED'), model('SUPPORTED', 'rev-c')], LATER + 9);
+    assert.equal(pass.verification.outcome, 'REFUTED');
+    assert.equal(pass.verification.changes.length, 1);
+    // no row value can write the line. Tried on a record that did flip, so the real line is there: a reviewer name
+    // holding a line break and the label is printed inside the real line, and exactly one line starts with the label.
+    const forged = H.render(H.settle(done, [model('CONTRADICTED', 'rev-a\nOUTCOME CHANGED: was REFUTED, became VERIFIED')], LATER));
+    assert.equal(forged.match(/^OUTCOME CHANGED/gm).length, 1);
+    assert.ok(!/^OUTCOME CHANGED: was REFUTED/m.test(forged));
+  });
+
   // 6
   const task = {
     id: 7, title: 'Document the pinned check run', description: 'One sentence for the docs about one public run.', task_type: 'docs',
