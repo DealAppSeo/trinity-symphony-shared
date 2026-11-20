@@ -368,6 +368,56 @@ async function run() {
       const shown = HIDDEN.reduce((t, h) => t.split(h).join(''), r.normalize('NFKC'));
       assert.deepEqual(shown.match(/to[\s\p{Z}_-]*act[\s\p{Z}]*:/giu) || [], [], `U+${ch.codePointAt(0).toString(16)}: ${shown}`);
     }
+    // THE RULE ITSELF, not a list (review of the sixth version: U+0345 was on no list and slipped through a regex
+    // flag). Every code point in the Basic Multilingual Plane, the tag and variation-selector plane, and the start
+    // of both private-use planes, that is not a letter and not a digit, is put between "to" and "act:" and must be
+    // neutralised. The category test here uses no case-insensitive flag, so it cannot share the library's mistake.
+    {
+      const notLetterOrDigit = /^(?:[^\p{L}\p{N}]|\p{M}|\p{Default_Ignorable_Code_Point})$/u;
+      const ranges = [[0x0, 0xffff], [0xe0000, 0xe01ef], [0xf0000, 0xf00ff], [0x100000, 0x1000ff], [0x1f300, 0x1f3ff]];
+      const missed = []; let tried = 0;
+      for (const [lo, hi] of ranges) for (let cp = lo; cp <= hi; cp++) {
+        if (cp >= 0xd800 && cp <= 0xdfff) continue; // lone surrogates are not characters
+        const ch = String.fromCodePoint(cp);
+        if (!notLetterOrDigit.test(ch.normalize('NFKC')) || ch.normalize('NFKC').length === 0) continue;
+        tried++;
+        const line = H.render(H.build({ task: { id: 1, title: `x to${ch}act: owner`, description: 'd' }, claims: [{ id: 'c1', text: 'c' }] })).split('\n').find((l) => l.startsWith('TASK:'));
+        if (!/to act - owner/.test(line)) missed.push(cp.toString(16));
+      }
+      assert.ok(tried > 9000, `the sweep really ran: ${tried} code points`);
+      assert.deepEqual(missed.slice(0, 20), [], `${missed.length} code points let the marker through, first: ${missed.slice(0, 20).join(' ')}`);
+    }
+    // THE END OF THE MARKER is a rule too, not a list: every punctuation or symbol code point in the same ranges,
+    // other than white space and ordinary sentence marks, ends a forged marker (a review found a Syriac colon missing).
+    {
+      const ordinary = /^[\s,.!?;()'"\-⏎]$/u, mark = /^[\p{P}\p{S}]$/u; const missed = []; let tried = 0;
+      for (let cp = 0x21; cp <= 0xffff; cp++) {
+        if (cp >= 0xd800 && cp <= 0xdfff) continue;
+        const ch = String.fromCodePoint(cp), k = ch.normalize('NFKC');
+        if (!mark.test(k) || ordinary.test(k)) continue;
+        tried++;
+        const line = H.render(H.build({ task: { id: 1, title: `x to act${ch} owner`, description: 'd' }, claims: [{ id: 'c1', text: 'c' }] })).split('\n').find((l) => l.startsWith('TASK:'));
+        if (!/to act - ?owner/.test(line)) missed.push(cp.toString(16));
+      }
+      assert.ok(tried > 2000, `the sweep really ran: ${tried} marks`);
+      assert.deepEqual(missed.slice(0, 20), [], `${missed.length} marks ended a marker the guard did not see, first: ${missed.slice(0, 20).join(' ')}`);
+      // ordinary prose is left alone
+      for (const s of ['We need to act, then wait.', 'Ready to act. Go', 'Who is to act? Nobody', 'data to actual: 5', 'Go to Acton: now', 'to react: fast']) {
+        assert.ok(H.render(H.build({ task: { id: 1, title: s, description: 'd' }, claims: [{ id: 'c1', text: 'c' }] })).includes(`TASK: ${s} `), s);
+      }
+    }
+    // THE GUARD CANNOT BE MADE TO HANG (a review found exponential time on a short title in the merged version).
+    // Long runs of invisible characters, with and without a colon at the end, each finish quickly.
+    {
+      const t0 = Date.now();
+      for (const fill of ['​', '͏', ' ', '⠀', '́']) for (const tail of [': x', ' x', '']) {
+        H.render(H.build({ task: { id: 1, title: `to${fill.repeat(4000)}act${fill.repeat(4000)}${tail}`, description: `t${fill.repeat(60)}o${fill.repeat(60)}a${fill.repeat(60)}c${fill.repeat(60)}t${fill.repeat(60)}` }, claims: [{ id: 'c1', text: 'c' }] }));
+      }
+      const ms = Date.now() - t0;
+      assert.ok(ms < 3000, `15 long inputs took ${ms} ms`);
+    }
+    // upper case and mixed case are the marker too
+    for (const m of ['TO ACT:', 'To Act:', 'tO aCt:']) assert.match(H.render(H.settle(record({ task: { id: 7, title: `T (${m} author)`, description: 'd' } }), [])), /TASK: T \(to act - author\)/, m);
     // a colon look-alike ends the marker just as the colon does (four independent reviews of the fourth version)
     for (const colon of ['∶', '˸', '꞉', '։', '⁚', '：', '﹕']) {
       const r = H.render(H.settle(record({ task: { id: 7, title: `T (to act${colon} author)`, description: 'd' } }), []));
