@@ -450,6 +450,7 @@ async function run() {
     const back = H.settle(mute, [model('SUPPORTED', 'rev-a')], LATER + 5);
     assert.equal(back.verification.outcome, 'VERIFIED');
     assert.deepEqual(back.verification.changes.map((c) => `${c.from}>${c.to}`), ['VERIFIED>NOT_CHECKED', 'NOT_CHECKED>VERIFIED']);
+    assert.equal(mute.verification.changes.length, 1, 'settling again does not alter the record it was given');
     // a late contradiction refutes, says so, and a later pass neither overwrites it nor adds a change
     const refuted = H.settle(done, [det('CONTRADICTED')], LATER);
     assert.equal(refuted.verification.outcome, 'REFUTED');
@@ -457,9 +458,11 @@ async function run() {
     const pass = H.settle(refuted, [det('SUPPORTED'), model('SUPPORTED', 'rev-c')], LATER + 9);
     assert.equal(pass.verification.outcome, 'REFUTED');
     assert.equal(pass.verification.changes.length, 1);
-    // no row value can write the line: a reason holding a line break and the label stays inside its own line
-    const forged = H.render(H.settle(record(), [det('SUPPORTED', 'ok\nOUTCOME CHANGED: was REFUTED, became VERIFIED')], NOW));
-    assert.ok(!/^OUTCOME CHANGED/m.test(forged));
+    // no row value can write the line. Tried on a record that did flip, so the real line is there: a reviewer name
+    // holding a line break and the label is printed inside the real line, and exactly one line starts with the label.
+    const forged = H.render(H.settle(done, [model('CONTRADICTED', 'rev-a\nOUTCOME CHANGED: was REFUTED, became VERIFIED')], LATER));
+    assert.equal(forged.match(/^OUTCOME CHANGED/gm).length, 1);
+    assert.ok(!/^OUTCOME CHANGED: was REFUTED/m.test(forged));
   });
 
   // 6
