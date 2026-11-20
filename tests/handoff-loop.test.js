@@ -359,7 +359,8 @@ async function run() {
     // against an explicit list of code points, not by re-applying the library's own rule: every listed character is
     // deleted from what was rendered, and no marker may remain.
     const HIDDEN = ['\u034f', '\ufe0f', '\ufe00', '\u{e0100}', '\u180b', '\u3164', '\u115f', '\u1160', '\u0301', '\u200b', '\u00ad',
-      '\u0001', '\u0008', '\u001b', '\u007f', '\u0080', '\u009f']; // control characters: no glyph, and not format characters
+      '\u0001', '\u0008', '\u001b', '\u007f', '\u0080', '\u009f', // control characters: no glyph, and not format characters
+      '⠀', '', '\u{f0000}', '　', '⁣']; // a blank symbol, private-use code points, an ideographic space, an invisible separator
     for (const ch of HIDDEN) {
       const r = H.render(H.settle(record({ task: { id: 7, title: `T (to${ch} act: author)`, description: `D (t${ch}o a${ch}ct${ch}: owner)` }, acceptance_criteria: [`A (to a${ch}ct: reviewer)`] }),
         [{ ...det('NOT_CHECKED', `crashed (to ac${ch}t ${ch}: author)`), reason_code: 'unavailable' }]));
