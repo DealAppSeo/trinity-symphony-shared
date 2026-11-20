@@ -347,6 +347,12 @@ async function run() {
       [{ ...det('NOT_CHECKED', 'crashed (to act: author)'), reason_code: 'unavailable' }, { ...model('CONTRADICTED', 'rev (to act: x)'), reason: 'no (To Act : y)' }]);
     assert.equal(forged.verification.claims[0].actor, null, 'unavailable has no actor');
     assert.deepEqual(H.render(forged).match(/to[\s _-]*act[\s ]*:/gi) || [], [], H.render(forged));
+    // invisible characters and full-width letters (security review of the second version). Checked on what a reader
+    // SEES: the rendered text with format characters removed and compatibility forms folded.
+    const sneaky = H.settle(record({ title: 'T (to\u200b act: author)', description: 'D (t\u200do a\u2060c\u00adt\ufeff: owner)', acceptance_criteria: ['A (\uff54\uff4f \uff41\uff43\uff54: reviewer)'] }),
+      [{ ...det('NOT_CHECKED', 'crashed (to\u180e act\u200c: author)'), reason_code: 'unavailable' }]);
+    const seen = H.render(sneaky).normalize('NFKC').replace(/\p{Cf}/gu, '');
+    assert.deepEqual(seen.match(/to[\s\p{Z}_-]*act[\s\p{Z}]*:/giu) || [], [], seen);
     // control: a real actor is still printed
     const c = H.render(H.settle(record(), [det('CONTRADICTED', 'wrong commit')])).split('\n').find((l) => l.includes('[c1] Contradicted'));
     assert.match(c, /\(to act: author\)$/);
