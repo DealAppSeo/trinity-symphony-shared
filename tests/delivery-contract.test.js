@@ -24,13 +24,20 @@ const NINE_LINES = Array.from({ length: 9 }, (_, i) => `P${(i % 3) + 1} Q${Math.
 const CONTRACT = { pattern: '^P[123]\\b', min_lines: 9 };
 
 /** One row, and an update chain that applies its filters (as tests/completion-fence.test.js). */
-function db(row, artifact) {
+function db(row, artifacts) {
   const writes = [];
   return {
     writes,
     row,
     from: () => ({
-      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: artifact || null, error: null }) }) }),
+      // Every artifact row for a task id; 'throw' and 'error' are the two ways a read fails.
+      select: () => ({
+        eq: async (col, val) => {
+          if (artifacts === 'throw') throw new Error('fetch failed');
+          if (artifacts === 'error') return { data: null, error: { message: 'statement timeout' } };
+          return { data: artifacts.filter((a) => col === 'task_id' && String(a.task_id) === String(val)), error: null };
+        },
+      }),
       update: (patch) => {
         const filters = [];
         const chain = {
@@ -78,9 +85,9 @@ const PATHS = [
   ['legacy', (a, t) => a.processTask(t)],
   ['contract', async (a, t) => { a._beginTask(t); await a.processTaskContract(t); }],
 ];
-const SUMMARY_ARTIFACT = { task_id: 7, content: '# Report' + String.fromCharCode(10) + 'All nine answers were recorded.' };
-const run = async (runPath, output, metadata, claimedBy = 'trinity-a', artifact = SUMMARY_ARTIFACT) => {
-  const store = db({ id: 7, claimed_by: claimedBy, status: 'doing' }, artifact);
+const SUMMARY_ARTIFACT = [{ task_id: 7, content: '# Report' + String.fromCharCode(10) + 'All nine answers were recorded.' }];
+const run = async (runPath, output, metadata, claimedBy = 'trinity-a', artifacts = SUMMARY_ARTIFACT) => {
+  const store = db({ id: 7, claimed_by: claimedBy, status: 'doing' }, artifacts);
   const { a, calls } = agent(store, output);
   await runPath(a, task(metadata));
   return { store, calls };
@@ -132,14 +139,32 @@ const run = async (runPath, output, metadata, claimedBy = 'trinity-a', artifact 
       assert.equal(bad.calls.rep, 0, `${name}: no reputation for a non-delivery`);
 
       // ON: the summary is true. The lines are in the artifact this task saved, so the work was delivered.
-      const saved = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', { task_id: 7, content: NINE_LINES });
+      const saved = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', [{ task_id: 7, content: NINE_LINES }]);
       assert.equal(saved.store.row.status, 'done', `${name}: delivered in the task's own artifact`);
       assert.equal(saved.calls.spawn, 1, name);
-      // ...but never another task's artifact, and a missing artifact row is no artifact.
-      const other = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', { task_id: 8, content: NINE_LINES });
+      // Any artifact the task saved counts, not only the last (439461: the answer, then a "Question for Architect").
+      const two = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', [{ task_id: 7, content: NINE_LINES }, { task_id: 7, content: '# Question for Architect' }]);
+      assert.equal(two.store.row.status, 'done', `${name}: the first of two artifacts meets the contract`);
+      // ...but never another task's artifact, and no artifact row is no artifact.
+      const other = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', [{ task_id: 8, content: NINE_LINES }]);
       assert.equal(other.store.row.status, 'needs_artifact', `${name}: another task's artifact does not count`);
-      const gone = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', null);
+      const gone = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', []);
       assert.equal(gone.store.row.status, 'needs_artifact', `${name}: no artifact row`);
+
+      // ON: the artifacts could not be read. That is not "not delivered" (most summaries were true) and not
+      // "done" (nothing showed the deliverable): not_checked, with the reason, no follow-up, no reputation.
+      for (const failure of ['throw', 'error']) {
+        const blind = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', failure);
+        assert.equal(blind.store.row.status, 'not_checked', `${name}: artifact read ${failure} is not a non-delivery`);
+        assert.equal(blind.store.row.metadata.delivery.delivered, null, name);
+        assert.match(blind.store.row.metadata.delivery.reason, /^artifact_unreadable/, name);
+        assert.equal(blind.store.row.result, SUMMARY, name);
+        assert.equal(blind.calls.spawn, 0, name);
+        assert.equal(blind.calls.rep, 0, name);
+      }
+      // A reply that meets the contract needs no artifact read at all.
+      const noRead = await run(runPath, NINE_LINES, { delivery_contract: CONTRACT }, 'trinity-a', 'throw');
+      assert.equal(noRead.store.row.status, 'done', `${name}: a delivered reply is not held up by a failed artifact read`);
 
       // ON: a reply that meets the contract finishes exactly as before.
       const good = await run(runPath, NINE_LINES, { delivery_contract: CONTRACT });
