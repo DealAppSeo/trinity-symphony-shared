@@ -3,11 +3,13 @@
 /**
  * A reply that does not contain its deliverable is not stored as done (2026-11-24).
  *
- * Tasks 439397 and 439431 (trinity-torch, 2026-11-23/24): the task asked for lines of work, the model replied
- * "saved as a document artifact" with none of the lines in the reply, and the row was stored with status done.
- * A task can now carry metadata.delivery_contract = { pattern, min_lines }: at least min_lines lines of the
- * reply must match pattern. With DELIVERY_CONTRACT_GATE=on a reply that does not meet it finishes as
- * needs_artifact with the reason in metadata.delivery. Flag unset, or no contract: unchanged.
+ * A task can carry metadata.delivery_contract = { pattern, min_lines }: at least min_lines lines must match
+ * pattern. With DELIVERY_CONTRACT_GATE=on, a task whose reply does not meet it, and whose own saved artifact
+ * does not either, finishes as needs_artifact with the reason in metadata.delivery. Flag unset, or no
+ * contract: unchanged.
+ *
+ * The artifact counts because the "saved as a report" replies of 2026-11-23/24 were mostly true: the lines were
+ * in the artifact that task saved (11 of 11 rows read). Another task's artifact never counts.
  *
  * The REAL processTask and processTaskContract run here; the model and the database are stand-ins.
  * Run: node tests/delivery-contract.test.js
@@ -22,12 +24,13 @@ const NINE_LINES = Array.from({ length: 9 }, (_, i) => `P${(i % 3) + 1} Q${Math.
 const CONTRACT = { pattern: '^P[123]\\b', min_lines: 9 };
 
 /** One row, and an update chain that applies its filters (as tests/completion-fence.test.js). */
-function db(row) {
+function db(row, artifact) {
   const writes = [];
   return {
     writes,
     row,
     from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: artifact || null, error: null }) }) }),
       update: (patch) => {
         const filters = [];
         const chain = {
@@ -75,8 +78,9 @@ const PATHS = [
   ['legacy', (a, t) => a.processTask(t)],
   ['contract', async (a, t) => { a._beginTask(t); await a.processTaskContract(t); }],
 ];
-const run = async (runPath, output, metadata, claimedBy = 'trinity-a') => {
-  const store = db({ id: 7, claimed_by: claimedBy, status: 'doing' });
+const SUMMARY_ARTIFACT = { task_id: 7, content: '# Report' + String.fromCharCode(10) + 'All nine answers were recorded.' };
+const run = async (runPath, output, metadata, claimedBy = 'trinity-a', artifact = SUMMARY_ARTIFACT) => {
+  const store = db({ id: 7, claimed_by: claimedBy, status: 'doing' }, artifact);
   const { a, calls } = agent(store, output);
   await runPath(a, task(metadata));
   return { store, calls };
@@ -126,6 +130,16 @@ const run = async (runPath, output, metadata, claimedBy = 'trinity-a') => {
       assert.equal(bad.store.writes.length, 1, `${name}: one write`);
       assert.equal(bad.calls.spawn, 0, `${name}: no follow-up from a non-delivery`);
       assert.equal(bad.calls.rep, 0, `${name}: no reputation for a non-delivery`);
+
+      // ON: the summary is true. The lines are in the artifact this task saved, so the work was delivered.
+      const saved = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', { task_id: 7, content: NINE_LINES });
+      assert.equal(saved.store.row.status, 'done', `${name}: delivered in the task's own artifact`);
+      assert.equal(saved.calls.spawn, 1, name);
+      // ...but never another task's artifact, and a missing artifact row is no artifact.
+      const other = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', { task_id: 8, content: NINE_LINES });
+      assert.equal(other.store.row.status, 'needs_artifact', `${name}: another task's artifact does not count`);
+      const gone = await run(runPath, SUMMARY, { delivery_contract: CONTRACT }, 'trinity-a', null);
+      assert.equal(gone.store.row.status, 'needs_artifact', `${name}: no artifact row`);
 
       // ON: a reply that meets the contract finishes exactly as before.
       const good = await run(runPath, NINE_LINES, { delivery_contract: CONTRACT });

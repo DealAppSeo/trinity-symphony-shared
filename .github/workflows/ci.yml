@@ -154,8 +154,8 @@ jobs:
           # task's artifact can never satisfy the next task's artifact guard.
           node tests/per-task-reset.test.js
           node tests/completion-fence.test.js
-          # DELIVERY_CONTRACT_GATE (default off: unchanged): a reply that does not meet metadata.delivery_contract
-          # finishes needs_artifact, not done (tasks 439397, 439431: "saved as an artifact" summaries stored as done).
+          # DELIVERY_CONTRACT_GATE (default off: unchanged): a task whose reply and own artifact both fail
+          # metadata.delivery_contract finishes needs_artifact, not done. An artifact that holds the lines counts.
           node tests/delivery-contract.test.js
           # http_get re-checks every redirect hop (https, exact host, no IP literal, no private
           # address after DNS), stops after 3 redirects; an off-list or metadata hop is never contacted.
