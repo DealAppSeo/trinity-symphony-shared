@@ -46,6 +46,7 @@ jobs:
           node -c lib/declared-not-checked.js
           node -c lib/t12-lessons.js
           node -c lib/handoff-record.js
+          node -c lib/delivery-contract.js
           if [ -f lib/getNextTask.js ]; then node -c lib/getNextTask.js; fi
 
       - name: Node tests
@@ -153,6 +154,9 @@ jobs:
           # task's artifact can never satisfy the next task's artifact guard.
           node tests/per-task-reset.test.js
           node tests/completion-fence.test.js
+          # DELIVERY_CONTRACT_GATE (default off: unchanged): a task whose reply and own artifact both fail
+          # metadata.delivery_contract finishes needs_artifact, not done. An artifact that holds the lines counts.
+          node tests/delivery-contract.test.js
           # http_get re-checks every redirect hop (https, exact host, no IP literal, no private
           # address after DNS), stops after 3 redirects; an off-list or metadata hop is never contacted.
           node tests/swarm-toolbelt-redirect.test.js
